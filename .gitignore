@@ -1,0 +1,36 @@
+# 環境変数・シークレット
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 一時ファイル
+tmp/
+temp/
+
+# フロントエンド（実装時）
+node_modules/
+dist/
+.vite/
+
+# バックエンド（実装時）
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Claude Code（PC固有の設定）
+.claude/settings.local.json
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
