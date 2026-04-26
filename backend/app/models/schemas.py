@@ -248,6 +248,29 @@ class UpsertWannaBeRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=1000)
 
 
+class MandalaChart(BaseModel):
+    """
+    【マンダラチャート】
+    🔵 信頼性レベル: DBスキーマ mandala_charts / Sprint Spec F-01 より
+    """
+
+    id: str
+    user_id: str
+    wanna_be_id: Optional[str] = None
+    cells: Any  # JSONB: 9x9グリッドのJSONオブジェクト
+    created_at: Optional[datetime] = None
+
+
+class SaveMandalaRequest(BaseModel):
+    """
+    【マンダラ保存リクエスト】: POST /api/mandala で使用
+    🔵 信頼性レベル: Sprint Spec F-02 より
+    """
+
+    wanna_be_id: Optional[str] = None
+    cells: Any = Field(..., description="9x9グリッドのJSONBデータ")
+
+
 class NotificationSettings(BaseModel):
     """
     【通知設定】: user_profiles テーブルの通知関連フィールドのみを返す専用モデル

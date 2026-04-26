@@ -1,15 +1,70 @@
-import { useState } from 'react'
-import { useLocalStorage } from '@/lib/storage'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useAuth } from '@/hooks/useAuth'
 import { streamMandalaChart, extractJsonBlock, stripJsonBlock, checkRateLimit, type MandalaData } from '@/lib/ai'
+import { getWannaBe, getMandala, saveWannaBe, saveMandala } from '@/lib/api'
 import { MandalaGrid } from '@/components/mandala/MandalaGrid'
 
 export const WannaBeTab = () => {
-  const [mandala, setMandala] = useLocalStorage<MandalaData | null>('wannabe:mandala', null)
+  const { session, loading: authLoading } = useAuth()
+
+  const [mandala, setMandala] = useState<MandalaData | null>(null)
+  const [wannaBeText, setWannaBeText] = useState('')
   const [input, setInput] = useState('')
   const [generating, setGenerating] = useState(false)
   const [streamText, setStreamText] = useState('')
-  const [showInput, setShowInput] = useState(!mandala)
+  const [showInput, setShowInput] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [loadingData, setLoadingData] = useState(true)
+
+  // デバウンス用タイマー
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 初回マウント時: DBからデータを復元
+  useEffect(() => {
+    if (authLoading || !session) {
+      setLoadingData(false)
+      return
+    }
+
+    const fetchData = async () => {
+      setLoadingData(true)
+      try {
+        const [wannaBeResult, mandalaResult] = await Promise.all([
+          getWannaBe().catch(() => null),
+          getMandala().catch(() => null),
+        ])
+
+        if (wannaBeResult) {
+          setWannaBeText(wannaBeResult.text)
+          setInput(wannaBeResult.text)
+        }
+
+        if (mandalaResult && mandalaResult.cells) {
+          const cells = mandalaResult.cells as MandalaData
+          setMandala(cells)
+          setShowInput(false)
+        }
+      } catch (e) {
+        console.error('データの復元に失敗しました', e)
+      } finally {
+        setLoadingData(false)
+      }
+    }
+
+    fetchData()
+  }, [session, authLoading])
+
+  // マンダラ更新時のデバウンス保存
+  const handleMandalaUpdate = useCallback((updated: MandalaData) => {
+    setMandala(updated)
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      saveMandala(updated).catch(e => console.error('マンダラ保存に失敗しました', e))
+    }, 500)
+  }, [])
 
   const handleGenerate = async () => {
     if (!input.trim() || generating) return
@@ -22,6 +77,9 @@ export const WannaBeTab = () => {
     setStreamText('')
     setMandala(null)
     try {
+      // wanna_be をDBに保存（SSEストリームをトリガー、応答は捨てる）
+      saveWannaBe(input).catch(e => console.error('wanna_be 保存に失敗しました', e))
+
       await streamMandalaChart(
         input,
         (accumulated) => setStreamText(stripJsonBlock(accumulated)),
@@ -35,9 +93,13 @@ export const WannaBeTab = () => {
               return { title: el.title || `要素${i + 1}`, actions }
             })
             const now = new Date().toISOString()
-            setMandala({ mainGoal: result.mainGoal, elements, createdAt: now, updatedAt: now })
+            const newMandala: MandalaData = { mainGoal: result.mainGoal, elements, createdAt: now, updatedAt: now }
+            setMandala(newMandala)
             setShowInput(false)
             setStreamText('')
+
+            // マンダラ生成後にDBへ自動保存
+            saveMandala(newMandala).catch(e => console.error('マンダラ保存に失敗しました', e))
           } else {
             setError('生成に失敗しました。もう一度お試しください。')
           }
@@ -48,6 +110,31 @@ export const WannaBeTab = () => {
       setError(e instanceof Error ? e.message : 'API呼び出しに失敗しました。')
       setGenerating(false)
     }
+  }
+
+  // 未認証ガード
+  if (!authLoading && !session) {
+    return (
+      <div className="space-y-4 px-4 py-4 pb-6">
+        <div className="rounded-[28px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-4 py-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8da4c3]">Mandala chart</p>
+          <p className="mt-2 text-lg font-semibold text-white">長期ゴールをマンダラチャートで構造化する</p>
+        </div>
+        <div className="rounded-2xl border border-white/[0.08] bg-[#0b1320]/90 px-4 py-8 text-center">
+          <p className="text-sm text-white/60">この機能を使うにはログインが必要です。</p>
+          <p className="mt-2 text-xs text-white/38">ログインすると、マンダラチャートがクラウドに保存されます。</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ローディング中
+  if (authLoading || loadingData) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-[#7dd3fc]/60" />
+      </div>
+    )
   }
 
   return (
@@ -138,7 +225,7 @@ export const WannaBeTab = () => {
               )}
               <button
                 type="button"
-                onClick={() => { setMandala(null); setShowInput(true); setInput('') }}
+                onClick={() => { setMandala(null); setShowInput(true); setInput(wannaBeText) }}
                 className="rounded-full border border-[#f87171]/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#f87171]/60 hover:text-[#f87171]"
               >
                 Reset
@@ -147,7 +234,7 @@ export const WannaBeTab = () => {
           </div>
           <MandalaGrid
             data={mandala}
-            onUpdate={updated => setMandala(updated)}
+            onUpdate={handleMandalaUpdate}
           />
         </div>
       )}

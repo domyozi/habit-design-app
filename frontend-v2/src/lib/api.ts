@@ -142,3 +142,98 @@ export const linkKpiHabits = (kpiId: string, habitIds: string[]) =>
  */
 export const deleteKpi = (kpiId: string) =>
   apiDelete<{ success: boolean; data: { kpi_id: string } }>(`/api/kpis/${kpiId}`)
+
+// ============================================================
+// Wanna Be API クライアント (Sprint 2)
+// ============================================================
+
+/**
+ * 現在有効な Wanna Be を取得する
+ * GET /api/wanna-be
+ * 未登録の場合は null を返す（204 No Content）
+ */
+export const getWannaBe = async (): Promise<{ text: string } | null> => {
+  try {
+    const response = await api.get<{ success: boolean; data: { text: string } }>('/api/wanna-be')
+    if (response.status === 204) return null
+    return response.data?.data ?? null
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'response' in err) {
+      const axiosErr = err as { response?: { status?: number } }
+      if (axiosErr.response?.status === 204) return null
+    }
+    throw err
+  }
+}
+
+/**
+ * Wanna Be を保存する（SSE ストリーミングをトリガーするが応答は捨てる）
+ * POST /api/wanna-be/analyze
+ */
+export const saveWannaBe = async (text: string): Promise<void> => {
+  // analyze エンドポイントは SSE ストリームを返すが、保存目的のみのため fetch で fire-and-forget
+  const token = getStoredAccessToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers.Authorization = `Bearer ${token}`
+  await fetch(`${API_BASE_URL}/api/wanna-be/analyze`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ text }),
+  })
+}
+
+// ============================================================
+// Goals API クライアント (Sprint 2)
+// ============================================================
+
+/**
+ * アクティブな長期目標一覧を取得する
+ * GET /api/goals
+ */
+export const getGoals = async (): Promise<Array<{ id: string; title: string }>> => {
+  try {
+    const response = await apiGet<{ success: boolean; data: Array<{ id: string; title: string }> }>('/api/goals')
+    return response.data ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 長期目標を保存する（既存を非活性化して新規 INSERT）
+ * POST /api/goals
+ */
+export const saveGoals = async (goals: Array<{ title: string }>): Promise<void> => {
+  await apiPost('/api/goals', { goals })
+}
+
+// ============================================================
+// Mandala API クライアント (Sprint 2)
+// ============================================================
+
+/**
+ * 認証ユーザーの最新マンダラを取得する
+ * GET /api/mandala
+ * 未登録の場合は null を返す（204 No Content）
+ */
+export const getMandala = async (): Promise<{ cells: unknown } | null> => {
+  try {
+    const response = await api.get<{ success: boolean; data: { cells: unknown } }>('/api/mandala')
+    if (response.status === 204) return null
+    return response.data?.data ?? null
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'response' in err) {
+      const axiosErr = err as { response?: { status?: number } }
+      if (axiosErr.response?.status === 204) return null
+    }
+    throw err
+  }
+}
+
+/**
+ * マンダラを保存する（upsert: 1ユーザー1レコード）
+ * POST /api/mandala
+ */
+export const saveMandala = async (cells: unknown): Promise<void> => {
+  await apiPost('/api/mandala', { cells })
+}
