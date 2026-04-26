@@ -11,8 +11,8 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from 'recharts'
-import { fetchKpiLogs } from '../lib/api'
-import type { Kpi, KpiChartDataPoint, KpiChartResponse } from '../types'
+import { fetchKpiLogs } from '@/lib/api'
+import type { Kpi, KpiChartDataPoint, KpiChartResponse } from '@/types'
 
 type Granularity = 'daily' | 'weekly' | 'monthly'
 

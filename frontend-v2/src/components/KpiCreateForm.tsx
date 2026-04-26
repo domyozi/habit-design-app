@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { CreateKpiRequest, MetricType, TrackingFrequency } from '../types'
-import { createKpi } from '../lib/api'
+import type { CreateKpiRequest, MetricType, TrackingFrequency } from '@/types'
+import { createKpi } from '@/lib/api'
 
 export interface KpiCreateFormProps {
   goalId: string

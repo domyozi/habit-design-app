@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchKpisToday } from '../lib/api'
-import type { KpiWithTodayStatus } from '../types'
+import { fetchKpisToday } from '@/lib/api'
+import type { KpiWithTodayStatus } from '@/types'
 import { KpiLogInput } from './KpiLogInput'
 
 export function KpiSection() {

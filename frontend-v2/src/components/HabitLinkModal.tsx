@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { linkKpiHabits } from '../lib/api'
+import { linkKpiHabits } from '@/lib/api'
 
 export interface Habit {
   id: string

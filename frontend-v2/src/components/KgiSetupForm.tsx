@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { SetKgiRequest, MetricType } from '../types'
-import { patchGoalKgi } from '../lib/api'
+import type { SetKgiRequest, MetricType } from '@/types'
+import { patchGoalKgi } from '@/lib/api'
 
 export interface KgiSetupFormProps {
   goalId: string

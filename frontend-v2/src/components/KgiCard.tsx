@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { GoalWithKgi, MetricType } from '../types'
+import type { GoalWithKgi, MetricType } from '@/types'
 
 export interface KgiCardProps {
   goal: GoalWithKgi

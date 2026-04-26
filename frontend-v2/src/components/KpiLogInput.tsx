@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { upsertKpiLog } from '../lib/api'
-import type { KpiWithTodayStatus } from '../types'
+import { upsertKpiLog } from '@/lib/api'
+import type { KpiWithTodayStatus } from '@/types'
 
 interface KpiLogInputProps {
   kpi: KpiWithTodayStatus
