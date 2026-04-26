@@ -349,6 +349,22 @@ export const getAllTimeBests = (): Record<string, number> => {
   return bests
 }
 
+// 過去N日分の日次フィールドを読み込む（数値・文字列どちらでも）
+export const readDailyField = (
+  slot: 'morning' | 'evening',
+  field: string,
+  nDays: number,
+): Array<{ date: string; value: string | null }> => {
+  return Array.from({ length: nDays }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (nDays - 1 - i))
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const key = `daily:${dateKey}:${slot}:${field}`
+    const raw = localStorage.getItem(key)
+    return { date: dateKey, value: raw !== null ? (JSON.parse(raw) as string) : null }
+  })
+}
+
 // ボス用: { value, date } で保存し、今日 or 昨日のものだけ返す
 export interface BossData {
   value: string

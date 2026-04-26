@@ -10,9 +10,11 @@ import {
   useDailyStorage,
   useMonthlyTargets,
   useLocalStorage,
+  readDailyField,
 } from '@/lib/storage'
 import { streamClaude, buildWannaBeAnalysisPrompt } from '@/lib/ai'
 import { ProgressRing } from '@/components/home/ProgressRing'
+import { useTodoDefinitions, bySection } from '@/lib/todos'
 
 interface HabitDef {
   id: string
@@ -23,16 +25,7 @@ interface HabitDef {
 
 type Granularity = 'weekly' | 'monthly' | 'yearly'
 
-const HABIT_DEFS: HabitDef[] = [
-  { id: 'early-rise', label: '早起き', defaultTarget: 14, color: '#f59e0b' },
-  { id: 'training', label: '筋トレ', defaultTarget: 24, color: '#ff6b35' },
-  { id: 'english', label: '英語', defaultTarget: 10, color: '#22c55e' },
-  { id: 'cardio', label: '有酸素', defaultTarget: 15, color: '#38bdf8' },
-]
-
-const DEFAULT_TARGETS: Record<string, number> = Object.fromEntries(
-  HABIT_DEFS.map(h => [h.id, h.defaultTarget]),
-)
+const HABIT_COLORS = ['#f59e0b', '#ff6b35', '#22c55e', '#38bdf8', '#c4b5fd', '#f472b6', '#34d399', '#fb923c']
 
 const today = new Date()
 const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
@@ -174,10 +167,12 @@ const YearlyChart = ({
   )
 }
 
-const Heatmap = ({ checksByDay }: { checksByDay: Record<string, Set<string>> }) => {
+const Heatmap = ({ checksByDay, habitDefs }: { checksByDay: Record<string, Set<string>>; habitDefs: HabitDef[] }) => {
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
   const month = today.getMonth() + 1
   const year = today.getFullYear()
+
+  if (habitDefs.length === 0) return null
 
   return (
     <div className="overflow-x-auto">
@@ -193,9 +188,9 @@ const Heatmap = ({ checksByDay }: { checksByDay: Record<string, Set<string>> }) 
           </tr>
         </thead>
         <tbody>
-          {HABIT_DEFS.map(habit => (
+          {habitDefs.map(habit => (
             <tr key={habit.id}>
-              <td className="whitespace-nowrap py-1 pr-2 text-[#666]">{habit.label.slice(0, 2)}</td>
+              <td className="whitespace-nowrap py-1 pr-2 text-[#666]">{habit.label.slice(0, 4)}</td>
               {days.map(d => {
                 const isFuture = d > daysPassed
                 const isToday = d === daysPassed
@@ -217,6 +212,125 @@ const Heatmap = ({ checksByDay }: { checksByDay: Record<string, Set<string>> }) 
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+const WeightTrendChart = () => {
+  const data = useMemo(() => readDailyField('evening', 'weight', 30), [])
+  const points = useMemo(() =>
+    data
+      .map((d, i) => ({ index: i, date: d.date, kg: d.value ? parseFloat(d.value) : null }))
+      .filter((d): d is { index: number; date: string; kg: number } => d.kg !== null && !isNaN(d.kg)),
+    [data]
+  )
+
+  if (points.length < 2) return null
+
+  const minKg = Math.min(...points.map(p => p.kg))
+  const maxKg = Math.max(...points.map(p => p.kg))
+  const range = maxKg - minKg || 1
+  const W = 300, H = 64, PAD = 6
+
+  const x = (idx: number) => PAD + (idx / 29) * (W - PAD * 2)
+  const y = (kg: number) => H - PAD - ((kg - minKg) / range) * (H - PAD * 2)
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.index)} ${y(p.kg)}`).join(' ')
+
+  const latest = points[points.length - 1]
+  const recent7 = points.filter(p => p.index >= 23)
+  const avg7 = recent7.length > 0 ? recent7.reduce((s, p) => s + p.kg, 0) / recent7.length : null
+  const trend = points.length >= 2
+    ? points[points.length - 1].kg - points[0].kg
+    : 0
+
+  return (
+    <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Weight trend</span>
+        <span className="text-[11px] text-white/28">past 30 days</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
+        <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map(p => (
+          <circle key={p.index} cx={x(p.index)} cy={y(p.kg)} r="2" fill="#38bdf8" />
+        ))}
+      </svg>
+      <div className="mt-2 flex items-center gap-4">
+        <div>
+          <p className="text-[10px] text-white/30">最新</p>
+          <p className="text-sm font-bold text-[#38bdf8]">{latest.kg.toFixed(1)} kg</p>
+        </div>
+        {avg7 !== null && (
+          <div>
+            <p className="text-[10px] text-white/30">7日平均</p>
+            <p className="text-sm font-semibold text-white/70">{avg7.toFixed(1)} kg</p>
+          </div>
+        )}
+        <div>
+          <p className="text-[10px] text-white/30">トレンド</p>
+          <p className={['text-sm font-semibold', trend < 0 ? 'text-[#22c55e]' : trend > 0 ? 'text-[#f87171]' : 'text-white/50'].join(' ')}>
+            {trend > 0 ? '+' : ''}{trend.toFixed(1)} kg
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-white/30">範囲</p>
+          <p className="text-sm font-semibold text-white/50">{minKg.toFixed(1)}–{maxKg.toFixed(1)}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const RatingTrendChart = () => {
+  const data = useMemo(() => readDailyField('evening', 'stars', 30), [])
+  const points = useMemo(() =>
+    data.map((d, i) => ({ index: i, date: d.date, stars: d.value ? parseInt(d.value) : null })),
+    [data]
+  )
+  const hasData = points.some(p => p.stars !== null && p.stars > 0)
+  if (!hasData) return null
+
+  const validPoints = points.filter((p): p is { index: number; date: string; stars: number } => p.stars !== null && p.stars > 0)
+  const avg = validPoints.reduce((s, p) => s + p.stars, 0) / validPoints.length
+
+  const starColor = (n: number) => {
+    if (n <= 1) return '#f87171'
+    if (n <= 2) return '#fb923c'
+    if (n <= 3) return '#facc15'
+    if (n <= 4) return '#a3e635'
+    return '#22c55e'
+  }
+
+  return (
+    <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Daily quality ★</span>
+        <span className="text-[11px] text-white/50">月平均 {avg.toFixed(1)} ★</span>
+      </div>
+      <div className="flex h-12 items-end gap-[2px]">
+        {points.map(p => (
+          <div key={p.index} className="flex flex-1 flex-col items-center justify-end">
+            {p.stars ? (
+              <div
+                className="w-full rounded-sm"
+                style={{
+                  height: `${(p.stars / 5) * 44}px`,
+                  minHeight: 4,
+                  background: starColor(p.stars),
+                  opacity: 0.85,
+                }}
+              />
+            ) : (
+              <div className="w-full rounded-sm bg-white/[0.04]" style={{ height: 4 }} />
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[9px] text-white/20">
+        <span>30日前</span>
+        <span>今日</span>
+      </div>
     </div>
   )
 }
@@ -542,6 +656,7 @@ const WeeklyView = ({
 
 const MonthlyView = ({
   habits,
+  habitDefs,
   targets,
   showTargetsForm,
   setShowTargetsForm,
@@ -553,6 +668,7 @@ const MonthlyView = ({
   setShowReport,
 }: {
   habits: Array<HabitDef & { actual: number; last: number; best: number; target: number }>
+  habitDefs: HabitDef[]
   targets: Record<string, number>
   showTargetsForm: boolean
   setShowTargetsForm: (value: boolean | ((prev: boolean) => boolean)) => void
@@ -632,12 +748,15 @@ const MonthlyView = ({
 
     {showTargetsForm && (
       <TargetsForm
-        habitDefs={HABIT_DEFS}
+        habitDefs={habitDefs}
         targets={targets}
         onChange={handleTargetChange}
         onClose={() => setShowTargetsForm(false)}
       />
     )}
+
+    <WeightTrendChart />
+    <RatingTrendChart />
 
     <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
       <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Comparative signals</p>
@@ -676,19 +795,21 @@ const MonthlyView = ({
       </div>
     </div>
 
-    <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Completion map</p>
-        <span className="text-[10px] text-white/24">green = complete / red = missed</span>
+    {habitDefs.length > 0 && (
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Completion map</p>
+          <span className="text-[10px] text-white/24">green = complete / red = missed</span>
+        </div>
+        <Heatmap checksByDay={checksByDay} habitDefs={habitDefs} />
       </div>
-      <Heatmap checksByDay={checksByDay} />
-    </div>
+    )}
 
     <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#ddd6fe]">Wanna Be analysis</p>
       </div>
-      <WannaBeAnalysis monthlyCounts={monthlyCounts} targets={targets} habitDefs={HABIT_DEFS} />
+      <WannaBeAnalysis monthlyCounts={monthlyCounts} targets={targets} habitDefs={habitDefs} />
     </div>
 
     <div>
@@ -780,7 +901,23 @@ export const MonthlyTab = () => {
   const [granularity, setGranularity] = useState<Granularity>('monthly')
   const [showTargetsForm, setShowTargetsForm] = useState(false)
   const [showReport, setShowReport] = useState(false)
-  const [targets, setTargets] = useMonthlyTargets(DEFAULT_TARGETS)
+
+  const [todoDefinitions] = useTodoDefinitions()
+  const habitDefs: HabitDef[] = useMemo(() =>
+    bySection(todoDefinitions, 'morning-must').map((t, i) => ({
+      id: t.id,
+      label: t.label,
+      defaultTarget: 20,
+      color: HABIT_COLORS[i % HABIT_COLORS.length],
+    })),
+    [todoDefinitions]
+  )
+  const defaultTargets = useMemo(
+    () => Object.fromEntries(habitDefs.map(h => [h.id, h.defaultTarget])),
+    [habitDefs]
+  )
+
+  const [targets, setTargets] = useMonthlyTargets(defaultTargets)
 
   const monthlyCounts = useMemo(() => countMonthlyChecks('morning:checked'), [])
   const lastMonthCounts = useMemo(() => countChecksForDates('morning', 'checked', lastMonthKeys()), [])
@@ -805,12 +942,14 @@ export const MonthlyTab = () => {
     return result
   }, [])
 
-  const habits = HABIT_DEFS.map(habit => ({
+  const habits = habitDefs.map(habit => ({
     ...habit,
     actual: monthlyCounts[habit.id] ?? 0,
     last: lastMonthCounts[habit.id] ?? 0,
     best: allTimeBests[habit.id] ?? 0,
-    target: targets[habit.id] ?? habit.defaultTarget,
+    target: (targets[habit.id] !== undefined && targets[habit.id] > 0)
+      ? targets[habit.id]
+      : habit.defaultTarget,
   }))
 
   const handleTargetChange = (id: string, value: number) => {
@@ -841,6 +980,7 @@ export const MonthlyTab = () => {
       {granularity === 'monthly' && (
         <MonthlyView
           habits={habits}
+          habitDefs={habitDefs}
           targets={targets}
           showTargetsForm={showTargetsForm}
           setShowTargetsForm={setShowTargetsForm}
