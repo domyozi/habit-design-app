@@ -12,7 +12,6 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
   const [loading, setLoading] = useState(false)
   const [aiBrief, setAiBrief] = useState<CoachBrief | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
 
   const actions = aiBrief?.next_actions.length
     ? aiBrief.next_actions.map(item => ({ title: item.title, detail: item.detail }))
@@ -40,20 +39,6 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
     }
   }
 
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={() => setCollapsed(false)}
-        className={`flex flex-col items-center justify-center gap-2 rounded-[20px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-2 py-4 text-white/40 shadow-[0_28px_90px_rgba(0,0,0,0.28)] transition-colors hover:text-white/70 ${className}`}
-        style={{ minHeight: 120, width: 36 }}
-      >
-        <span className="text-[9px]">▶</span>
-        <span className="text-[10px] tracking-[0.15em] text-white/40" style={{ writingMode: 'vertical-rl' }}>Coach</span>
-      </button>
-    )
-  }
-
   return (
     <aside className={`rounded-[28px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.28)] ${className}`}>
       <div className="flex items-start justify-between gap-3">
@@ -61,26 +46,16 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
           <p className="text-[10px] font-semibold tracking-[0.12em] text-[#8da4c3]">{snapshot.heading}</p>
           <p className="mt-2 text-sm font-semibold text-white/86">{snapshot.status}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {snapshot.aiPrompt && (
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={loading}
-              className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-[#aee5ff] disabled:opacity-40"
-            >
-              {loading ? '生成中…' : 'コーチに聞く'}
-            </button>
-          )}
+        {snapshot.aiPrompt && (
           <button
             type="button"
-            onClick={() => setCollapsed(true)}
-            className="text-white/30 hover:text-white/60 text-[11px] px-1"
-            title="収納"
+            onClick={handleGenerate}
+            disabled={loading}
+            className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-[#aee5ff] disabled:opacity-40"
           >
-            ◀
+            {loading ? '生成中…' : 'コーチに聞く'}
           </button>
-        </div>
+        )}
       </div>
 
       <div className="mt-5 space-y-3">
