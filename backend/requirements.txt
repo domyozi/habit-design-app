@@ -1,0 +1,11 @@
+fastapi==0.111.*
+uvicorn[standard]==0.29.*
+python-jose[cryptography]==3.3.*
+supabase==2.*
+anthropic==0.28.*
+resend==2.*
+apscheduler==3.10.*
+python-dotenv==1.0.*
+pydantic==2.*
+httpx==0.27.*
+python-multipart==0.0.*

@@ -1,0 +1,625 @@
+"""
+全エンドポイント共通 Pydantic スキーマ定義
+TASK-0005: FastAPI共通基盤実装
+TASK-0029: KGI/KPI モデル追加
+
+【設計方針】:
+- interfaces.ts の型定義を Python 側に対応させる
+- APIResponse[T] ジェネリック型で型安全なレスポンスを実現
+- AIActionType は Literal で3種類に制限（REQ-303）
+
+🔵 信頼性レベル: api-endpoints.md・interfaces.ts より
+"""
+from datetime import date, datetime
+from typing import Any, Generic, Literal, Optional, TypeVar
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# ジェネリック型変数
+T = TypeVar("T")
+
+# =============================================
+# 共通型
+# =============================================
+
+
+class APIResponse(BaseModel, Generic[T]):
+    """
+    【共通レスポンス型】: 全エンドポイントで使用するジェネリックレスポンス
+    🔵 信頼性レベル: api-endpoints.md エラーレスポンス共通フォーマット / interfaces.ts ApiResponse より
+    """
+
+    success: bool
+    data: Optional[T] = None
+    message: str = ""
+
+
+class ErrorDetail(BaseModel):
+    """エラー詳細（エラーレスポンス内の error フィールド）🔵"""
+
+    code: str
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    """
+    【エラーレスポンス型】: 全エラー応答で使用
+    🔵 信頼性レベル: api-endpoints.md エラーレスポンス共通フォーマット より
+    """
+
+    success: bool = False
+    error: ErrorDetail
+
+
+# REQ-303: AIアクション種別は3種類のみ許可
+AIActionType = Literal["change_time", "add_habit", "remove_habit"]
+
+
+class AIAction(BaseModel):
+    """
+    【AI提案アクション】: REQ-303 で3種類に制限
+    🔵 信頼性レベル: REQ-303・interfaces.ts AIAction より
+    """
+
+    action_type: AIActionType
+    habit_id: Optional[str] = None
+    params: dict = Field(default_factory=dict)
+    reason: str = ""
+
+
+# 習慣の頻度
+HabitFrequency = Literal["daily", "weekdays", "weekends", "custom"]
+
+# =============================================
+# ドメインモデル（レスポンス用）
+# =============================================
+
+
+class UserProfile(BaseModel):
+    """
+    【ユーザープロフィール】
+    🔵 信頼性レベル: DBスキーマ user_profiles / interfaces.ts UserProfile より
+    """
+
+    id: str
+    display_name: Optional[str] = None
+    timezone: str = "Asia/Tokyo"
+    weekly_review_day: int = Field(default=1, ge=1, le=7)
+    notification_email: Optional[str] = None
+    notification_enabled: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class WannaBe(BaseModel):
+    """
+    【Wanna Be（将来像）】
+    🔵 信頼性レベル: DBスキーマ wanna_be / interfaces.ts WannaBe より
+    """
+
+    id: str
+    user_id: str
+    text: str
+    version: int = 1
+    is_current: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class Goal(BaseModel):
+    """
+    【長期目標】
+    🔵 信頼性レベル: DBスキーマ goals / interfaces.ts Goal より
+    """
+
+    id: str
+    user_id: str
+    wanna_be_id: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    display_order: int = 0
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class Habit(BaseModel):
+    """
+    【習慣定義】
+    🔵 信頼性レベル: DBスキーマ habits / interfaces.ts Habit より
+    """
+
+    id: str
+    user_id: str
+    goal_id: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    frequency: HabitFrequency = "daily"
+    scheduled_time: Optional[str] = None  # HH:MM形式
+    display_order: int = 0
+    current_streak: int = 0
+    longest_streak: int = 0
+    is_active: bool = True
+    wanna_be_connection_text: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class HabitLog(BaseModel):
+    """
+    【習慣ログ（日次達成記録）】
+    🔵 信頼性レベル: DBスキーマ habit_logs / interfaces.ts HabitLog より
+    """
+
+    id: str
+    habit_id: str
+    user_id: str
+    log_date: str  # YYYY-MM-DD
+    completed: bool
+    completed_at: Optional[datetime] = None
+    input_method: Optional[Literal["manual", "voice", "auto"]] = None
+    created_at: Optional[datetime] = None
+
+
+class FailureReason(BaseModel):
+    """
+    【未達成理由】
+    🔵 信頼性レベル: DBスキーマ failure_reasons / interfaces.ts FailureReason より
+    """
+
+    id: str
+    habit_log_id: str
+    user_id: str
+    reason: str
+    created_at: Optional[datetime] = None
+
+
+class JournalEntry(BaseModel):
+    """
+    【ジャーナルエントリー（3行日報・音声入力等）】
+    🔵 信頼性レベル: DBスキーマ journal_entries / interfaces.ts JournalEntry より
+    """
+
+    id: str
+    user_id: str
+    entry_date: str  # YYYY-MM-DD
+    content: str
+    entry_type: Literal["journaling", "daily_report", "checklist", "kpi_update"]
+    raw_input: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class WeeklyReview(BaseModel):
+    """
+    【週次レビュー】
+    🔵 信頼性レベル: DBスキーマ weekly_reviews / interfaces.ts WeeklyReview より
+    """
+
+    id: str
+    user_id: str
+    week_start: str  # YYYY-MM-DD (月曜)
+    week_end: str  # YYYY-MM-DD (日曜)
+    ai_feedback: Optional[str] = None
+    achievement_rate: Optional[float] = None
+    suggested_actions: Optional[list[AIAction]] = None
+    status: Literal["pending", "generating", "completed", "failed"] = "pending"
+    created_at: Optional[datetime] = None
+
+
+class BadgeDefinition(BaseModel):
+    """
+    【バッジ定義マスター】
+    🔵 信頼性レベル: DBスキーマ badge_definitions / interfaces.ts BadgeDefinition より
+    """
+
+    id: str
+    name: str
+    description: Optional[str] = None
+    condition_type: Literal["streak", "total_count", "weekly_rate"]
+    condition_value: int
+    icon_name: Optional[str] = None
+
+
+class UserBadge(BaseModel):
+    """
+    【ユーザー取得バッジ】
+    🔵 信頼性レベル: DBスキーマ user_badges / interfaces.ts UserBadge より
+    """
+
+    id: str
+    user_id: str
+    badge_id: str
+    habit_id: Optional[str] = None
+    earned_at: datetime
+    badge: Optional[BadgeDefinition] = None
+
+
+# =============================================
+# リクエストモデル
+# =============================================
+
+
+class UpsertWannaBeRequest(BaseModel):
+    """
+    【Wanna Be 登録/更新リクエスト】
+    🔵 信頼性レベル: interfaces.ts UpsertWannaBeRequest より
+    """
+
+    text: str = Field(..., min_length=1, max_length=1000)
+
+
+class NotificationSettings(BaseModel):
+    """
+    【通知設定】: user_profiles テーブルの通知関連フィールドのみを返す専用モデル
+    🔵 信頼性レベル: REQ-801/802・api-endpoints.md GET /notifications/settings より
+    """
+
+    notification_enabled: bool = True
+    notification_email: Optional[str] = None
+    weekly_review_day: int = Field(default=5, ge=1, le=7)
+
+
+class UpdateNotificationSettingsRequest(BaseModel):
+    """
+    【通知設定更新リクエスト】
+    🔵 信頼性レベル: REQ-801/802・api-endpoints.md PATCH /notifications/settings より
+    """
+
+    notification_enabled: Optional[bool] = None
+    notification_email: Optional[str] = None
+    weekly_review_day: Optional[int] = Field(None, ge=1, le=7)
+
+
+class GoalItem(BaseModel):
+    """
+    【目標アイテム】: POST /goals リクエスト内の各目標
+    🔵 信頼性レベル: REQ-203・api-endpoints.md より
+    """
+
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+
+
+class SaveGoalsRequest(BaseModel):
+    """
+    【目標保存リクエスト】: AI提案の目標を一括承認・保存（最大3件）
+    🔵 信頼性レベル: REQ-203/204・api-endpoints.md POST /goals より
+    """
+
+    wanna_be_id: Optional[str] = None
+    # 【注意】: max_length は設定しない。件数チェックはルーター側で 400 VALIDATION_ERROR として返す
+    # Pydantic の max_length=3 にすると 422 になり、仕様の 400 と異なるため
+    goals: list[GoalItem] = Field(..., min_length=1)
+
+
+class UpdateUserProfileRequest(BaseModel):
+    """
+    【ユーザープロフィール更新リクエスト】
+    🟡 信頼性レベル: interfaces.ts から推測
+    """
+
+    display_name: Optional[str] = Field(None, max_length=100)
+    timezone: Optional[str] = None
+    weekly_review_day: Optional[int] = Field(None, ge=1, le=7)
+    notification_email: Optional[str] = None
+    notification_enabled: Optional[bool] = None
+
+
+class CreateGoalRequest(BaseModel):
+    """
+    【目標作成リクエスト】
+    🔵 信頼性レベル: interfaces.ts より
+    """
+
+    wanna_be_id: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    display_order: Optional[int] = None
+
+
+class CreateHabitRequest(BaseModel):
+    """
+    【習慣作成リクエスト】
+    🔵 信頼性レベル: interfaces.ts CreateHabitRequest より
+    """
+
+    goal_id: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    frequency: HabitFrequency = "daily"
+    scheduled_time: Optional[str] = None
+    display_order: Optional[int] = None
+
+
+class UpdateHabitRequest(BaseModel):
+    """
+    【習慣更新リクエスト（AI提案承認 or 手動編集）】
+    🔵 信頼性レベル: REQ-303 / interfaces.ts UpdateHabitRequest より
+    """
+
+    # 【設計方針】: str 型にして許可外アクションをルーターで 400 FORBIDDEN_ACTION として返す
+    # Literal にすると Pydantic が 422 を返してしまい、仕様の 400 FORBIDDEN_ACTION と不整合になる
+    action: str
+    title: Optional[str] = None
+    scheduled_time: Optional[str] = None
+    goal_id: Optional[str] = None
+
+
+class UpdateHabitLogRequest(BaseModel):
+    """
+    【習慣ログ更新リクエスト】
+    🔵 信頼性レベル: interfaces.ts UpdateHabitLogRequest より
+    """
+
+    date: str  # YYYY-MM-DD
+    completed: bool
+    failure_reason: Optional[str] = None
+    input_method: Optional[Literal["manual", "voice"]] = None
+
+
+class VoiceInputRequest(BaseModel):
+    """
+    【音声入力リクエスト】
+    🔵 信頼性レベル: interfaces.ts VoiceInputRequest より
+    """
+
+    text: str = Field(..., min_length=1)
+    date: str  # YYYY-MM-DD
+
+
+class CreateFailureReasonRequest(BaseModel):
+    """
+    【未達成理由記録リクエスト】
+    🔵 信頼性レベル: REQ-406・api-endpoints.md より
+    """
+
+    reason: str = Field(..., min_length=1)
+    log_date: str  # YYYY-MM-DD
+
+
+# =============================================
+# ダッシュボード用集計型
+# =============================================
+
+
+class HabitStat(BaseModel):
+    """【習慣ごとの週間統計】🔵"""
+
+    habit_id: str
+    habit_title: str
+    achievement_rate: float
+    current_streak: int
+
+
+class WeeklyStats(BaseModel):
+    """【週間統計】🔵"""
+
+    week_start: str
+    total_habits: int
+    completed_count: int
+    achievement_rate: float
+    habit_stats: list[HabitStat]
+
+
+class HabitWithTodayStatus(Habit):
+    """
+    【今日の習慣状態（ダッシュボード表示用）】
+    🔵 信頼性レベル: interfaces.ts HabitWithTodayStatus より
+    """
+
+    today_completed: bool = False
+
+
+class DashboardData(BaseModel):
+    """
+    【ダッシュボード表示データ】
+    🔵 信頼性レベル: interfaces.ts DashboardData より
+    """
+
+    today_habits: list[HabitWithTodayStatus]
+    weekly_stats: WeeklyStats
+    recent_badges: list[UserBadge]
+
+
+# =============================================
+# 音声入力レスポンス
+# =============================================
+
+
+class VoiceInputResponse(BaseModel):
+    """
+    【音声入力AI分類レスポンス】
+    🔵 信頼性レベル: interfaces.ts VoiceInputResponse より
+    """
+
+    type: Literal["journaling", "daily_report", "checklist", "kpi_update", "unknown"]
+    updated_habits: Optional[list[HabitLog]] = None
+    failed_habits: Optional[list[dict[str, Any]]] = None
+    journal_entry: Optional[JournalEntry] = None
+
+
+# =============================================
+# KGI/KPI モデル（TASK-0029）
+# =============================================
+
+# 共通 Literal 型
+# 🔵 interfaces.ts MetricType / TrackingFrequency / KpiInputMethod より
+MetricType = Literal["numeric", "percentage", "binary"]
+TrackingFrequency = Literal["daily", "weekly", "monthly"]
+KpiInputMethod = Literal["manual", "voice", "auto"]
+
+
+class SetKgiRequest(BaseModel):
+    """
+    【KGI 設定リクエスト】: 既存 Goal を KGI として設定
+    🔵 REQ-KGI-001〜003 / interfaces.ts SetKgiRequest より
+    """
+
+    target_value: Optional[float] = None  # numeric/percentage 型で推奨
+    unit: Optional[str] = Field(None, max_length=20)
+    target_date: date  # 必須: REQ-KGI-002
+    metric_type: MetricType  # 必須: REQ-KGI-003
+    current_value: Optional[float] = None
+
+    @model_validator(mode="after")
+    def validate_percentage_range(self) -> "SetKgiRequest":
+        """percentage 型の target_value は 0〜100 の範囲: EDGE-KPI-004"""
+        if self.metric_type == "percentage" and self.target_value is not None:
+            if not (0 <= self.target_value <= 100):
+                raise ValueError("percentage 型の target_value は 0〜100 の範囲で入力してください")
+        return self
+
+
+class UpdateKgiCurrentValueRequest(BaseModel):
+    """
+    【KGI 現在値更新リクエスト】
+    🔵 REQ-KGI-005 / interfaces.ts UpdateKgiCurrentValueRequest より
+    """
+
+    current_value: float
+
+
+class GoalWithKgiResponse(BaseModel):
+    """
+    【KGI 属性を含む Goal レスポンス】
+    🔵 interfaces.ts GoalWithKgi より
+    """
+
+    id: str
+    user_id: str
+    wanna_be_id: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    display_order: int = 0
+    is_active: bool = True
+    # KGI 拡張フィールド（nullable: 通常 Goal との後方互換）
+    target_value: Optional[float] = None
+    current_value: Optional[float] = None
+    unit: Optional[str] = None
+    target_date: Optional[date] = None
+    metric_type: Optional[MetricType] = None
+    # サーバー計算フィールド
+    achievement_rate: Optional[float] = None  # REQ-KGI-006
+    days_remaining: Optional[int] = None  # REQ-KGI-007
+    is_expired: bool = False  # EDGE-KPI-005
+    is_kgi: bool = False  # target_date IS NOT NULL の場合 true
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class KpiCreate(BaseModel):
+    """
+    【KPI 作成リクエスト】
+    🔵 REQ-KPI-001〜005 / interfaces.ts CreateKpiRequest より
+    """
+
+    goal_id: str  # REQ-KPI-001: 紐付き KGI の ID
+    title: str = Field(..., max_length=200)
+    description: Optional[str] = None
+    metric_type: MetricType  # REQ-KPI-002
+    target_value: Optional[float] = None  # REQ-KPI-004
+    unit: Optional[str] = Field(None, max_length=20)  # REQ-KPI-004
+    tracking_frequency: TrackingFrequency  # REQ-KPI-003
+    display_order: int = 0
+
+
+class KpiResponse(BaseModel):
+    """
+    【KPI レスポンス】
+    🔵 interfaces.ts Kpi より
+    """
+
+    id: str
+    user_id: str
+    goal_id: str
+    title: str
+    description: Optional[str] = None
+    metric_type: MetricType
+    target_value: Optional[float] = None
+    unit: Optional[str] = None
+    tracking_frequency: TrackingFrequency
+    display_order: int = 0
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    habit_ids: list[str] = []  # REQ-KPI-006: JOIN フィールド
+
+
+class KpiWithTodayStatus(KpiResponse):
+    """
+    【今日の KPI 状態（MorningTab 用）】
+    🔵 REQ-DASH-002 / interfaces.ts KpiWithTodayStatus より
+    """
+
+    today_completed: bool = False
+    today_value: Optional[float] = None
+    connected_habits: list[dict] = []  # {habit_id, habit_title}
+
+
+class LinkKpiHabitsRequest(BaseModel):
+    """
+    【KPI 習慣連結リクエスト（全上書き方式）】
+    🔵 REQ-KPI-006・REQ-KPI-007 / interfaces.ts LinkKpiHabitsRequest より
+    """
+
+    habit_ids: list[str]
+
+
+class KpiLogUpsert(BaseModel):
+    """
+    【KPI ログ upsert リクエスト】
+    🔵 REQ-LOG-001〜004・EDGE-KPI-007 / interfaces.ts UpsertKpiLogRequest より
+    """
+
+    log_date: date  # 記録日 (YYYY-MM-DD)
+    value: float  # binary 型: 1.0=達成, 0.0=未達成
+    input_method: Optional[KpiInputMethod] = "manual"
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class KpiLogResponse(BaseModel):
+    """
+    【KPI ログレスポンス】
+    🔵 interfaces.ts KpiLog より
+    """
+
+    id: str
+    kpi_id: str
+    user_id: str
+    log_date: date
+    value: float
+    input_method: Optional[KpiInputMethod] = None
+    note: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class KpiChartDataPoint(BaseModel):
+    """
+    【グラフデータポイント】
+    🔵 REQ-LOG-005 / interfaces.ts KpiChartDataPoint より
+    """
+
+    date: str  # 日次: YYYY-MM-DD / 週次: 週の開始日 / 月次: YYYY-MM
+    value: Optional[float] = None  # 記録なしの場合 null
+
+
+class KpiChartSummary(BaseModel):
+    """【グラフ集計サマリー】🔵"""
+
+    avg: Optional[float] = None
+    max: Optional[float] = None
+    min: Optional[float] = None
+    latest_value: Optional[float] = None
+    target_value: Optional[float] = None
+
+
+class KpiChartResponse(BaseModel):
+    """
+    【KPI グラフレスポンス】
+    🔵 REQ-LOG-005 / interfaces.ts KpiChartResponse より
+    """
+
+    kpi_id: str
+    granularity: Literal["daily", "weekly", "monthly"]
+    data_points: list[KpiChartDataPoint]
+    summary: KpiChartSummary
