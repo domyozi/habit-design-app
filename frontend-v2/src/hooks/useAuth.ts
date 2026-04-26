@@ -16,27 +16,27 @@ export const useAuth = (): UseAuthReturn => {
   useEffect(() => {
     let mounted = true
 
-    // 新しい Supabase SDK は PKCE コード交換を自動で行う
-    // onAuthStateChange が SIGNED_IN を発火させるので、そこでセッションを受け取る
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return
-      setSession(data.session)
-      setLoading(false)
-      // コールバックURL にいたらルートへ戻す
-      if (data.session && window.location.pathname === '/auth/callback') {
-        window.history.replaceState({}, '', '/')
-      }
-    })
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return
       setSession(session)
       setLoading(false)
-      // Google / Apple 認証完了後にコールバックURLからルートへリダイレクト
       if (session && window.location.pathname === '/auth/callback') {
         window.history.replaceState({}, '', '/')
       }
     })
+
+    // コールバックページ（hash に access_token あり）は onAuthStateChange に任せる
+    // それ以外は getSession で初期セッションを取得
+    const isCallback = window.location.pathname === '/auth/callback' &&
+      window.location.hash.includes('access_token')
+
+    if (!isCallback) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (!mounted) return
+        setSession(data.session)
+        setLoading(false)
+      })
+    }
 
     return () => {
       mounted = false
