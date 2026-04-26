@@ -129,21 +129,22 @@ export const extractJsonBlock = <T>(text: string): T | null => {
 }
 
 export async function generateCoachBrief(statePrompt: string): Promise<CoachBrief | null> {
-  const system = `You are an operating coach for an AI-native habit app.
-Return only JSON inside a markdown json code block with this shape:
+  const system = `あなたはAIネイティブな習慣設計アプリのコーチです。
+必ず日本語で回答してください。
+以下のJSON形式のみをmarkdownのjsonコードブロック内で返してください：
 \`\`\`json
 {
-  "summary": "short operator-style summary",
+  "summary": "短い実行者視点のまとめ",
   "next_actions": [
-    { "title": "action title", "detail": "why this is the next move" }
+    { "title": "アクション名", "detail": "なぜこれが次の一手か" }
   ],
-  "risks": ["risk 1", "risk 2"],
+  "risks": ["リスク1", "リスク2"],
   "sources": [
-    { "title": "optional evidence title", "claim": "short reason why it matters" }
+    { "title": "根拠タイトル（任意）", "claim": "なぜ重要か短く" }
   ]
 }
 \`\`\`
-Keep it concise, practical, and execution-focused.`
+簡潔・実践的・実行重視で書いてください。`
 
   const response = await callClaude([{ role: 'user', content: statePrompt }], system, 400)
   return extractJsonBlock<CoachBrief>(response)
@@ -434,6 +435,8 @@ ${GRANULARITY_NOTE[granularity]}
 重要ルール：
 - elements は必ず8つ
 - 各 actions は必ず8つ
+- 各テーマ名（title）は **12文字以内**
+- 各アクション（actions の各要素）は **20文字以内**
 - 日本語で、具体的・実践的・行動可能な内容で`
 
   const prompt = `以下の目標・ビジョンからマンダラチャートを生成してください：\n\n<user_input>\n${input}\n</user_input>`

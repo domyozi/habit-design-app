@@ -12,6 +12,7 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
   const [loading, setLoading] = useState(false)
   const [aiBrief, setAiBrief] = useState<CoachBrief | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
 
   const actions = aiBrief?.next_actions.length
     ? aiBrief.next_actions.map(item => ({ title: item.title, detail: item.detail }))
@@ -30,13 +31,27 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
       if (brief) {
         setAiBrief(brief)
       } else {
-        setError('Coach brief を構造化できませんでした。')
+        setError('コーチブリーフを構造化できませんでした。')
       }
     } catch {
-      setError('Coach brief の取得に失敗しました。')
+      setError('コーチブリーフの取得に失敗しました。')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setCollapsed(false)}
+        className={`flex flex-col items-center justify-center gap-2 rounded-[20px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-2 py-4 text-white/40 shadow-[0_28px_90px_rgba(0,0,0,0.28)] transition-colors hover:text-white/70 ${className}`}
+        style={{ minHeight: 120, width: 36 }}
+      >
+        <span className="text-[9px]">▶</span>
+        <span className="text-[10px] tracking-[0.15em] text-white/40" style={{ writingMode: 'vertical-rl' }}>Coach</span>
+      </button>
+    )
   }
 
   return (
@@ -46,20 +61,30 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
           <p className="text-[10px] font-semibold tracking-[0.12em] text-[#8da4c3]">{snapshot.heading}</p>
           <p className="mt-2 text-sm font-semibold text-white/86">{snapshot.status}</p>
         </div>
-        {snapshot.aiPrompt && (
+        <div className="flex items-center gap-2">
+          {snapshot.aiPrompt && (
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={loading}
+              className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-[#aee5ff] disabled:opacity-40"
+            >
+              {loading ? '生成中…' : 'コーチに聞く'}
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleGenerate}
-            disabled={loading}
-            className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-[#aee5ff] disabled:opacity-40"
+            onClick={() => setCollapsed(true)}
+            className="text-white/30 hover:text-white/60 text-[11px] px-1"
+            title="収納"
           >
-            {loading ? 'Generating' : 'Ask coach'}
+            ◀
           </button>
-        )}
+        </div>
       </div>
 
       <div className="mt-5 space-y-3">
-        <p className="text-[10px] font-semibold tracking-[0.12em] text-white/35">Next actions</p>
+        <p className="text-[10px] font-semibold tracking-[0.12em] text-white/35">次のアクション</p>
         <div className="space-y-2">
           {actions.map((action, index) => (
             <div key={`${action.title}-${index}`} className="flex items-start gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
@@ -84,7 +109,7 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
 
       {sources.length > 0 && (
         <div className="mt-5 space-y-2">
-          <p className="text-[10px] font-semibold tracking-[0.12em] text-white/35">Evidence</p>
+          <p className="text-[10px] font-semibold tracking-[0.12em] text-white/35">根拠</p>
           {sources.map((source, index) => (
             <div key={`${source.title}-${index}`} className="rounded-2xl border border-[#7dd3fc]/12 bg-[#7dd3fc]/5 px-3 py-2">
               <p className="text-xs font-semibold text-[#b9e6ff]">{source.title}</p>
@@ -96,7 +121,7 @@ export const CoachPanel = ({ snapshot, onAction, className = '' }: CoachPanelPro
 
       {risks.length > 0 && (
         <div className="mt-5 space-y-2">
-          <p className="text-[10px] font-semibold tracking-[0.12em] text-white/35">Risks</p>
+          <p className="text-[10px] font-semibold tracking-[0.12em] text-white/35">リスク</p>
           {risks.map((risk, index) => (
             <div key={`${risk}-${index}`} className="rounded-2xl border border-[#f59e0b]/15 bg-[#f59e0b]/5 px-3 py-2 text-xs leading-relaxed text-white/52">
               {risk}

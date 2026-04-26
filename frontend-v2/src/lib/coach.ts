@@ -76,7 +76,7 @@ Primary target exists: ${hasBoss ? 'yes' : 'no'}
 Primary target completed: ${bossCompleted ? 'yes' : 'no'}
 Evening review count: ${eveningCheckedCount}
 
-Give a concise operator-style coaching brief for today.`,
+今日の実行者向けコーチングブリーフを簡潔に生成してください。`,
   } satisfies CoachSnapshot
 }
 
@@ -127,7 +127,7 @@ Top wins: ${topWins.map(item => `${item.label} ${item.actual}/${item.target}`).j
 Under target: ${underTarget.map(item => `${item.label} ${item.actual}/${item.target}`).join(', ') || 'none'}
 Active goal count: ${activeGoalCount}
 
-Give a concise monthly coaching brief with execution-oriented next steps.`,
+今月の実行重視のコーチングブリーフを生成してください。`,
   } satisfies CoachSnapshot
 }
 
@@ -171,7 +171,7 @@ Active todo count: ${activeTodoCount}
 Inactive todo count: ${inactiveTodoCount}
 Saved AI suggestion: ${hasSavedSuggestion ? 'yes' : 'no'}
 
-Give a concise coaching brief for habit-system configuration.`,
+習慣システム設定のコーチングブリーフを生成してください。`,
   } satisfies CoachSnapshot
 }
 
@@ -203,6 +203,6 @@ export const buildIdentityCoachSnapshot = (params: {
 Active goals: ${activeCount}
 Critical goals: ${criticalCount}
 
-Give a concise coaching brief for aligning identity and execution.`,
+アイデンティティと実行の整合ブリーフを生成してください。`,
   } satisfies CoachSnapshot
 }
