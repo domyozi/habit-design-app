@@ -197,6 +197,27 @@ const ContextCard = ({
         </div>
       )
     }
+    // 22時以降は無理に促さず、ゆっくり休むよう促す
+    const isLateNight = new Date().getHours() >= 22
+    if (isLateNight) {
+      return (
+        <div className="flex w-full flex-col justify-start rounded-[28px] border border-[#c4b5fd]/10 bg-[radial-gradient(circle_at_top_left,rgba(196,181,253,0.06),transparent_42%),linear-gradient(180deg,rgba(9,16,27,0.98),rgba(8,13,22,0.92))] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#c4b5fd]/50">Wind down</p>
+          <p className="mt-2 text-lg font-semibold text-white/80">ゆっくり休んでください</p>
+          <p className="mt-1 text-sm text-white/42">今日もお疲れさまでした。振り返りは明朝でも大丈夫です</p>
+          <div className="mt-4 flex items-center justify-between">
+            <span className="text-xs text-white/28">Evening review</span>
+            <button
+              type="button"
+              onClick={() => onNavigate('evening')}
+              className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] text-white/36 hover:text-white/60"
+            >
+              やっておく
+            </button>
+          </div>
+        </div>
+      )
+    }
     return (
       <button
         type="button"
