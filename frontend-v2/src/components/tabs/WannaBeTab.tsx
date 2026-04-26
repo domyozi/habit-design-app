@@ -82,6 +82,21 @@ export const WannaBeTab = () => {
     el.actions.every((_, j) => checkedActions[`${i}-${j}`])
   ).length ?? 0
 
+  // ─── Tracking targets ─────────────────────────────────────────
+  const [trackedActions, setTrackedActions] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem('mandala:tracked') ?? '{}') }
+    catch { return {} }
+  })
+
+  const toggleTracked = useCallback((elementIdx: number, actionIdx: number) => {
+    const key = `${elementIdx}-${actionIdx}`
+    setTrackedActions(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      localStorage.setItem('mandala:tracked', JSON.stringify(next))
+      return next
+    })
+  }, [])
+
   // ─── Cell selection + AI suggestions (Sprint B) ───────────────
   const [selectedAction, setSelectedAction] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -480,6 +495,8 @@ export const WannaBeTab = () => {
               onToggleAction={toggleAction}
               onSelectAction={handleSelectAction}
               selectedAction={selectedAction}
+              trackedActions={trackedActions}
+              onToggleTracked={toggleTracked}
             />
           </div>
         )}

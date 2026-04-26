@@ -12,20 +12,17 @@ const ELEMENT_COLORS = [
   { accent: '#86efac', bg: 'rgba(134,239,172,0.07)', border: 'rgba(134,239,172,0.28)' },
 ]
 
-// Element index to position in CORE grid
 const ELEMENT_IN_CORE: Record<string, number> = {
   '3,4': 0, '3,5': 1, '4,5': 2, '5,5': 3,
   '5,4': 4, '5,3': 5, '4,3': 6, '3,3': 7,
 }
 
-// Sub-grid block (blockRow, blockCol) to element index (null = CORE)
 const BLOCK_TO_ELEM: (number | null)[][] = [
   [7, 0, 1],
   [6, null, 2],
   [5, 4, 3],
 ]
 
-// Local (row%3, col%3) to action index; null = center
 const LOCAL_TO_ACTION: (number | null)[][] = [
   [0, 1, 2],
   [7, null, 3],
@@ -43,7 +40,6 @@ interface CellInfo {
 function getCellInfo(row: number, col: number): CellInfo {
   if (row === 4 && col === 4) return { type: 'main-goal', elementIndex: -1, actionIndex: -1 }
 
-  // CORE area (rows 3-5, cols 3-5)
   if (row >= 3 && row <= 5 && col >= 3 && col <= 5) {
     const key = `${row},${col}`
     const elemIdx = ELEMENT_IN_CORE[key]
@@ -53,7 +49,7 @@ function getCellInfo(row: number, col: number): CellInfo {
   const blockRow = Math.floor(row / 3)
   const blockCol = Math.floor(col / 3)
   const elemIdx = BLOCK_TO_ELEM[blockRow][blockCol]
-  if (elemIdx === null) return { type: 'main-goal', elementIndex: -1, actionIndex: -1 } // fallback
+  if (elemIdx === null) return { type: 'main-goal', elementIndex: -1, actionIndex: -1 }
 
   const localRow = row % 3
   const localCol = col % 3
@@ -69,6 +65,149 @@ type EditTarget =
   | { type: 'action'; elementIndex: number; actionIndex: number }
   | null
 
+interface ActionDetailPanelProps {
+  elementTitle: string
+  action: string
+  isTracked: boolean
+  isChecked: boolean
+  accentColor: string
+  onToggleTracked: () => void
+  onToggleChecked: () => void
+  onEdit: (newText: string) => void
+  onClose: () => void
+}
+
+const ActionDetailPanel = ({
+  elementTitle,
+  action,
+  isTracked,
+  isChecked,
+  accentColor,
+  onToggleTracked,
+  onToggleChecked,
+  onEdit,
+  onClose,
+}: ActionDetailPanelProps) => {
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState(action)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const saveEdit = () => {
+    const trimmed = editText.trim()
+    if (trimmed && trimmed !== action) onEdit(trimmed)
+    setEditing(false)
+  }
+
+  return (
+    <div className="mt-3 rounded-[20px] border border-white/[0.08] bg-[#0b1623]/95 p-4 shadow-lg">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: accentColor }}>
+          {elementTitle}
+        </p>
+        <button type="button" onClick={onClose} className="shrink-0 text-white/30 hover:text-white/70 text-sm">✕</button>
+      </div>
+
+      {editing ? (
+        <div className="mt-3">
+          <textarea
+            ref={inputRef}
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') setEditing(false) }}
+            rows={3}
+            className="w-full resize-none rounded-xl border border-white/[0.12] bg-white/[0.04] px-3 py-2 text-sm text-white/90 outline-none focus:border-white/[0.24]"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={saveEdit}
+              className="rounded-full border border-white/[0.14] bg-white/[0.06] px-4 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/[0.1]"
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEditing(false); setEditText(action) }}
+              className="text-xs text-white/36 hover:text-white/60"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm leading-relaxed text-white/80">{action}</p>
+      )}
+
+      {!editing && (
+        <div className="mt-4 space-y-2 border-t border-white/[0.06] pt-3">
+          <button
+            type="button"
+            onClick={onToggleTracked}
+            className={[
+              'flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-sm transition-colors',
+              isTracked
+                ? 'border-[#f59e0b]/30 bg-[#f59e0b]/10 text-[#fbbf24]'
+                : 'border-white/[0.06] bg-white/[0.02] text-white/50 hover:bg-white/[0.05]',
+            ].join(' ')}
+          >
+            <span className="flex items-center gap-2">
+              <span>📍</span>
+              <span>トラッキング対象</span>
+            </span>
+            <span className={[
+              'h-4 w-8 rounded-full border transition-colors relative',
+              isTracked ? 'border-[#f59e0b]/60 bg-[#f59e0b]/30' : 'border-white/20 bg-white/[0.04]',
+            ].join(' ')}>
+              <span className={[
+                'absolute top-0.5 h-3 w-3 rounded-full transition-all',
+                isTracked ? 'left-4 bg-[#f59e0b]' : 'left-0.5 bg-white/30',
+              ].join(' ')} />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleChecked}
+            className={[
+              'flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-sm transition-colors',
+              isChecked
+                ? 'border-[#7dd3fc]/30 bg-[#7dd3fc]/10 text-[#7dd3fc]'
+                : 'border-white/[0.06] bg-white/[0.02] text-white/50 hover:bg-white/[0.05]',
+            ].join(' ')}
+          >
+            <span className="flex items-center gap-2">
+              <span>✓</span>
+              <span>今日の完了チェック</span>
+            </span>
+            <span className={[
+              'h-4 w-8 rounded-full border transition-colors relative',
+              isChecked ? 'border-[#7dd3fc]/60 bg-[#7dd3fc]/30' : 'border-white/20 bg-white/[0.04]',
+            ].join(' ')}>
+              <span className={[
+                'absolute top-0.5 h-3 w-3 rounded-full transition-all',
+                isChecked ? 'left-4 bg-[#7dd3fc]' : 'left-0.5 bg-white/30',
+              ].join(' ')} />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="flex w-full items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-sm text-white/50 hover:bg-white/[0.05]"
+          >
+            <span>✏</span>
+            <span>テキストを編集</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface MandalaGridProps {
   data: MandalaData
   onUpdate: (updated: MandalaData) => void
@@ -76,6 +215,8 @@ interface MandalaGridProps {
   onToggleAction?: (elementIdx: number, actionIdx: number) => void
   onSelectAction?: (elementIdx: number, actionIdx: number) => void
   selectedAction?: string | null
+  trackedActions?: Record<string, boolean>
+  onToggleTracked?: (elementIdx: number, actionIdx: number) => void
 }
 
 export const MandalaGrid = ({
@@ -85,9 +226,12 @@ export const MandalaGrid = ({
   onToggleAction,
   onSelectAction,
   selectedAction,
+  trackedActions,
+  onToggleTracked,
 }: MandalaGridProps) => {
   const [editing, setEditing] = useState<EditTarget>(null)
   const [editText, setEditText] = useState('')
+  const [detailAction, setDetailAction] = useState<{ elementIdx: number; actionIdx: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -131,6 +275,16 @@ export const MandalaGrid = ({
     setEditing(null)
   }
 
+  const saveActionEdit = (elementIdx: number, actionIdx: number, newText: string) => {
+    const elements = data.elements.map((el, i) => {
+      if (i !== elementIdx) return el
+      const actions = [...el.actions]
+      actions[actionIdx] = newText
+      return { ...el, actions }
+    })
+    onUpdate({ ...data, elements, updatedAt: new Date().toISOString() })
+  }
+
   const isEditing = (info: CellInfo): boolean => {
     if (!editing) return false
     if (editing.type === 'main-goal' && info.type === 'main-goal') return true
@@ -138,6 +292,8 @@ export const MandalaGrid = ({
     if (editing.type === 'action' && info.type === 'action' && 'elementIndex' in editing && editing.elementIndex === info.elementIndex && editing.actionIndex === info.actionIndex) return true
     return false
   }
+
+  const detailKey = detailAction ? `${detailAction.elementIdx}-${detailAction.actionIdx}` : null
 
   return (
     <div className="overflow-x-auto rounded-2xl mandala-print-area">
@@ -160,8 +316,9 @@ export const MandalaGrid = ({
           const actionKey = isAction ? `${info.elementIndex}-${info.actionIndex}` : null
           const isChecked = actionKey ? (checkedActions?.[actionKey] ?? false) : false
           const isSelected = actionKey !== null && actionKey === selectedAction
+          const isTracked = actionKey ? (trackedActions?.[actionKey] ?? false) : false
+          const isDetailOpen = actionKey !== null && actionKey === detailKey
 
-          // Add separator lines between the 3×3 blocks
           const borderRight = (col === 2 || col === 5) ? '2px solid rgba(255,255,255,0.08)' : undefined
           const borderBottom = (row === 2 || row === 5) ? '2px solid rgba(255,255,255,0.08)' : undefined
 
@@ -175,13 +332,32 @@ export const MandalaGrid = ({
                 : elemColor
                   ? `${elemColor.bg.replace('0.07', '0.03')}`
                   : 'rgba(255,255,255,0.015)',
-            borderColor: isSelected
+            borderColor: isDetailOpen
               ? (elemColor?.accent ?? 'rgba(125,211,252,0.8)')
-              : isMain
-                ? 'rgba(245,196,107,0.45)'
-                : isElemCenter && elemColor
-                  ? elemColor.border
-                  : 'rgba(255,255,255,0.06)',
+              : isSelected
+                ? (elemColor?.accent ?? 'rgba(125,211,252,0.8)')
+                : isMain
+                  ? 'rgba(245,196,107,0.45)'
+                  : isElemCenter && elemColor
+                    ? elemColor.border
+                    : 'rgba(255,255,255,0.06)',
+          }
+
+          // Action cells: show truncated "title"
+          const displayText = isAction && content.length > 13 ? content.slice(0, 12) + '…' : content
+
+          const handleCellClick = () => {
+            if (isCell) return
+            if (isAction) {
+              // Toggle detail panel
+              if (isDetailOpen) {
+                setDetailAction(null)
+              } else {
+                setDetailAction({ elementIdx: info.elementIndex, actionIdx: info.actionIndex })
+              }
+            } else {
+              startEdit(info, content)
+            }
           }
 
           return (
@@ -189,12 +365,12 @@ export const MandalaGrid = ({
               key={i}
               style={cellStyle}
               className={[
-                'relative flex min-h-[60px] cursor-pointer items-start justify-center border p-1 text-center transition-all duration-150 hover:brightness-125',
+                'relative flex min-h-[60px] cursor-pointer items-center justify-center border p-1 text-center transition-all duration-150 hover:brightness-125',
                 isMain ? 'border-2' : '',
-                isSelected ? 'border-2 brightness-125' : '',
+                isDetailOpen || isSelected ? 'border-2 brightness-125' : '',
                 isChecked ? 'opacity-50' : '',
               ].join(' ')}
-              onClick={() => !isCell && startEdit(info, content)}
+              onClick={handleCellClick}
             >
               {isCell ? (
                 <input
@@ -212,7 +388,7 @@ export const MandalaGrid = ({
               ) : (
                 <span
                   className={[
-                    'mt-1 text-center leading-tight break-words whitespace-pre-wrap flex-1',
+                    'text-center leading-tight break-words whitespace-pre-wrap flex-1',
                     isMain
                       ? 'text-xs font-bold text-[#f5c46b]'
                       : isElemCenter
@@ -223,10 +399,15 @@ export const MandalaGrid = ({
                   ].join(' ')}
                   style={isElemCenter && elemColor ? { color: elemColor.accent } : undefined}
                 >
-                  {content || (
+                  {displayText || (
                     <span className="text-white/18">—</span>
                   )}
                 </span>
+              )}
+
+              {/* Tracked indicator */}
+              {isTracked && !isCell && (
+                <span className="absolute right-0.5 top-0.5 text-[8px] leading-none">📍</span>
               )}
 
               {/* Action cell buttons: AI select + check */}
@@ -278,7 +459,29 @@ export const MandalaGrid = ({
           )
         })}
       </div>
-      <p className="print-hide mt-2 text-right text-[10px] text-white/28">各セルをクリックして編集 · ✦でAI提案 · □で完了チェック</p>
+
+      {/* Action detail panel */}
+      {detailAction && (() => {
+        const el = data.elements[detailAction.elementIdx]
+        const actionText = el?.actions[detailAction.actionIdx] ?? ''
+        const key = `${detailAction.elementIdx}-${detailAction.actionIdx}`
+        const color = ELEMENT_COLORS[detailAction.elementIdx]
+        return (
+          <ActionDetailPanel
+            elementTitle={el?.title ?? ''}
+            action={actionText}
+            isTracked={trackedActions?.[key] ?? false}
+            isChecked={checkedActions?.[key] ?? false}
+            accentColor={color?.accent ?? '#7dd3fc'}
+            onToggleTracked={() => onToggleTracked?.(detailAction.elementIdx, detailAction.actionIdx)}
+            onToggleChecked={() => onToggleAction?.(detailAction.elementIdx, detailAction.actionIdx)}
+            onEdit={newText => saveActionEdit(detailAction.elementIdx, detailAction.actionIdx, newText)}
+            onClose={() => setDetailAction(null)}
+          />
+        )
+      })()}
+
+      <p className="print-hide mt-2 text-right text-[10px] text-white/28">セルをクリックで詳細 · ✦でAI提案 · □で完了チェック</p>
     </div>
   )
 }

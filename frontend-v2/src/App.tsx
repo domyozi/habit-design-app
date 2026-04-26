@@ -65,70 +65,125 @@ const useIsDesktop = () => {
   return isDesktop
 }
 
-const DESKTOP_NAV_ITEMS: { id: TabId; label: string; note: string; color: string }[] = [
-  { id: 'home', label: 'Home', note: 'daily execution', color: '#7dd3fc' },
-  { id: 'morning', label: 'Morning', note: 'core + routine', color: '#7dd3fc' },
-  { id: 'journal', label: 'Journal', note: 'daily journaling', color: '#86efac' },
-  { id: 'evening', label: 'Evening', note: 'review + next day', color: '#c4b5fd' },
-  { id: 'monthly', label: 'Monthly', note: 'analysis + reports', color: '#38bdf8' },
-  { id: 'wanna-be', label: 'Wanna Be', note: 'identity board', color: '#f59e0b' },
-  { id: 'settings', label: 'Settings', note: 'system design', color: '#a78bfa' },
+const DESKTOP_NAV_ITEMS: { id: TabId; icon: string; label: string; note: string; color: string }[] = [
+  { id: 'home',     icon: '⌂', label: 'Home',     note: 'daily execution',    color: '#7dd3fc' },
+  { id: 'morning',  icon: '◎', label: 'Morning',  note: 'core + routine',     color: '#7dd3fc' },
+  { id: 'journal',  icon: '✎', label: 'Journal',  note: 'daily journaling',   color: '#86efac' },
+  { id: 'evening',  icon: '◑', label: 'Evening',  note: 'review + next day',  color: '#c4b5fd' },
+  { id: 'monthly',  icon: '⊞', label: 'Monthly',  note: 'analysis + reports', color: '#38bdf8' },
+  { id: 'wanna-be', icon: '◆', label: 'Wanna Be', note: 'identity board',     color: '#f59e0b' },
+  { id: 'settings', icon: '⊙', label: 'Settings', note: 'system design',      color: '#a78bfa' },
 ]
 
 const DesktopRail = ({
   active,
   onChange,
   currentPeriod,
+  collapsed,
+  onToggleCollapse,
 }: {
   active: TabId
   onChange: (id: TabId) => void
   currentPeriod?: 'morning' | 'evening' | null
-}) => (
-  <aside className="hidden lg:flex lg:flex-col lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl">
-    <div className="border-b border-white/[0.06] px-5 py-6">
-      <BrandMark subtitle="execution workspace" />
-      <p className="mt-3 text-sm leading-relaxed text-white/42">実行、分析、設定、長期目標を横断して扱う作業面です。</p>
-    </div>
-    <div className="flex-1 space-y-2 px-3 py-4">
-      {DESKTOP_NAV_ITEMS.map(item => {
-        const isActive = active === item.id || (item.id === 'monthly' && active === 'report')
-        const isPeriodMatch =
-          (currentPeriod === 'morning' && (item.id === 'morning' || item.id === 'journal')) ||
-          (currentPeriod === 'evening' && item.id === 'evening')
-        const showNudge = isPeriodMatch && !isActive
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onChange(item.id)}
-            className={[
-              'w-full rounded-2xl border px-4 py-3 text-left transition-colors',
-              isActive
-                ? 'border-white/[0.12] bg-white/[0.05]'
-                : showNudge
-                  ? 'border-[#7dd3fc]/20 bg-[#7dd3fc]/[0.03]'
-                  : 'border-transparent bg-transparent hover:border-white/[0.06] hover:bg-white/[0.03]',
-            ].join(' ')}
-            style={showNudge ? { animation: 'time-nudge 2.4s ease-in-out infinite' } : undefined}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-white/88">{item.label}</p>
-                <p className="mt-1 text-[10px] uppercase tracking-[0.18em]" style={{ color: `${item.color}cc` }}>{item.note}</p>
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+}) => {
+  if (collapsed) {
+    return (
+      <aside className="hidden lg:flex lg:flex-col lg:items-center lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl lg:py-4 lg:gap-2">
+        {DESKTOP_NAV_ITEMS.map(item => {
+          const isActive = active === item.id || (item.id === 'monthly' && active === 'report')
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onChange(item.id)}
+              title={item.label}
+              className={[
+                'flex h-9 w-9 items-center justify-center rounded-xl border transition-colors text-base',
+                isActive
+                  ? 'border-white/[0.16] bg-white/[0.08] text-white/90'
+                  : 'border-transparent text-white/40 hover:border-white/[0.08] hover:text-white/70',
+              ].join(' ')}
+              style={isActive ? { color: item.color } : undefined}
+            >
+              {item.icon}
+            </button>
+          )
+        })}
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="flex h-8 w-8 items-center justify-center rounded-xl border border-transparent text-white/30 hover:border-white/[0.08] hover:text-white/60 text-xs"
+          title="展開"
+        >
+          ›
+        </button>
+      </aside>
+    )
+  }
+
+  return (
+    <aside className="hidden lg:flex lg:flex-col lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl">
+      <div className="border-b border-white/[0.06] px-5 py-6">
+        <BrandMark subtitle="execution workspace" />
+        <p className="mt-3 text-sm leading-relaxed text-white/42">実行、分析、設定、長期目標を横断して扱う作業面です。</p>
+      </div>
+      <div className="flex-1 space-y-2 px-3 py-4">
+        {DESKTOP_NAV_ITEMS.map(item => {
+          const isActive = active === item.id || (item.id === 'monthly' && active === 'report')
+          const isPeriodMatch =
+            (currentPeriod === 'morning' && (item.id === 'morning' || item.id === 'journal')) ||
+            (currentPeriod === 'evening' && item.id === 'evening')
+          const showNudge = isPeriodMatch && !isActive
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onChange(item.id)}
+              className={[
+                'w-full rounded-2xl border px-4 py-3 text-left transition-colors',
+                isActive
+                  ? 'border-white/[0.12] bg-white/[0.05]'
+                  : showNudge
+                    ? 'border-[#7dd3fc]/20 bg-[#7dd3fc]/[0.03]'
+                    : 'border-transparent bg-transparent hover:border-white/[0.06] hover:bg-white/[0.03]',
+              ].join(' ')}
+              style={showNudge ? { animation: 'time-nudge 2.4s ease-in-out infinite' } : undefined}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base" style={{ color: `${item.color}cc` }}>{item.icon}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-white/88">{item.label}</p>
+                    <p className="mt-0.5 text-[10px] uppercase tracking-[0.18em]" style={{ color: `${item.color}cc` }}>{item.note}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {showNudge && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#7dd3fc]" style={{ animation: 'time-nudge 1.2s ease-in-out infinite' }} />
+                  )}
+                  <MenuGlyph color={item.color} />
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                {showNudge && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#7dd3fc]" style={{ animation: 'time-nudge 1.2s ease-in-out infinite' }} />
-                )}
-                <MenuGlyph color={item.color} />
-              </div>
-            </div>
-          </button>
-        )
-      })}
-    </div>
-  </aside>
-)
+            </button>
+          )
+        })}
+      </div>
+      <div className="border-t border-white/[0.06] px-3 py-3 flex justify-end">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="flex h-8 w-8 items-center justify-center rounded-xl border border-transparent text-white/30 hover:border-white/[0.08] hover:text-white/60 text-xs"
+          title="収納"
+        >
+          ‹
+        </button>
+      </div>
+    </aside>
+  )
+}
 
 // その他メニュー（月次 / Wanna Be / 設定）
 const MoreMenu = ({ onNavigate }: { onNavigate: (tab: TabId, date?: string) => void }) => (
@@ -363,14 +418,27 @@ function MainApp() {
   )
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(false)
 
   return (
     <div className="min-h-screen bg-[#05080d]">
       <div
         className="mx-auto min-h-screen w-full max-w-[1680px] lg:grid"
-        style={{ gridTemplateColumns: sidebarCollapsed ? '248px minmax(0,1fr) 44px' : '248px minmax(0,1fr) 360px' }}
+        style={{
+          gridTemplateColumns: [
+            railCollapsed ? '48px' : '248px',
+            'minmax(0,1fr)',
+            sidebarCollapsed ? '44px' : '360px',
+          ].join(' '),
+        }}
       >
-        <DesktopRail active={tab} onChange={setTab} currentPeriod={currentPeriod} />
+        <DesktopRail
+          active={tab}
+          onChange={setTab}
+          currentPeriod={currentPeriod}
+          collapsed={railCollapsed}
+          onToggleCollapse={() => setRailCollapsed(p => !p)}
+        />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
           <Header
