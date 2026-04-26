@@ -362,9 +362,14 @@ function MainApp() {
     </>
   )
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
   return (
     <div className="min-h-screen bg-[#05080d]">
-      <div className="mx-auto min-h-screen w-full max-w-[1680px] lg:grid lg:grid-cols-[248px_minmax(0,1fr)_360px]">
+      <div
+        className="mx-auto min-h-screen w-full max-w-[1680px] lg:grid"
+        style={{ gridTemplateColumns: sidebarCollapsed ? '248px minmax(0,1fr) 44px' : '248px minmax(0,1fr) 360px' }}
+      >
         <DesktopRail active={tab} onChange={setTab} currentPeriod={currentPeriod} />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
@@ -395,27 +400,50 @@ function MainApp() {
           </div>
         </div>
 
-        <div className="hidden lg:block lg:bg-[#05080d]">
-          <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-4">
-            <CoachPanel snapshot={coachSnapshot} onAction={handleCoachAction} />
-            <TaskListPanel
-              todoDefinitions={todoDefinitions}
-              morningChecked={morningChecked}
-              eveningChecked={eveningChecked}
-              onToggle={(id, section) => {
-                const isMorning = section === 'morning-must' || section === 'morning-routine'
-                if (isMorning) {
-                  setMorningChecked(prev =>
-                    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-                  )
-                } else {
-                  setEveningChecked(prev =>
-                    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-                  )
-                }
-              }}
-            />
-          </div>
+        <div className="hidden lg:flex lg:flex-col lg:bg-[#05080d]">
+          {sidebarCollapsed ? (
+            <div className="sticky top-0 flex h-screen items-start justify-center pt-4 px-1">
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                className="flex flex-col items-center justify-center gap-2 rounded-[18px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-2 py-5 text-white/40 transition-colors hover:text-white/70"
+                style={{ minHeight: 120, width: 36 }}
+              >
+                <span className="text-[9px]">◀</span>
+                <span className="text-[10px] tracking-[0.15em] text-white/40" style={{ writingMode: 'vertical-rl' }}>Panel</span>
+              </button>
+            </div>
+          ) : (
+            <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-4">
+              <div className="flex items-center justify-end mb-1">
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="text-white/30 hover:text-white/60 text-[11px] px-2 py-1 rounded-full border border-transparent hover:border-white/[0.08]"
+                >
+                  ▶ 収納
+                </button>
+              </div>
+              <CoachPanel snapshot={coachSnapshot} onAction={handleCoachAction} />
+              <TaskListPanel
+                todoDefinitions={todoDefinitions}
+                morningChecked={morningChecked}
+                eveningChecked={eveningChecked}
+                onToggle={(id, section) => {
+                  const isMorning = section === 'morning-must' || section === 'morning-routine'
+                  if (isMorning) {
+                    setMorningChecked(prev =>
+                      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                    )
+                  } else {
+                    setEveningChecked(prev =>
+                      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                    )
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
