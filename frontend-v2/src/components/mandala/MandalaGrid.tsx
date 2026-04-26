@@ -72,9 +72,20 @@ type EditTarget =
 interface MandalaGridProps {
   data: MandalaData
   onUpdate: (updated: MandalaData) => void
+  checkedActions?: Record<string, boolean>
+  onToggleAction?: (elementIdx: number, actionIdx: number) => void
+  onSelectAction?: (elementIdx: number, actionIdx: number) => void
+  selectedAction?: string | null
 }
 
-export const MandalaGrid = ({ data, onUpdate }: MandalaGridProps) => {
+export const MandalaGrid = ({
+  data,
+  onUpdate,
+  checkedActions,
+  onToggleAction,
+  onSelectAction,
+  selectedAction,
+}: MandalaGridProps) => {
   const [editing, setEditing] = useState<EditTarget>(null)
   const [editText, setEditText] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -129,7 +140,7 @@ export const MandalaGrid = ({ data, onUpdate }: MandalaGridProps) => {
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl">
+    <div className="overflow-x-auto rounded-2xl mandala-print-area">
       <div
         className="grid gap-[2px]"
         style={{ gridTemplateColumns: 'repeat(9, minmax(68px, 1fr))', minWidth: '630px' }}
@@ -143,7 +154,12 @@ export const MandalaGrid = ({ data, onUpdate }: MandalaGridProps) => {
 
           const isMain = info.type === 'main-goal'
           const isElemCenter = info.type === 'element-center'
+          const isAction = info.type === 'action'
           const elemColor = info.elementIndex >= 0 ? ELEMENT_COLORS[info.elementIndex] : null
+
+          const actionKey = isAction ? `${info.elementIndex}-${info.actionIndex}` : null
+          const isChecked = actionKey ? (checkedActions?.[actionKey] ?? false) : false
+          const isSelected = actionKey !== null && actionKey === selectedAction
 
           // Add separator lines between the 3×3 blocks
           const borderRight = (col === 2 || col === 5) ? '2px solid rgba(255,255,255,0.08)' : undefined
@@ -159,11 +175,13 @@ export const MandalaGrid = ({ data, onUpdate }: MandalaGridProps) => {
                 : elemColor
                   ? `${elemColor.bg.replace('0.07', '0.03')}`
                   : 'rgba(255,255,255,0.015)',
-            borderColor: isMain
-              ? 'rgba(245,196,107,0.45)'
-              : isElemCenter && elemColor
-                ? elemColor.border
-                : 'rgba(255,255,255,0.06)',
+            borderColor: isSelected
+              ? (elemColor?.accent ?? 'rgba(125,211,252,0.8)')
+              : isMain
+                ? 'rgba(245,196,107,0.45)'
+                : isElemCenter && elemColor
+                  ? elemColor.border
+                  : 'rgba(255,255,255,0.06)',
           }
 
           return (
@@ -171,8 +189,10 @@ export const MandalaGrid = ({ data, onUpdate }: MandalaGridProps) => {
               key={i}
               style={cellStyle}
               className={[
-                'relative flex min-h-[60px] cursor-pointer items-center justify-center border p-1 text-center transition-all duration-150 hover:brightness-125',
+                'relative flex min-h-[60px] cursor-pointer items-start justify-center border p-1 text-center transition-all duration-150 hover:brightness-125',
                 isMain ? 'border-2' : '',
+                isSelected ? 'border-2 brightness-125' : '',
+                isChecked ? 'opacity-50' : '',
               ].join(' ')}
               onClick={() => !isCell && startEdit(info, content)}
             >
@@ -192,12 +212,14 @@ export const MandalaGrid = ({ data, onUpdate }: MandalaGridProps) => {
               ) : (
                 <span
                   className={[
-                    'text-center leading-tight break-words whitespace-pre-wrap',
+                    'mt-1 text-center leading-tight break-words whitespace-pre-wrap flex-1',
                     isMain
                       ? 'text-xs font-bold text-[#f5c46b]'
                       : isElemCenter
                         ? 'text-[11px] font-semibold'
-                        : 'text-[10px] text-white/65',
+                        : isChecked
+                          ? 'text-[10px] text-white/30 line-through'
+                          : 'text-[10px] text-white/65',
                   ].join(' ')}
                   style={isElemCenter && elemColor ? { color: elemColor.accent } : undefined}
                 >
@@ -206,11 +228,57 @@ export const MandalaGrid = ({ data, onUpdate }: MandalaGridProps) => {
                   )}
                 </span>
               )}
+
+              {/* Action cell buttons: AI select + check */}
+              {isAction && !isCell && (
+                <div className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5">
+                  {onSelectAction && (
+                    <button
+                      type="button"
+                      title="AI案を出す"
+                      onClick={e => {
+                        e.stopPropagation()
+                        onSelectAction(info.elementIndex, info.actionIndex)
+                      }}
+                      className={[
+                        'flex h-4 w-4 items-center justify-center rounded text-[8px] transition-all',
+                        isSelected
+                          ? 'bg-[#7dd3fc]/30 text-[#7dd3fc]'
+                          : 'text-white/20 hover:text-white/60',
+                      ].join(' ')}
+                    >
+                      ✦
+                    </button>
+                  )}
+                  {onToggleAction && (
+                    <button
+                      type="button"
+                      title="完了"
+                      onClick={e => {
+                        e.stopPropagation()
+                        onToggleAction(info.elementIndex, info.actionIndex)
+                      }}
+                      className={[
+                        'flex h-4 w-4 items-center justify-center rounded border transition-all',
+                        isChecked
+                          ? 'border-[#7dd3fc] bg-[#7dd3fc] text-black'
+                          : 'border-white/20 text-white/0 hover:border-white/50',
+                      ].join(' ')}
+                    >
+                      {isChecked && (
+                        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
       </div>
-      <p className="mt-2 text-[10px] text-white/28 text-right">各セルをクリックして編集できます</p>
+      <p className="print-hide mt-2 text-right text-[10px] text-white/28">各セルをクリックして編集 · ✦でAI提案 · □で完了チェック</p>
     </div>
   )
 }

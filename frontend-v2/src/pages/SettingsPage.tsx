@@ -543,6 +543,45 @@ const ApiKeySettings = () => (
   </div>
 )
 
+const GRANULARITY_OPTIONS = [
+  { value: 'child', label: 'こども' },
+  { value: 'student', label: '学生' },
+  { value: 'adult', label: '大人' },
+] as const
+
+const ProfileSettings = () => {
+  const [granularity, setGranularity] = useState<string>(
+    () => localStorage.getItem('settings:profile:granularity') ?? 'adult'
+  )
+  const handleChange = (v: string) => {
+    setGranularity(v)
+    localStorage.setItem('settings:profile:granularity', v)
+  }
+  return (
+    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">プロフィール</p>
+      <p className="mt-1 text-[11px] text-white/38">マンダラチャートのアクションの難易度・語調が変わります</p>
+      <div className="mt-3 flex gap-2">
+        {GRANULARITY_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => handleChange(opt.value)}
+            className={[
+              'flex-1 rounded-full border py-2 text-xs font-semibold transition-all',
+              granularity === opt.value
+                ? 'border-[#7dd3fc]/40 bg-[#7dd3fc]/15 text-[#aee5ff]'
+                : 'border-white/10 bg-white/[0.02] text-white/42 hover:border-white/25',
+            ].join(' ')}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export const SettingsPage = () => (
   <div className="pb-6">
     <TodoManager />
@@ -552,6 +591,7 @@ export const SettingsPage = () => (
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8ed8ff]">AI setup</p>
       </div>
       <div className="space-y-3">
+        <ProfileSettings />
         <ApiKeySettings />
         <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
           <p className="mb-3 text-[11px] text-white/34">

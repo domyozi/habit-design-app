@@ -76,3 +76,34 @@ input:focus, textarea:focus, select:focus {
   70%  { transform: scale(1.05); opacity: 1; }
   100% { transform: scale(1); }
 }
+
+@media print {
+  .print-hide,
+  nav, header,
+  [class*="bottom-nav"],
+  [class*="BottomNav"] {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  #root {
+    padding-bottom: 0;
+  }
+
+  .mandala-print-area {
+    background: #fff !important;
+    color: #111 !important;
+    overflow: visible !important;
+  }
+
+  /* マンダラセルを白地で印刷 */
+  .mandala-print-area [style*="background"] {
+    background: #f5f5f0 !important;
+    color: #111 !important;
+    border-color: #ccc !important;
+  }
+}
