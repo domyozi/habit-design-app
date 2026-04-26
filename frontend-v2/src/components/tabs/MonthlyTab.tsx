@@ -1,0 +1,859 @@
+import { useMemo, useState } from 'react'
+import {
+  countByMonth,
+  countByWeek,
+  countChecksForDates,
+  countMonthlyChecks,
+  getAllTimeBests,
+  lastMonthKeys,
+  thisMonthKeys,
+  useDailyStorage,
+  useMonthlyTargets,
+  useLocalStorage,
+} from '@/lib/storage'
+import { streamClaude, buildWannaBeAnalysisPrompt } from '@/lib/ai'
+import { ProgressRing } from '@/components/home/ProgressRing'
+
+interface HabitDef {
+  id: string
+  label: string
+  defaultTarget: number
+  color: string
+}
+
+type Granularity = 'weekly' | 'monthly' | 'yearly'
+
+const HABIT_DEFS: HabitDef[] = [
+  { id: 'early-rise', label: '早起き', defaultTarget: 14, color: '#f59e0b' },
+  { id: 'training', label: '筋トレ', defaultTarget: 24, color: '#ff6b35' },
+  { id: 'english', label: '英語', defaultTarget: 10, color: '#22c55e' },
+  { id: 'cardio', label: '有酸素', defaultTarget: 15, color: '#38bdf8' },
+]
+
+const DEFAULT_TARGETS: Record<string, number> = Object.fromEntries(
+  HABIT_DEFS.map(h => [h.id, h.defaultTarget]),
+)
+
+const today = new Date()
+const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+const daysPassed = today.getDate()
+const daysLeft = daysInMonth - daysPassed
+const currentYear = today.getFullYear()
+
+const predictWins = (actual: number, target: number) => {
+  if (daysPassed === 0) return 0
+  const pace = actual / daysPassed
+  return Math.min(target, Math.round(actual + pace * daysLeft))
+}
+
+const sumCounts = (counts: Record<string, number>) =>
+  Object.values(counts).reduce((sum, value) => sum + value, 0)
+
+const recentDateKeys = (count: number, offset = 0) => {
+  const end = new Date()
+  end.setDate(end.getDate() - offset)
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(end)
+    date.setDate(end.getDate() - (count - 1 - index))
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  })
+}
+
+const getMonthTotal = (monthData: Record<string, Record<string, number>>, monthKey: string) =>
+  sumCounts(monthData[monthKey] ?? {})
+
+const ComparisonBar = ({
+  label,
+  color,
+  this: thisVal,
+  last,
+  best,
+  target,
+}: {
+  label: string
+  color: string
+  this: number
+  last: number
+  best: number
+  target: number
+}) => {
+  const max = Math.max(target, best, thisVal, 1)
+  const bar = (v: number, opacity: string) => (
+    <div className="h-2 rounded-full" style={{ width: `${Math.round((v / max) * 100)}%`, background: color, opacity }} />
+  )
+
+  return (
+    <div className="space-y-1">
+      <div className="mb-0.5 flex items-center justify-between">
+        <span className="text-xs text-white/70">{label}</span>
+        <span className="text-[11px] font-mono" style={{ color }}>
+          {thisVal} <span className="text-white/30">/ Last {last} / Best {best}</span>
+        </span>
+      </div>
+      <div className="space-y-0.5">
+        <div className="flex items-center gap-2">
+          <span className="w-8 text-[9px] text-white/30">This</span>
+          <div className="flex-1 rounded-full bg-white/[0.04]">{bar(thisVal, '1')}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-8 text-[9px] text-white/30">Last</span>
+          <div className="flex-1 rounded-full bg-white/[0.04]">{bar(last, '0.5')}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-8 text-[9px] text-white/30">Best</span>
+          <div className="flex-1 rounded-full bg-white/[0.04]">{bar(best, '0.3')}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const WeeklyChart = ({
+  weekData,
+  color,
+  habitId,
+}: {
+  weekData: Record<string, Record<string, number>>
+  color: string
+  habitId: string
+}) => {
+  const weeks = ['W1', 'W2', 'W3', 'W4']
+  const values = weeks.map(w => weekData[w]?.[habitId] ?? 0)
+  const maxVal = Math.max(...values, 1)
+
+  return (
+    <div className="flex h-8 items-end gap-1">
+      {weeks.map((w, i) => (
+        <div key={w} className="flex flex-1 flex-col items-center gap-0.5">
+          <div
+            className="w-full rounded-sm transition-all"
+            style={{
+              height: `${Math.round((values[i] / maxVal) * 28)}px`,
+              minHeight: '2px',
+              background: color,
+              opacity: values[i] > 0 ? '0.8' : '0.15',
+            }}
+          />
+          <span className="text-[8px] text-[#444]">{w}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const YearlyChart = ({
+  monthData,
+  color,
+  habitId,
+}: {
+  monthData: Record<string, Record<string, number>>
+  color: string
+  habitId: string
+}) => {
+  const months = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'))
+  const values = months.map(monthKey => monthData[monthKey]?.[habitId] ?? 0)
+  const maxVal = Math.max(...values, 1)
+  const labels = ['1', '', '3', '', '5', '', '7', '', '9', '', '11', '12']
+
+  return (
+    <div className="grid grid-cols-12 items-end gap-1">
+      {months.map((monthKey, index) => (
+        <div key={monthKey} className="flex flex-col items-center gap-1">
+          <div
+            className="w-full rounded-sm transition-all"
+            style={{
+              height: `${Math.max(6, Math.round((values[index] / maxVal) * 56))}px`,
+              background: color,
+              opacity: values[index] > 0 ? '0.82' : '0.12',
+            }}
+          />
+          <span className="text-[8px] text-[#444]">{labels[index]}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const Heatmap = ({ checksByDay }: { checksByDay: Record<string, Set<string>> }) => {
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  const month = today.getMonth() + 1
+  const year = today.getFullYear()
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[10px]">
+        <thead>
+          <tr>
+            <td className="w-10 py-1 pr-2 text-[#555]" />
+            {days.map(d => (
+              <td key={d} className={['px-0.5 py-1 text-center', d === daysPassed ? 'font-bold text-[#f59e0b]' : 'text-[#444]'].join(' ')}>
+                {d}
+              </td>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {HABIT_DEFS.map(habit => (
+            <tr key={habit.id}>
+              <td className="whitespace-nowrap py-1 pr-2 text-[#666]">{habit.label.slice(0, 2)}</td>
+              {days.map(d => {
+                const isFuture = d > daysPassed
+                const isToday = d === daysPassed
+                const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+                const checked = checksByDay[dateKey]?.has(habit.id) ?? false
+                return (
+                  <td key={d} className="px-0.5 py-1 text-center">
+                    <span
+                      className={[
+                        'inline-block h-3 w-3 rounded-sm',
+                        isToday ? 'ring-1 ring-[#f59e0b]' : '',
+                        isFuture ? 'bg-[#1c1c1c]' : checked ? 'bg-[#22c55e]' : 'bg-[#2a0000]',
+                      ].join(' ')}
+                    />
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const TargetsForm = ({
+  habitDefs,
+  targets,
+  onChange,
+  onClose,
+}: {
+  habitDefs: HabitDef[]
+  targets: Record<string, number>
+  onChange: (id: string, value: number) => void
+  onClose: () => void
+}) => (
+  <div className="space-y-3 rounded-[24px] border border-white/[0.06] bg-[#111827]/78 p-4">
+    <div className="mb-1 flex items-center justify-between">
+      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8da4c3]">Target tuning</span>
+      <button type="button" onClick={onClose} className="text-xs uppercase tracking-[0.12em] text-white/35 hover:text-white">
+        Close
+      </button>
+    </div>
+    {habitDefs.map(habit => (
+      <div key={habit.id} className="flex items-center justify-between">
+        <span className="text-sm" style={{ color: habit.color }}>{habit.label}</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onChange(habit.id, Math.max(1, (targets[habit.id] ?? habit.defaultTarget) - 1))}
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-sm text-white/60 hover:text-white"
+          >
+            −
+          </button>
+          <span className="w-8 text-center text-sm font-mono text-white">{targets[habit.id] ?? habit.defaultTarget}</span>
+          <button
+            type="button"
+            onClick={() => onChange(habit.id, (targets[habit.id] ?? habit.defaultTarget) + 1)}
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-sm text-white/60 hover:text-white"
+          >
+            ＋
+          </button>
+          <span className="text-[11px] text-white/24">回</span>
+        </div>
+      </div>
+    ))}
+  </div>
+)
+
+interface WannaBeGoal {
+  id: string
+  emoji: string
+  title: string
+}
+
+const WannaBeAnalysis = ({
+  monthlyCounts,
+  targets,
+  habitDefs,
+}: {
+  monthlyCounts: Record<string, number>
+  targets: Record<string, number>
+  habitDefs: Array<{ id: string; label: string }>
+}) => {
+  const [goals] = useLocalStorage<WannaBeGoal[]>('wannabe:goals', [])
+  const [streamText, setStreamText] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const activeGoals = goals.filter(goal => !('priority' in goal && (goal as { priority: string }).priority === 'done'))
+
+  const handleAnalyze = async () => {
+    if (loading) return
+    setStreamText('')
+    setDone(false)
+    setLoading(true)
+
+    const prompt = buildWannaBeAnalysisPrompt({
+      wannaBe: activeGoals.map(g => ({ title: g.title, emoji: g.emoji })),
+      monthlyCounts,
+      targets,
+      habitDefs,
+    })
+
+    try {
+      await streamClaude(
+        [{ role: 'user', content: prompt }],
+        'あなたは習慣設計のコーチです。ユーザーのWanna Beと習慣の繋がりを分析してください。',
+        chunk => setStreamText(prev => prev + chunk),
+        () => setDone(true),
+        1024,
+      )
+    } catch {
+      setStreamText('分析に失敗しました。ログイン状態またはサーバー側のAI設定を確認してください。')
+      setDone(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {activeGoals.length === 0 ? (
+        <p className="text-xs text-white/28">設定画面でゴールを登録すると分析できます。</p>
+      ) : (
+        <>
+          <div className="mb-2 flex flex-wrap gap-1">
+            {activeGoals.slice(0, 4).map(goal => (
+              <span key={goal.id} className="rounded-full border border-white/[0.06] bg-[#0b1320] px-2 py-0.5 text-[11px] text-white/50">
+                {goal.title.slice(0, 12)}{goal.title.length > 12 ? '…' : ''}
+              </span>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={loading}
+            className="w-full rounded-full border border-[#c4b5fd]/30 bg-[#c4b5fd]/12 py-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-[#ddd6fe] disabled:opacity-40"
+          >
+            {loading ? 'Analyzing' : 'Run AI analysis'}
+          </button>
+        </>
+      )}
+
+      {(streamText || loading) && (
+        <div className="rounded-2xl border border-white/[0.06] bg-[#0b1320] p-3">
+          <p className="whitespace-pre-wrap text-xs leading-relaxed text-white/70">
+            {streamText}
+            {!done && loading && <span className="animate-pulse">▊</span>}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const ReportSection = () => {
+  const [morningReport] = useDailyStorage<string>('morning', 'report', '')
+  const [morningReportAt] = useDailyStorage<string>('morning', 'reportAt', '')
+  const [eveningReport] = useDailyStorage<string>('evening', 'report', '')
+  const [eveningReportAt] = useDailyStorage<string>('evening', 'reportAt', '')
+  const [slot, setSlot] = useState<'morning' | 'evening'>('morning')
+  const [copied, setCopied] = useState(false)
+
+  const report = slot === 'morning' ? morningReport : eveningReport
+  const reportAt = slot === 'morning' ? morningReportAt : eveningReportAt
+
+  const handleCopy = async () => {
+    if (!report) return
+    await navigator.clipboard.writeText(report)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        {(['morning', 'evening'] as const).map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSlot(s)}
+            className={[
+              'flex-1 rounded-full border py-2 text-xs font-semibold uppercase tracking-[0.12em] transition-colors',
+              slot === s
+                ? 'border-[#7dd3fc]/30 bg-[#7dd3fc]/12 text-[#aee5ff]'
+                : 'border-white/10 text-white/35 hover:text-white',
+            ].join(' ')}
+          >
+            {s === 'morning' ? 'Morning report' : 'Evening report'}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-[120px] rounded-[24px] border border-white/[0.08] bg-[#0b1320] p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">AI report text</p>
+          {reportAt && <span className="text-[10px] text-white/24">Generated {reportAt}</span>}
+        </div>
+        {report ? (
+          <pre className="whitespace-pre-wrap text-xs leading-relaxed text-[#ccc]">{report}</pre>
+        ) : (
+          <p className="text-xs italic text-white/28">
+            {slot === 'morning' ? 'Morning' : 'Evening'} タブで report を生成するとここに保存されます。
+          </p>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={handleCopy}
+        disabled={!report}
+        className={[
+          'w-full rounded-full py-2.5 text-sm font-semibold uppercase tracking-[0.12em] transition-colors',
+          report ? 'bg-[#7dd3fc] text-black' : 'cursor-not-allowed bg-[#1c1c1c] text-[#444]',
+        ].join(' ')}
+      >
+        {copied ? 'Copied' : 'Copy report'}
+      </button>
+    </div>
+  )
+}
+
+const GranularityTabs = ({
+  active,
+  onChange,
+}: {
+  active: Granularity
+  onChange: (value: Granularity) => void
+}) => (
+  <div className="grid grid-cols-3 gap-2 rounded-[24px] border border-white/[0.06] bg-[#0b1320]/84 p-2">
+    {([
+      { id: 'weekly', label: 'Week', note: 'rolling 7d' },
+      { id: 'monthly', label: 'Month', note: 'current view' },
+      { id: 'yearly', label: 'Year', note: 'annual signal' },
+    ] as const).map(item => (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => onChange(item.id)}
+        className={[
+          'rounded-2xl px-3 py-2 text-left transition-colors',
+          active === item.id ? 'border border-white/[0.08] bg-white/[0.06]' : 'border border-transparent bg-transparent hover:bg-white/[0.03]',
+        ].join(' ')}
+      >
+        <p className="text-sm font-semibold text-white/88">{item.label}</p>
+        <p className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-white/35">{item.note}</p>
+      </button>
+    ))}
+  </div>
+)
+
+const WeeklyView = ({
+  habits,
+  weekData,
+  currentWeekCounts,
+  previousWeekCounts,
+}: {
+  habits: Array<HabitDef & { actual: number; last: number; best: number; target: number }>
+  weekData: Record<string, Record<string, number>>
+  currentWeekCounts: Record<string, number>
+  previousWeekCounts: Record<string, number>
+}) => {
+  const currentWeekTotal = sumCounts(currentWeekCounts)
+  const previousWeekTotal = sumCounts(previousWeekCounts)
+  const lead = habits[0]
+  const lag = [...habits].sort((a, b) => (a.actual / Math.max(a.target, 1)) - (b.actual / Math.max(b.target, 1)))[0]
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">This week</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{currentWeekTotal}</p>
+          <p className="mt-1 text-xs text-white/35">checked tasks</p>
+        </div>
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Last week</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{previousWeekTotal}</p>
+          <p className="mt-1 text-xs text-white/35">{currentWeekTotal - previousWeekTotal >= 0 ? '+' : ''}{currentWeekTotal - previousWeekTotal} change</p>
+        </div>
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Leading habit</p>
+          <p className="mt-2 text-lg font-semibold text-white">{lead?.label ?? '—'}</p>
+          <p className="mt-1 text-xs text-white/35">{lead ? `${lead.actual}/${lead.target}` : 'No data'}</p>
+        </div>
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">At risk</p>
+          <p className="mt-2 text-lg font-semibold text-white">{lag?.label ?? '—'}</p>
+          <p className="mt-1 text-xs text-white/35">{lag ? `${lag.actual}/${lag.target}` : 'No data'}</p>
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">4-week distribution</p>
+        <div className="space-y-4">
+          {habits.map(habit => (
+            <div key={habit.id}>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs" style={{ color: habit.color }}>{habit.label}</span>
+                <span className="text-[10px] text-white/24">{habit.actual}/{habit.target} this month</span>
+              </div>
+              <WeeklyChart weekData={weekData} color={habit.color} habitId={habit.id} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Weekly comparison</p>
+        <div className="space-y-4">
+          {habits.map(habit => (
+            <ComparisonBar
+              key={habit.id}
+              label={habit.label}
+              color={habit.color}
+              this={currentWeekCounts[habit.id] ?? 0}
+              last={previousWeekCounts[habit.id] ?? 0}
+              best={habit.best}
+              target={habit.target}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Month context</p>
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {habits.map(habit => {
+            const remaining = habit.target - habit.actual
+            return (
+              <div key={habit.id} className="rounded-2xl border border-white/[0.06] bg-[#0b1320] p-3">
+                <p className="mb-1 text-[11px] text-white/32">{habit.label}</p>
+                <p className="text-base font-bold" style={{ color: habit.color }}>{remaining > 0 ? `${remaining} remaining` : 'target reached'}</p>
+                <p className="text-[10px] text-white/26">{habit.actual}/{habit.target} this month</p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const MonthlyView = ({
+  habits,
+  targets,
+  showTargetsForm,
+  setShowTargetsForm,
+  handleTargetChange,
+  monthlyCounts,
+  lastMonthCounts,
+  checksByDay,
+  showReport,
+  setShowReport,
+}: {
+  habits: Array<HabitDef & { actual: number; last: number; best: number; target: number }>
+  targets: Record<string, number>
+  showTargetsForm: boolean
+  setShowTargetsForm: (value: boolean | ((prev: boolean) => boolean)) => void
+  handleTargetChange: (id: string, value: number) => void
+  monthlyCounts: Record<string, number>
+  lastMonthCounts: Record<string, number>
+  checksByDay: Record<string, Set<string>>
+  showReport: boolean
+  setShowReport: (value: boolean | ((prev: boolean) => boolean)) => void
+}) => (
+  <div className="space-y-4">
+    <div className="rounded-[28px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-4 py-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8da4c3]">Monthly analysis</p>
+          <p className="mt-2 text-lg font-semibold text-white">{today.getMonth() + 1}月の進捗と着地予測を確認します。</p>
+          <p className="mt-1 text-sm text-white/48">習慣の強度、比較、AI分析、保存済みレポートを一画面で扱います。</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowTargetsForm(v => !v)}
+          className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-white/42 hover:text-white"
+        >
+          {showTargetsForm ? 'Close' : 'Targets'}
+        </button>
+      </div>
+    </div>
+
+    <div className="rounded-[24px] border border-white/[0.08] bg-[#0b1320]/85 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">This month overview</span>
+        <span className="text-[10px] uppercase tracking-[0.14em] text-white/25">Live</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {habits.map(habit => (
+          <ProgressRing
+            key={habit.id}
+            label={habit.label}
+            color={habit.color}
+            target={habit.target}
+            actual={habit.actual}
+            best={habit.best || undefined}
+            size={72}
+          />
+        ))}
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">This month total</p>
+        <p className="mt-2 text-2xl font-semibold text-white">{sumCounts(monthlyCounts)}</p>
+        <p className="mt-1 text-xs text-white/35">checked completions</p>
+      </div>
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Last month total</p>
+        <p className="mt-2 text-2xl font-semibold text-white">{sumCounts(lastMonthCounts)}</p>
+        <p className="mt-1 text-xs text-white/35">baseline for comparison</p>
+      </div>
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">All-time best</p>
+        <p className="mt-2 text-lg font-semibold text-white">
+          {habits.slice().sort((a, b) => (b.best ?? 0) - (a.best ?? 0))[0]?.label ?? '—'}
+        </p>
+        <p className="mt-1 text-xs text-white/35">
+          {habits.slice().sort((a, b) => (b.best ?? 0) - (a.best ?? 0))[0]
+            ? `${habits.slice().sort((a, b) => (b.best ?? 0) - (a.best ?? 0))[0].best} peak`
+            : 'No signal yet'}
+        </p>
+      </div>
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Tracked habits</p>
+        <p className="mt-2 text-2xl font-semibold text-white">{habits.length}</p>
+        <p className="mt-1 text-xs text-white/35">execution surface</p>
+      </div>
+    </div>
+
+    {showTargetsForm && (
+      <TargetsForm
+        habitDefs={HABIT_DEFS}
+        targets={targets}
+        onChange={handleTargetChange}
+        onClose={() => setShowTargetsForm(false)}
+      />
+    )}
+
+    <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Comparative signals</p>
+      <div className="space-y-4">
+        {habits.map(habit => (
+          <ComparisonBar
+            key={habit.id}
+            label={habit.label}
+            color={habit.color}
+            this={habit.actual}
+            last={habit.last}
+            best={habit.best}
+            target={habit.target}
+          />
+        ))}
+      </div>
+    </div>
+
+    <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">End of month projection</span>
+        <span className="text-[11px] text-white/28">{daysLeft} days left</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {habits.map(habit => {
+          const predicted = predictWins(habit.actual, habit.target)
+          const remaining = habit.target - habit.actual
+          return (
+            <div key={habit.id} className="rounded-2xl border border-white/[0.06] bg-[#111827]/72 p-3">
+              <p className="mb-1 text-[11px] text-white/32">{habit.label}</p>
+              <p className="text-base font-bold" style={{ color: habit.color }}>{predicted} projected</p>
+              <p className="text-[10px] text-white/26">{remaining > 0 ? `${remaining} remaining` : 'target reached'}</p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+
+    <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Completion map</p>
+        <span className="text-[10px] text-white/24">green = complete / red = missed</span>
+      </div>
+      <Heatmap checksByDay={checksByDay} />
+    </div>
+
+    <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#ddd6fe]">Wanna Be analysis</p>
+      </div>
+      <WannaBeAnalysis monthlyCounts={monthlyCounts} targets={targets} habitDefs={HABIT_DEFS} />
+    </div>
+
+    <div>
+      <button
+        type="button"
+        onClick={() => setShowReport(v => !v)}
+        className="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-white/35"
+      >
+        <span>Saved reports</span>
+        <span className="text-white/26">{showReport ? 'Hide' : 'Open'}</span>
+      </button>
+      {showReport && <ReportSection />}
+    </div>
+
+  </div>
+)
+
+const YearlyView = ({
+  habits,
+  monthData,
+}: {
+  habits: Array<HabitDef & { actual: number; last: number; best: number; target: number }>
+  monthData: Record<string, Record<string, number>>
+}) => {
+  const monthKeys = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'))
+  const monthTotals = monthKeys.map(monthKey => ({
+    key: monthKey,
+    total: getMonthTotal(monthData, monthKey),
+  }))
+  const bestMonth = [...monthTotals].sort((a, b) => b.total - a.total)[0]
+  const activeMonths = monthTotals.filter(item => item.total > 0).length
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Active months</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{activeMonths}</p>
+          <p className="mt-1 text-xs text-white/35">months with activity</p>
+        </div>
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Best month</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{bestMonth?.key ?? '—'}</p>
+          <p className="mt-1 text-xs text-white/35">{bestMonth ? `${bestMonth.total} completions` : 'No data yet'}</p>
+        </div>
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Habit density</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{habits.length}</p>
+          <p className="mt-1 text-xs text-white/35">tracked habits</p>
+        </div>
+        <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Trend lens</p>
+          <p className="mt-2 text-2xl font-semibold text-white">12m</p>
+          <p className="mt-1 text-xs text-white/35">monthly structure</p>
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Annual habit curves</p>
+        <div className="space-y-4">
+          {habits.map(habit => (
+            <div key={habit.id}>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs" style={{ color: habit.color }}>{habit.label}</span>
+                <span className="text-[10px] text-white/24">{habit.actual}/{habit.target} this month</span>
+              </div>
+              <YearlyChart monthData={monthData} color={habit.color} habitId={habit.id} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Monthly volume</p>
+        <div className="grid grid-cols-3 gap-2 lg:grid-cols-6 xl:grid-cols-12">
+          {monthTotals.map(month => (
+            <div key={month.key} className="rounded-2xl border border-white/[0.06] bg-[#0b1320] p-3">
+              <p className="text-[10px] text-white/28">{month.key}月</p>
+              <p className="mt-1 text-base font-semibold text-white">{month.total}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export const MonthlyTab = () => {
+  const [granularity, setGranularity] = useState<Granularity>('monthly')
+  const [showTargetsForm, setShowTargetsForm] = useState(false)
+  const [showReport, setShowReport] = useState(false)
+  const [targets, setTargets] = useMonthlyTargets(DEFAULT_TARGETS)
+
+  const monthlyCounts = useMemo(() => countMonthlyChecks('morning:checked'), [])
+  const lastMonthCounts = useMemo(() => countChecksForDates('morning', 'checked', lastMonthKeys()), [])
+  const allTimeBests = useMemo(() => getAllTimeBests(), [])
+  const weekData = useMemo(() => countByWeek('morning', 'checked'), [])
+  const monthData = useMemo(() => countByMonth('morning', 'checked', currentYear), [])
+  const currentWeekCounts = useMemo(() => countChecksForDates('morning', 'checked', recentDateKeys(7, 0)), [])
+  const previousWeekCounts = useMemo(() => countChecksForDates('morning', 'checked', recentDateKeys(7, 7)), [])
+
+  const checksByDay = useMemo(() => {
+    const result: Record<string, Set<string>> = {}
+    for (const dateKey of thisMonthKeys()) {
+      const newKey = `daily:${dateKey}:morning:checked`
+      const oldKey = `morning:checked:${dateKey}`
+      try {
+        const raw = localStorage.getItem(newKey) ?? localStorage.getItem(oldKey)
+        result[dateKey] = new Set(raw ? JSON.parse(raw) : [])
+      } catch {
+        result[dateKey] = new Set()
+      }
+    }
+    return result
+  }, [])
+
+  const habits = HABIT_DEFS.map(habit => ({
+    ...habit,
+    actual: monthlyCounts[habit.id] ?? 0,
+    last: lastMonthCounts[habit.id] ?? 0,
+    best: allTimeBests[habit.id] ?? 0,
+    target: targets[habit.id] ?? habit.defaultTarget,
+  }))
+
+  const handleTargetChange = (id: string, value: number) => {
+    setTargets(prev => ({ ...prev, [id]: value }))
+  }
+
+  return (
+    <div className="space-y-4 px-4 pb-6 pt-4">
+      <div className="flex items-center justify-between gap-3 rounded-[28px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-4 py-4 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8da4c3]">BI workspace</p>
+          <p className="mt-2 text-lg font-semibold text-white">週次・月次・年次で、実行の構造を同じ指標で見ます。</p>
+          <p className="mt-1 text-sm text-white/48">比較、推移、分布、予測の4軸で習慣の変化を追います。</p>
+        </div>
+      </div>
+
+      <GranularityTabs active={granularity} onChange={setGranularity} />
+
+      {granularity === 'weekly' && (
+        <WeeklyView
+          habits={habits}
+          weekData={weekData}
+          currentWeekCounts={currentWeekCounts}
+          previousWeekCounts={previousWeekCounts}
+        />
+      )}
+
+      {granularity === 'monthly' && (
+        <MonthlyView
+          habits={habits}
+          targets={targets}
+          showTargetsForm={showTargetsForm}
+          setShowTargetsForm={setShowTargetsForm}
+          handleTargetChange={handleTargetChange}
+          monthlyCounts={monthlyCounts}
+          lastMonthCounts={lastMonthCounts}
+          checksByDay={checksByDay}
+          showReport={showReport}
+          setShowReport={setShowReport}
+        />
+      )}
+
+      {granularity === 'yearly' && <YearlyView habits={habits} monthData={monthData} />}
+    </div>
+  )
+}
