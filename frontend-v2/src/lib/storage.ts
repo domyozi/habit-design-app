@@ -47,6 +47,7 @@ export function useLocalStorage<T>(key: string, fallback: T) {
   useEffect(() => {
     if (syncedKeyRef.current !== key) {
       syncedKeyRef.current = key
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState(get(key, fallback))
       return
     }
@@ -214,6 +215,7 @@ export function useDailyStorage<T>(
       window.removeEventListener('storage', handleStorage)
       window.removeEventListener('local-storage', handleCustom)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newKey])
 
   return [state, setAndSync] as const

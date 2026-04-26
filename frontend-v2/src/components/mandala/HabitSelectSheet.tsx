@@ -15,7 +15,7 @@ export const HabitSelectSheet = ({ elements, mainGoal, onConfirm, onSkip }: Habi
   const toggle = (title: string) => {
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(title) ? next.delete(title) : next.add(title)
+      if (next.has(title)) { next.delete(title) } else { next.add(title) }
       return next
     })
   }

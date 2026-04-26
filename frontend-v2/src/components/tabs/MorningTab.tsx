@@ -78,8 +78,11 @@ const CheckRow = ({
 
   useEffect(() => {
     if (!prevChecked.current && checked) {
-      setJustChecked(true)
-      const t = setTimeout(() => setJustChecked(false), 700)
+      const t = setTimeout(() => {
+        setJustChecked(true)
+        setTimeout(() => setJustChecked(false), 700)
+      }, 0)
+      prevChecked.current = checked
       return () => clearTimeout(t)
     }
     prevChecked.current = checked
@@ -239,14 +242,14 @@ export const MorningTab = ({
     const wasChecked = habitChecked.has(habit.id)
     setHabitChecked(prev => {
       const next = new Set(prev)
-      wasChecked ? next.delete(habit.id) : next.add(habit.id)
+      if (wasChecked) { next.delete(habit.id) } else { next.add(habit.id) }
       return next
     })
     await logHabit(habit.id, !wasChecked).catch(() => {
       // revert on error
       setHabitChecked(prev => {
         const next = new Set(prev)
-        wasChecked ? next.add(habit.id) : next.delete(habit.id)
+        if (wasChecked) { next.add(habit.id) } else { next.delete(habit.id) }
         return next
       })
     })
@@ -255,7 +258,7 @@ export const MorningTab = ({
   const toggle = (id: string) => {
     setChecked(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
       return next
     })
   }

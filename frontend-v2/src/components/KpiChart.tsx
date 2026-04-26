@@ -39,12 +39,21 @@ export function KpiChart({ kpi }: KpiChartProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchKpiLogs(kpi.id, granularity, GRANULARITY_RANGE[granularity])
-      .then((res) => setChartData(res.data))
-      .catch(() => setError('データを取得できませんでした'))
-      .finally(() => setLoading(false))
+    let active = true
+    void Promise.resolve().then(async () => {
+      if (!active) return
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetchKpiLogs(kpi.id, granularity, GRANULARITY_RANGE[granularity])
+        if (active) setChartData(res.data)
+      } catch {
+        if (active) setError('データを取得できませんでした')
+      } finally {
+        if (active) setLoading(false)
+      }
+    })
+    return () => { active = false }
   }, [kpi.id, granularity])
 
   const dataPoints: KpiChartDataPoint[] = chartData?.data_points ?? []

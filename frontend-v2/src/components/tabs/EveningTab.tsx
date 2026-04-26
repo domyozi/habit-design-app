@@ -108,7 +108,7 @@ export const EveningTab = ({
 
     setCheckedArr(prev => {
     const s = new Set(prev)
-    s.has(id) ? s.delete(id) : s.add(id)
+    if (s.has(id)) { s.delete(id) } else { s.add(id) }
     return Array.from(s)
     })
   }

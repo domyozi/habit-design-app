@@ -26,8 +26,11 @@ const TaskRow = ({
 
   useEffect(() => {
     if (!prevDone.current && done) {
-      setJustChecked(true)
-      const t = setTimeout(() => setJustChecked(false), 700)
+      const t = setTimeout(() => {
+        setJustChecked(true)
+        setTimeout(() => setJustChecked(false), 700)
+      }, 0)
+      prevDone.current = done
       return () => clearTimeout(t)
     }
     prevDone.current = done
