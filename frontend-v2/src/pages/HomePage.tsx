@@ -143,13 +143,30 @@ const ContextCard = ({
   greeting,
   label,
   onNavigate,
+  eveningDone,
+  morningDone,
 }: {
   period: 'morning' | 'evening' | 'other'
   greeting: string
   label: string
   onNavigate: (tab: TabId) => void
+  eveningDone?: boolean
+  morningDone?: boolean
 }) => {
   if (period === 'morning') {
+    if (morningDone) {
+      return (
+        <div className="flex w-full flex-col justify-start rounded-[28px] border border-[#34d399]/15 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.08),transparent_45%),linear-gradient(180deg,rgba(9,16,27,0.98),rgba(8,13,22,0.92))] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#34d399]/70">完了済み</p>
+          <p className="mt-2 text-lg font-semibold text-white/70">朝のルーティン完了</p>
+          <p className="mt-1 text-sm text-white/42">今日の朝シーケンスはすべて終わっています</p>
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-[#34d399] text-sm">✓</span>
+            <span className="text-xs text-white/40">Morning sequence</span>
+          </div>
+        </div>
+      )
+    }
     return (
       <button
         type="button"
@@ -167,6 +184,19 @@ const ContextCard = ({
     )
   }
   if (period === 'evening') {
+    if (eveningDone) {
+      return (
+        <div className="flex w-full flex-col justify-start rounded-[28px] border border-[#34d399]/15 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.08),transparent_42%),linear-gradient(180deg,rgba(9,16,27,0.98),rgba(8,13,22,0.92))] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#34d399]/70">完了済み</p>
+          <p className="mt-2 text-lg font-semibold text-white/70">夜の振り返り完了</p>
+          <p className="mt-1 text-sm text-white/42">お疲れさまでした。今日の記録はすべて完了しています</p>
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-[#34d399] text-sm">✓</span>
+            <span className="text-xs text-white/40">Evening review</span>
+          </div>
+        </div>
+      )
+    }
     return (
       <button
         type="button"
@@ -577,6 +607,9 @@ export const HomePage = ({
     anchorGoal ? `判断基準は「${anchorGoal.title}」です。` : '理想像の判断基準を先に定義すると朝の迷いが減ります。',
   ]
 
+  const eveningDone = eveningCheckedArr.length > 0
+  const morningDone = todayTotal > 0 && todayDone >= todayTotal
+
   const handleToggleListening = () => {
     if (listening && recognitionRef.current) {
       recognitionRef.current.stop()
@@ -662,6 +695,8 @@ export const HomePage = ({
         greeting={ctx.greeting}
         label={ctx.label}
         onNavigate={onNavigate}
+        eveningDone={eveningDone}
+        morningDone={morningDone}
       />
 
       <GapSnapshotCard summary={gapSummary} lines={gapLines} />

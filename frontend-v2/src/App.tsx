@@ -81,12 +81,16 @@ const DesktopRail = ({
   currentPeriod,
   collapsed,
   onToggleCollapse,
+  morningDone,
+  eveningDone,
 }: {
   active: TabId
   onChange: (id: TabId) => void
   currentPeriod?: 'morning' | 'evening' | null
   collapsed?: boolean
   onToggleCollapse?: () => void
+  morningDone?: boolean
+  eveningDone?: boolean
 }) => {
   if (collapsed) {
     return (
@@ -136,7 +140,10 @@ const DesktopRail = ({
           const isPeriodMatch =
             (currentPeriod === 'morning' && (item.id === 'morning' || item.id === 'journal')) ||
             (currentPeriod === 'evening' && item.id === 'evening')
-          const showNudge = isPeriodMatch && !isActive
+          const isDone =
+            (item.id === 'evening' && eveningDone) ||
+            ((item.id === 'morning' || item.id === 'journal') && morningDone)
+          const showNudge = isPeriodMatch && !isActive && !isDone
           return (
             <button
               key={item.id}
@@ -356,8 +363,7 @@ function MainApp() {
     setTab(action.tab)
   }
 
-  const handleJournalApply = ({ target, tasks }: { target: string; tasks: JournalBriefResult['tasks'] }) => {
-    setBoss(target)
+  const applyJournalTasks = (tasks: JournalBriefResult['tasks']) => {
     if (tasks.length > 0) {
       setTodoDefinitions(prev => {
         const existingLabels = new Set(prev.map(t => t.label.toLowerCase()))
@@ -372,6 +378,24 @@ function MainApp() {
         return [...prev, ...newTasks]
       })
     }
+  }
+
+  const handleJournalApply = ({ target, tasks }: { target: string; tasks: JournalBriefResult['tasks'] }) => {
+    if (target && bossValue && target !== bossValue) {
+      setPendingTarget(target)
+      setPendingTasks(tasks)
+    } else {
+      if (target) setBoss(target)
+      applyJournalTasks(tasks)
+      setShowJournalEditor(false)
+    }
+  }
+
+  const confirmPendingTarget = (accept: boolean) => {
+    if (accept && pendingTarget) setBoss(pendingTarget)
+    applyJournalTasks(pendingTasks)
+    setPendingTarget(null)
+    setPendingTasks([])
     setShowJournalEditor(false)
   }
 
@@ -419,6 +443,11 @@ function MainApp() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [railCollapsed, setRailCollapsed] = useState(false)
+  const [pendingTarget, setPendingTarget] = useState<string | null>(null)
+  const [pendingTasks, setPendingTasks] = useState<JournalBriefResult['tasks']>([])
+
+  const eveningDone = eveningChecked.length > 0
+  const morningDone = todayTotal > 0 && morningChecked.length >= todayTotal
 
   return (
     <div className="min-h-screen bg-[#05080d]">
@@ -438,6 +467,8 @@ function MainApp() {
           currentPeriod={currentPeriod}
           collapsed={railCollapsed}
           onToggleCollapse={() => setRailCollapsed(p => !p)}
+          morningDone={morningDone}
+          eveningDone={eveningDone}
         />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
@@ -456,6 +487,37 @@ function MainApp() {
               onApply={handleJournalApply}
               onClose={() => setShowJournalEditor(false)}
             />
+          )}
+          {pendingTarget && (
+            <div className="mx-4 mb-2 rounded-[20px] border border-[#7dd3fc]/20 bg-[#08111c]/95 px-5 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7dd3fc]">Primary Target を更新しますか？</p>
+              <div className="mt-3 space-y-1.5">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 text-[10px] text-white/36 shrink-0">現在</span>
+                  <p className="text-sm text-white/50 line-through">{bossValue}</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 text-[10px] text-[#7dd3fc] shrink-0">新規</span>
+                  <p className="text-sm text-white/90">{pendingTarget}</p>
+                </div>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => confirmPendingTarget(true)}
+                  className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-4 py-1.5 text-xs font-semibold text-[#aee5ff] hover:bg-[#7dd3fc]/18"
+                >
+                  更新する
+                </button>
+                <button
+                  type="button"
+                  onClick={() => confirmPendingTarget(false)}
+                  className="rounded-full border border-white/[0.08] px-4 py-1.5 text-xs text-white/40 hover:text-white/70"
+                >
+                  このままにする
+                </button>
+              </div>
+            </div>
           )}
 
           <div ref={contentRef} className={['overflow-y-auto', isDesktop ? 'h-[calc(100svh-125px)]' : 'pb-20'].join(' ')}>

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
-import { WannaBeTab } from '@/components/tabs/WannaBeTab'
 import { TODO_SECTIONS, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type TodoSection } from '@/lib/todos'
 
 // AI設定支援で生成される習慣アイテム
@@ -582,29 +581,44 @@ const ProfileSettings = () => {
   )
 }
 
-export const SettingsPage = () => (
-  <div className="pb-6">
-    <TodoManager />
+export const SettingsPage = () => {
+  const [activeTab, setActiveTab] = useState<'tasks' | 'ai'>('tasks')
 
-    <div className="px-4 pt-4 pb-2">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8ed8ff]">AI setup</p>
+  return (
+    <div className="pb-6">
+      {/* タブヘッダー */}
+      <div className="flex gap-0 border-b border-white/[0.06] px-4 pt-2">
+        {(['tasks', 'ai'] as const).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setActiveTab(t)}
+            className={[
+              'px-4 pb-2.5 pt-2 text-sm font-semibold transition-colors',
+              activeTab === t
+                ? 'border-b-2 border-[#7dd3fc] text-white'
+                : 'text-white/40 hover:text-white/70',
+            ].join(' ')}
+          >
+            {t === 'tasks' ? 'タスク定義' : 'AI・設定'}
+          </button>
+        ))}
       </div>
-      <div className="space-y-3">
-        <ProfileSettings />
-        <ApiKeySettings />
-        <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
-          <p className="mb-3 text-[11px] text-white/34">
-            「なりたい姿」や「やりたいこと」を入力すると、朝・夜の習慣リスト候補をAIが提案します。
-          </p>
-          <AiSetupChat />
+
+      {activeTab === 'tasks' && <TodoManager />}
+
+      {activeTab === 'ai' && (
+        <div className="px-4 pt-4 pb-2 space-y-3">
+          <ProfileSettings />
+          <ApiKeySettings />
+          <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
+            <p className="mb-3 text-[11px] text-white/34">
+              「なりたい姿」や「やりたいこと」を入力すると、朝・夜の習慣リスト候補をAIが提案します。
+            </p>
+            <AiSetupChat />
+          </div>
         </div>
-      </div>
+      )}
     </div>
-
-    <div className="px-4 pt-2">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-[#f5c46b]">Wanna Be</p>
-    </div>
-    <WannaBeTab />
-  </div>
-)
+  )
+}
