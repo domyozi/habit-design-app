@@ -98,7 +98,11 @@ export const AuthPage = () => {
           </div>
 
           <p className="mt-6 border-t border-white/[0.06] pt-5 text-center text-[10px] leading-relaxed text-white/28">
-            続行することで利用規約とプライバシーポリシーに同意したものとみなされます。
+            続行することで{' '}
+            <a href="/privacy" className="underline hover:text-white/50">
+              プライバシーポリシー
+            </a>
+            {' '}に同意したものとみなされます。
           </p>
         </div>
       </div>

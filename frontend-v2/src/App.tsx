@@ -3,6 +3,7 @@ import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, u
 import { useTodoDefinitions } from '@/lib/todos'
 import { useAuth } from '@/hooks/useAuth'
 import { AuthPage } from '@/pages/AuthPage'
+import { PrivacyPage } from '@/pages/PrivacyPage'
 import { Header } from '@/components/ui/Header'
 import { BrandMark } from '@/components/ui/BrandMark'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -425,6 +426,8 @@ function MainApp() {
 
 export default function App() {
   const { session, loading: authLoading } = useAuth()
+
+  if (window.location.pathname === '/privacy') return <PrivacyPage />
 
   if (authLoading) {
     return (
