@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey } from '@/lib/storage'
 import { bySection, useTodoDefinitions, createTodoId } from '@/lib/todos'
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult } from '@/lib/ai'
+import { getHabits, logHabit, type HabitItem } from '@/lib/api'
 
 // ─── 型 ───────────────────────────────────────────────────────
 interface CheckItem {
@@ -219,6 +220,37 @@ export const MorningTab = ({
   const [, setSavedReport] = useDailyStorage<string>('morning', 'report', '', dateKey)
   const [, setSavedReportAt] = useDailyStorage<string>('morning', 'reportAt', '', dateKey)
   const [activeTaskTab, setActiveTaskTab] = useDailyStorage<'core' | 'routine' | 'state'>('morning', 'task-tab', 'core', dateKey)
+  const [dbHabits, setDbHabits] = useState<HabitItem[]>([])
+  const [habitChecked, setHabitChecked] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (isReadOnly) return
+    getHabits().then(habits => {
+      setDbHabits(habits)
+      const completedIds = habits
+        .filter(h => h.today_log?.completed)
+        .map(h => h.id)
+      setHabitChecked(new Set(completedIds))
+    }).catch(() => { /* silently ignore if not authenticated */ })
+  }, [isReadOnly])
+
+  const toggleHabit = async (habit: HabitItem) => {
+    if (isReadOnly) return
+    const wasChecked = habitChecked.has(habit.id)
+    setHabitChecked(prev => {
+      const next = new Set(prev)
+      wasChecked ? next.delete(habit.id) : next.add(habit.id)
+      return next
+    })
+    await logHabit(habit.id, !wasChecked).catch(() => {
+      // revert on error
+      setHabitChecked(prev => {
+        const next = new Set(prev)
+        wasChecked ? next.add(habit.id) : next.delete(habit.id)
+        return next
+      })
+    })
+  }
 
   const toggle = (id: string) => {
     setChecked(prev => {
@@ -568,6 +600,55 @@ export const MorningTab = ({
           )}
         </div>
       </div>
+
+      {!isReadOnly && (
+        <div className="mx-4 mt-4 rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8da4c3]">My habits</p>
+          {dbHabits.length === 0 ? (
+            <p className="mt-3 text-xs text-white/38">
+              マンダラチャートから習慣を追加すると、ここに表示されます。
+            </p>
+          ) : (
+            <div className="mt-3 border-y border-white/[0.05] bg-[#111827]/70">
+              {dbHabits.map(habit => {
+                const isChecked = habitChecked.has(habit.id)
+                return (
+                  <div
+                    key={habit.id}
+                    className={['flex items-center gap-3 border-t border-white/[0.05] px-4 py-3 transition-all duration-300', isChecked ? 'opacity-50' : ''].join(' ')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleHabit(habit)}
+                      className={[
+                        'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border transition-all duration-200 active:scale-90',
+                        isChecked ? 'border-[#7dd3fc] bg-[#7dd3fc]' : 'border-white/20 hover:border-white/40',
+                      ].join(' ')}
+                    >
+                      {isChecked && (
+                        <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className={['text-sm transition-all duration-300', isChecked ? 'text-white/28 line-through' : 'text-white/82'].join(' ')}>
+                        {habit.title}
+                      </span>
+                      {habit.wanna_be_connection_text && (
+                        <p className="mt-0.5 truncate text-[11px] text-white/28">{habit.wanna_be_connection_text}</p>
+                      )}
+                    </div>
+                    {(habit.current_streak ?? 0) > 0 && (
+                      <span className="text-[11px] text-white/32 flex-shrink-0">{habit.current_streak} days</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {done === total && total > 0 && (
         <div className="mx-4 mt-4 rounded-2xl border border-[#34d399]/30 bg-[#34d399]/6 px-4 py-4 text-center">

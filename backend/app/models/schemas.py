@@ -352,6 +352,7 @@ class CreateHabitRequest(BaseModel):
     frequency: HabitFrequency = "daily"
     scheduled_time: Optional[str] = None
     display_order: Optional[int] = None
+    wanna_be_connection_text: Optional[str] = None
 
 
 class UpdateHabitRequest(BaseModel):

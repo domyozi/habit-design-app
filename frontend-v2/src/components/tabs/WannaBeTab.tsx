@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { streamMandalaChart, extractJsonBlock, stripJsonBlock, checkRateLimit, type MandalaData } from '@/lib/ai'
-import { getWannaBe, getMandala, saveWannaBe, saveMandala } from '@/lib/api'
+import { getWannaBe, getMandala, saveWannaBe, saveMandala, createHabit } from '@/lib/api'
 import { MandalaGrid } from '@/components/mandala/MandalaGrid'
+import { HabitSelectSheet } from '@/components/mandala/HabitSelectSheet'
 
 export const WannaBeTab = () => {
   const { session, loading: authLoading } = useAuth()
@@ -15,6 +16,8 @@ export const WannaBeTab = () => {
   const [showInput, setShowInput] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loadingData, setLoadingData] = useState(true)
+  const [showHabitSheet, setShowHabitSheet] = useState(false)
+  const [pendingMandalaForHabits, setPendingMandalaForHabits] = useState<MandalaData | null>(null)
 
   // デバウンス用タイマー
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -100,6 +103,9 @@ export const WannaBeTab = () => {
 
             // マンダラ生成後にDBへ自動保存
             saveMandala(newMandala).catch(e => console.error('マンダラ保存に失敗しました', e))
+            // 習慣選択シートを表示（新規生成時のみ）
+            setPendingMandalaForHabits(newMandala)
+            setShowHabitSheet(true)
           } else {
             setError('生成に失敗しました。もう一度お試しください。')
           }
@@ -138,6 +144,26 @@ export const WannaBeTab = () => {
   }
 
   return (
+    <>
+    {showHabitSheet && pendingMandalaForHabits && (
+      <HabitSelectSheet
+        elements={pendingMandalaForHabits.elements}
+        mainGoal={pendingMandalaForHabits.mainGoal}
+        onConfirm={async (selectedTitles) => {
+          for (const title of selectedTitles) {
+            await createHabit(title, pendingMandalaForHabits.mainGoal).catch(e =>
+              console.error('習慣の登録に失敗しました', e)
+            )
+          }
+          setShowHabitSheet(false)
+          setPendingMandalaForHabits(null)
+        }}
+        onSkip={() => {
+          setShowHabitSheet(false)
+          setPendingMandalaForHabits(null)
+        }}
+      />
+    )}
     <div className="space-y-4 px-4 py-4 pb-6">
       {/* Header */}
       <div className="rounded-[28px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-4 py-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
@@ -260,5 +286,6 @@ export const WannaBeTab = () => {
         </div>
       )}
     </div>
+    </>
   )
 }

@@ -237,3 +237,47 @@ export const getMandala = async (): Promise<{ cells: unknown } | null> => {
 export const saveMandala = async (cells: unknown): Promise<void> => {
   await apiPost('/api/mandala', { cells })
 }
+
+// ============================================================
+// Habits API クライアント
+// ============================================================
+
+export interface HabitItem {
+  id: string
+  title: string
+  wanna_be_connection_text?: string | null
+  current_streak?: number
+  today_log?: { completed: boolean } | null
+}
+
+/**
+ * アクティブな習慣一覧を取得する（今日のログ付き）
+ * GET /api/habits
+ */
+export const getHabits = async (): Promise<HabitItem[]> => {
+  try {
+    const response = await apiGet<{ success: boolean; data: HabitItem[] }>('/api/habits')
+    return response.data ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 習慣を作成する
+ * POST /api/habits
+ */
+export const createHabit = async (title: string, wannaBeConnectionText?: string): Promise<HabitItem> => {
+  const body: Record<string, unknown> = { title }
+  if (wannaBeConnectionText) body.wanna_be_connection_text = wannaBeConnectionText
+  const response = await apiPost<{ success: boolean; data: HabitItem }>('/api/habits', body)
+  return response.data
+}
+
+/**
+ * 習慣ログを記録する
+ * PATCH /api/habits/{habit_id}/log
+ */
+export const logHabit = async (habitId: string, completed: boolean): Promise<void> => {
+  await apiPatch(`/api/habits/${habitId}/log`, { completed })
+}

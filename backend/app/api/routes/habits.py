@@ -145,6 +145,8 @@ async def create_habit(
         new_habit["scheduled_time"] = request.scheduled_time
     if request.display_order is not None:
         new_habit["display_order"] = request.display_order
+    if request.wanna_be_connection_text is not None:
+        new_habit["wanna_be_connection_text"] = request.wanna_be_connection_text
 
     result = supabase.table("habits").insert(new_habit).execute()
     created = result.data[0] if result.data else {}
