@@ -181,6 +181,12 @@ const AiSetupChat = () => {
     const source = suggestion ?? savedAiHabits
     if (!source) return
 
+    // F-08: confirm before replacing all habits
+    if (applyMode === 'replace') {
+      const ok = window.confirm('既存の習慣がすべて置き換えられます。続けますか？')
+      if (!ok) return
+    }
+
     setTodos(prev => (
       applyMode === 'replace'
         ? replaceSectionsFromAiSuggestion(prev, source)

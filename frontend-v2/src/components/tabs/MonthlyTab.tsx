@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   countByMonth,
   countByWeek,
@@ -9,10 +9,10 @@ import {
   thisMonthKeys,
   useDailyStorage,
   useMonthlyTargets,
-  useLocalStorage,
   readDailyField,
 } from '@/lib/storage'
 import { streamClaude, buildWannaBeAnalysisPrompt } from '@/lib/ai'
+import { getWannaBe } from '@/lib/api'
 import { ProgressRing } from '@/components/home/ProgressRing'
 import { useTodoDefinitions, byTiming } from '@/lib/todos'
 
@@ -379,12 +379,6 @@ const TargetsForm = ({
   </div>
 )
 
-interface WannaBeGoal {
-  id: string
-  emoji: string
-  title: string
-}
-
 const WannaBeAnalysis = ({
   monthlyCounts,
   targets,
@@ -394,21 +388,28 @@ const WannaBeAnalysis = ({
   targets: Record<string, number>
   habitDefs: Array<{ id: string; label: string }>
 }) => {
-  const [goals] = useLocalStorage<WannaBeGoal[]>('wannabe:goals', [])
+  // F-07: use Supabase API instead of localStorage wannabe:goals
+  const [wannaBeText, setWannaBeText] = useState<string | null>(null)
+  const [loadingWannaBe, setLoadingWannaBe] = useState(true)
   const [streamText, setStreamText] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
 
-  const activeGoals = goals.filter(goal => !('priority' in goal && (goal as { priority: string }).priority === 'done'))
+  useEffect(() => {
+    getWannaBe()
+      .then(result => setWannaBeText(result?.text ?? null))
+      .catch(() => setWannaBeText(null))
+      .finally(() => setLoadingWannaBe(false))
+  }, [])
 
   const handleAnalyze = async () => {
-    if (loading) return
+    if (loading || !wannaBeText) return
     setStreamText('')
     setDone(false)
     setLoading(true)
 
     const prompt = buildWannaBeAnalysisPrompt({
-      wannaBe: activeGoals.map(g => ({ title: g.title, emoji: g.emoji })),
+      wannaBe: [{ title: wannaBeText, emoji: '' }],
       monthlyCounts,
       targets,
       habitDefs,
@@ -430,18 +431,20 @@ const WannaBeAnalysis = ({
     }
   }
 
+  if (loadingWannaBe) {
+    return <p className="text-xs text-white/28">読み込み中…</p>
+  }
+
   return (
     <div className="space-y-3">
-      {activeGoals.length === 0 ? (
-        <p className="text-xs text-white/28">設定画面でゴールを登録すると分析できます。</p>
+      {!wannaBeText ? (
+        <p className="text-xs text-white/28">Wanna Be タブでなりたい姿を登録すると分析できます。</p>
       ) : (
         <>
-          <div className="mb-2 flex flex-wrap gap-1">
-            {activeGoals.slice(0, 4).map(goal => (
-              <span key={goal.id} className="rounded-full border border-white/[0.06] bg-[#0b1320] px-2 py-0.5 text-[11px] text-white/50">
-                {goal.title.slice(0, 12)}{goal.title.length > 12 ? '…' : ''}
-              </span>
-            ))}
+          <div className="mb-2">
+            <span className="rounded-full border border-white/[0.06] bg-[#0b1320] px-2 py-0.5 text-[11px] text-white/50">
+              {wannaBeText.slice(0, 40)}{wannaBeText.length > 40 ? '…' : ''}
+            </span>
           </div>
           <button
             type="button"
@@ -903,15 +906,17 @@ export const MonthlyTab = () => {
   const [showReport, setShowReport] = useState(false)
 
   const [todoDefinitions] = useTodoDefinitions()
-  const habitDefs: HabitDef[] = useMemo(() =>
-    byTiming(todoDefinitions, 'morning').filter(t => t.isMust).map((t, i) => ({
+  // F-06: include all habits (not just isMust) in monthly analytics
+  const habitDefs: HabitDef[] = useMemo(() => {
+    const allHabits = byTiming(todoDefinitions, 'morning').filter(t => t.is_active !== false)
+    // limit to first 8 to avoid crowded charts
+    return allHabits.slice(0, 8).map((t, i) => ({
       id: t.id,
       label: t.label,
       defaultTarget: 20,
       color: HABIT_COLORS[i % HABIT_COLORS.length],
-    })),
-    [todoDefinitions]
-  )
+    }))
+  }, [todoDefinitions])
   const defaultTargets = useMemo(
     () => Object.fromEntries(habitDefs.map(h => [h.id, h.defaultTarget])),
     [habitDefs]

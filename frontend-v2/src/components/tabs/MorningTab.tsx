@@ -272,6 +272,19 @@ export const MorningTab = ({
   const [activeTaskTab, setActiveTaskTab] = useDailyStorage<'tasks' | 'record'>('morning', 'task-tab', 'tasks', dateKey)
   const [dbHabits, setDbHabits] = useState<HabitItem[]>([])
   const [habitChecked, setHabitChecked] = useState<Set<string>>(new Set())
+  // F-09: weight target from localStorage with fallback 72.9
+  const [weightTarget, setWeightTarget] = useState<number>(() => {
+    try {
+      const v = localStorage.getItem('settings:weight-target')
+      return v !== null ? (JSON.parse(v) as number) : 72.9
+    } catch { return 72.9 }
+  })
+  const [weightTargetInput, setWeightTargetInput] = useState<string>(() => {
+    try {
+      const v = localStorage.getItem('settings:weight-target')
+      return v !== null ? String(JSON.parse(v) as number) : '72.9'
+    } catch { return '72.9' }
+  })
 
   useEffect(() => {
     if (isReadOnly) return
@@ -406,6 +419,8 @@ export const MorningTab = ({
     window.dispatchEvent(new CustomEvent('local-storage', { detail: { key: reportAtKey } }))
     setSavedReport(text)
     setSavedReportAt(nowStr())
+    // F-10: notify user before navigating to monthly tab
+    window.alert('Monthly タブに移動してレポートを表示します')
     onGenerateReport?.(text)
   }
 
@@ -486,6 +501,82 @@ export const MorningTab = ({
         ) : (
           <p className="text-sm italic text-white/42">今日の最重要タスクを設定してください。</p>
         )}
+      </div>
+
+      {/* F-04: Task checklist moved above journal card */}
+      <div className="mx-4 mt-4 rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <TaskTabButton active={activeTaskTab === 'tasks'} label="タスク" count={ALL_MORNING_ITEMS.length} onClick={() => setActiveTaskTab('tasks')} />
+          <TaskTabButton active={activeTaskTab === 'record'} label="記録" count={2} onClick={() => setActiveTaskTab('record')} />
+        </div>
+
+        <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
+          {activeTaskTab === 'tasks' && (
+            HABIT_CATEGORIES.map(cat => {
+              const catItems: TaskFieldItem[] = morningGrouped[cat.id].map(item => ({
+                id: item.id, label: item.label, isMust: item.isMust,
+                minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
+              }))
+              if (catItems.length === 0) return null
+              return (
+                <Section
+                  key={cat.id}
+                  title={`${cat.label} — ${cat.desc}`}
+                  time=""
+                  accentColor={cat.accent}
+                  done={catItems.filter(isItemDone).length}
+                  total={catItems.length}
+                >
+                  {catItems.map(item => (
+                    <TaskFieldRow
+                      key={item.id}
+                      item={item}
+                      checked={checkedArr.includes(item.id)}
+                      onToggle={() => {
+                        if (isReadOnly) return
+                        const s = new Set(checkedArr)
+                        s.has(item.id) ? s.delete(item.id) : s.add(item.id)
+                        setCheckedArr([...s])
+                      }}
+                      value={fieldValues[item.id] ?? ''}
+                      onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+                      aiFeedback={aiFeedbacks[item.id]}
+                      onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+                      isReadOnly={isReadOnly}
+                      dotColor={cat.accent}
+                    />
+                  ))}
+                </Section>
+              )
+            })
+          )}
+
+          {activeTaskTab === 'record' && (
+            <div className="space-y-3">
+              <WeightInput value={weight} target={weightTarget} onChange={setWeight} slot="morning" />
+              <div className="flex items-center gap-3 border-t border-white/[0.05] px-4 py-2.5">
+                <span className="text-xs text-white/40">目標</span>
+                <input
+                  type="number"
+                  value={weightTargetInput}
+                  onChange={e => setWeightTargetInput(e.target.value)}
+                  onBlur={() => {
+                    const v = parseFloat(weightTargetInput)
+                    if (!isNaN(v) && v > 0) {
+                      setWeightTarget(v)
+                      localStorage.setItem('settings:weight-target', JSON.stringify(v))
+                    }
+                  }}
+                  step="0.1"
+                  className="w-20 rounded border border-white/10 bg-[#0b1320] px-2 py-1 text-center text-sm font-mono text-white/85"
+                  placeholder="72.9"
+                />
+                <span className="text-xs text-white/40">kg</span>
+              </div>
+              <StarRating value={condition} onChange={setCondition} label="コンディション" />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mx-4 mt-4 rounded-[28px] border border-white/[0.08] bg-[#0b1320]/92 px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
@@ -630,62 +721,6 @@ export const MorningTab = ({
             </div>
           </div>
         )}
-      </div>
-
-      <div className="mx-4 mt-4 rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <TaskTabButton active={activeTaskTab === 'tasks'} label="タスク" count={ALL_MORNING_ITEMS.length} onClick={() => setActiveTaskTab('tasks')} />
-          <TaskTabButton active={activeTaskTab === 'record'} label="記録" count={2} onClick={() => setActiveTaskTab('record')} />
-        </div>
-
-        <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
-          {activeTaskTab === 'tasks' && (
-            HABIT_CATEGORIES.map(cat => {
-              const catItems: TaskFieldItem[] = morningGrouped[cat.id].map(item => ({
-                id: item.id, label: item.label, isMust: item.isMust,
-                minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
-              }))
-              if (catItems.length === 0) return null
-              return (
-                <Section
-                  key={cat.id}
-                  title={`${cat.label} — ${cat.desc}`}
-                  time=""
-                  accentColor={cat.accent}
-                  done={catItems.filter(isItemDone).length}
-                  total={catItems.length}
-                >
-                  {catItems.map(item => (
-                    <TaskFieldRow
-                      key={item.id}
-                      item={item}
-                      checked={checkedArr.includes(item.id)}
-                      onToggle={() => {
-                        if (isReadOnly) return
-                        const s = new Set(checkedArr)
-                        s.has(item.id) ? s.delete(item.id) : s.add(item.id)
-                        setCheckedArr([...s])
-                      }}
-                      value={fieldValues[item.id] ?? ''}
-                      onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
-                      aiFeedback={aiFeedbacks[item.id]}
-                      onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
-                      isReadOnly={isReadOnly}
-                      dotColor={cat.accent}
-                    />
-                  ))}
-                </Section>
-              )
-            })
-          )}
-
-          {activeTaskTab === 'record' && (
-            <div className="space-y-3">
-              <WeightInput value={weight} target={72.9} onChange={setWeight} slot="morning" />
-              <StarRating value={condition} onChange={setCondition} label="コンディション" />
-            </div>
-          )}
-        </div>
       </div>
 
       {!isReadOnly && (

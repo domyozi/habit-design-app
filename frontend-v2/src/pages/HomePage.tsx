@@ -83,9 +83,28 @@ const FocusCard = ({
       </div>
 
       {/* Primary Target */}
-      <p className={['mt-3 text-2xl font-semibold leading-snug', bossCompleted ? 'text-white/40 line-through' : 'text-white'].join(' ')}>
-        {boss ?? '今日の焦点を設定してください'}
-      </p>
+      {boss ? (
+        <p className={['mt-3 text-2xl font-semibold leading-snug', bossCompleted ? 'text-white/40 line-through' : 'text-white'].join(' ')}>
+          {boss}
+        </p>
+      ) : (
+        <div className="mt-3">
+          <p className="text-lg text-white/40 italic">今日の焦点を設定してください</p>
+          {/* F-05: button to navigate to morning tab to set target */}
+          <button
+            type="button"
+            onClick={() => onNavigate('morning')}
+            className="mt-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors"
+            style={{
+              borderColor: `${accentColor}35`,
+              backgroundColor: `${accentColor}12`,
+              color: accentColor,
+            }}
+          >
+            目標を設定する →
+          </button>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="mt-5 space-y-1.5">
