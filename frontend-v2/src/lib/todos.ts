@@ -89,9 +89,25 @@ export const HABIT_TIMINGS: Array<{ id: HabitTiming; label: string }> = [
 // 後方互換のために TODO_SECTIONS も残す（SettingsPage が参照するかもしれないため）
 export const TODO_SECTIONS = HABIT_CATEGORIES.map(c => ({ id: c.id as HabitCategory, label: `${c.label} — ${c.desc}`, accent: c.accent }))
 
+// 旧 section 値 → 新 HabitCategory のマッピング（localStorage に古いデータが残っている場合のフォールバック）
+const LEGACY_SECTION_MAP: Record<string, HabitCategory> = {
+  'morning-must': 'identity',
+  'morning-routine': 'system',
+  'evening-reflection': 'system',
+  'evening-prep': 'system',
+}
+
+const VALID_CATEGORIES = new Set<string>(['identity', 'growth', 'body', 'mind', 'system'])
+
+const resolveCategory = (section: string): HabitCategory =>
+  VALID_CATEGORIES.has(section)
+    ? (section as HabitCategory)
+    : (LEGACY_SECTION_MAP[section] ?? 'system')
+
 export const normalizeTodoDefinitions = (todos: TodoDefinition[]) =>
   todos.map(todo => ({
     ...todo,
+    section: resolveCategory(todo.section) as HabitCategory,
     timing: todo.timing ?? 'morning',
     is_active: todo.is_active ?? true,
   }))
@@ -189,7 +205,7 @@ export const byTimingGrouped = (todos: TodoDefinition[], timing: HabitTiming): R
   const filtered = byTiming(todos, timing)
   const result: Record<HabitCategory, TodoDefinition[]> = { identity: [], growth: [], body: [], mind: [], system: [] }
   for (const todo of filtered) {
-    result[todo.section as HabitCategory].push(todo)
+    result[resolveCategory(todo.section)].push(todo)
   }
   return result
 }
