@@ -1,394 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 import { AiMark } from '@/components/ui/AiMark'
 import { useUserContext } from '@/lib/user-context'
 import type { AppLang } from '@/lib/lang'
-
-// AI設定支援で生成される習慣アイテム
-interface AiHabitItem {
-  id: string
-  label: string
-  isMust?: boolean
-  minutes?: number
-}
-
-interface AiHabitSuggestion {
-  morning: AiHabitItem[]
-  evening?: AiHabitItem[]
-  evening_reflection?: AiHabitItem[]
-  evening_prep?: AiHabitItem[]
-  summary: string
-}
-
-// AI会話履歴
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  ts: number
-}
-
-const AI_SETUP_SYSTEM = `あなたは習慣設計のコーチです。ユーザーの「なりたい姿」や「やりたいこと」を聞いて、
-朝ルーティンと夜ルーティンの習慣リストを提案してください。
-
-提案するときは必ず以下のJSON形式を含めてください（マークダウンコードブロックで囲む）：
-\`\`\`json
-{
-  "morning": [
-    { "id": "habit-id", "label": "習慣名", "isMust": true, "minutes": 30 }
-  ],
-  "evening_reflection": [
-    { "id": "habit-id", "label": "習慣名", "minutes": 10 }
-  ],
-  "evening_prep": [
-    { "id": "habit-id", "label": "習慣名", "minutes": 5 }
-  ],
-  "summary": "提案の要約"
-}
-\`\`\`
-
-朝は "morning"、夜は必ず "evening_reflection"（振り返り・記録）と "evening_prep"（翌日の準備）に分けてください。
-古い形式との互換のため "evening" を返してもよいが、優先は "evening_reflection" と "evening_prep"。
-習慣IDは英小文字とハイフンのみ使用。isMustはその習慣が核心的かどうか（省略可、デフォルトfalse）。
-minutesは所要時間（分）、省略可。`
-
-const parseAiHabits = (text: string): AiHabitSuggestion | null => {
-  try {
-    const match = /```json\s*([\s\S]*?)\s*```/.exec(text)
-    if (!match) return null
-    return JSON.parse(match[1]) as AiHabitSuggestion
-  } catch {
-    return null
-  }
-}
-
-const normalizeLabel = (label: string) => label.trim().toLowerCase()
-
-const getEveningReflectionItems = (suggestion: AiHabitSuggestion) =>
-  suggestion.evening_reflection ?? suggestion.evening ?? []
-
-const getEveningPrepItems = (suggestion: AiHabitSuggestion) =>
-  suggestion.evening_prep ?? []
-
-const mergeAiSuggestionIntoTodos = (
-  currentTodos: TodoDefinition[],
-  suggestion: AiHabitSuggestion
-): TodoDefinition[] => {
-  const nextTodos = [...currentTodos]
-  const exists = new Set(
-    currentTodos.map(todo => `${todo.section}:${normalizeLabel(todo.label)}`)
-  )
-
-  const appendTodo = (
-    item: AiHabitItem,
-    section: HabitCategory,
-    timing: HabitTiming,
-    isMust = false
-  ) => {
-    const dedupeKey = `${section}:${normalizeLabel(item.label)}`
-    if (!item.label.trim() || exists.has(dedupeKey)) return
-
-    exists.add(dedupeKey)
-    nextTodos.push({
-      id: createTodoId(item.label),
-      label: item.label.trim(),
-      section,
-      timing,
-      minutes: item.minutes,
-      isMust,
-      is_active: true,
-    })
-  }
-
-  suggestion.morning.forEach(item => {
-    appendTodo(item, item.isMust ? 'identity' : 'system', 'morning', Boolean(item.isMust))
-  })
-  getEveningReflectionItems(suggestion).forEach(item => {
-    appendTodo(item, 'system', 'evening')
-  })
-  getEveningPrepItems(suggestion).forEach(item => {
-    appendTodo(item, 'system', 'evening')
-  })
-
-  return nextTodos
-}
-
-const replaceSectionsFromAiSuggestion = (
-  currentTodos: TodoDefinition[],
-  suggestion: AiHabitSuggestion
-): TodoDefinition[] => {
-  const replaceTargets: HabitCategory[] = ['identity', 'growth', 'body', 'mind', 'system']
-  const preserved = currentTodos.map(todo =>
-    replaceTargets.includes(todo.section as HabitCategory) ? { ...todo, is_active: false } : todo
-  )
-  return mergeAiSuggestionIntoTodos(preserved, suggestion)
-}
-
-// ─── AI設定支援チャット ─────────────────────────────────────
-
-const AiSetupChat = () => {
-  const [history, setHistory] = useLocalStorage<ChatMessage[]>('settings:ai:context', [])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [suggestion, setSuggestion] = useState<AiHabitSuggestion | null>(null)
-  const [savedAiHabits, setAiHabits] = useLocalStorage<AiHabitSuggestion | null>('settings:ai:habits', null)
-  const [, setTodos] = useTodoDefinitions()
-  const [saved, setSaved] = useState(false)
-  const [applied, setApplied] = useState(false)
-  const [applyMode, setApplyMode] = useState<'append' | 'replace'>('append')
-
-  const send = async () => {
-    if (!input.trim() || loading) return
-    const userMsg: ChatMessage = { role: 'user', content: input.trim(), ts: Date.now() }
-    const newHistory = [...history.slice(-18), userMsg]
-    setHistory(newHistory)
-    setInput('')
-    setLoading(true)
-    setSuggestion(null)
-    setSaved(false)
-    setApplied(false)
-    setApplyMode('append')
-
-    try {
-      const messages = newHistory.map(m => ({ role: m.role, content: m.content }))
-      const reply = await callClaude(messages, AI_SETUP_SYSTEM, 1024)
-      const assistantMsg: ChatMessage = { role: 'assistant', content: reply, ts: Date.now() }
-      setHistory(prev => [...prev.slice(-18), assistantMsg])
-
-      const parsed = parseAiHabits(reply)
-      if (parsed) setSuggestion(parsed)
-    } catch {
-      const errMsg: ChatMessage = {
-        role: 'assistant',
-        content: 'エラーが発生しました。ログイン状態またはサーバー側のAI設定を確認してください。',
-        ts: Date.now(),
-      }
-      setHistory(prev => [...prev, errMsg])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSave = () => {
-    if (!suggestion) return
-    setAiHabits(suggestion)
-    setSaved(true)
-    setApplied(false)
-  }
-
-  const handleApplyToTodos = () => {
-    const source = suggestion ?? savedAiHabits
-    if (!source) return
-
-    // F-08: confirm before replacing all habits
-    if (applyMode === 'replace') {
-      const ok = window.confirm('既存の習慣がすべて置き換えられます。続けますか？')
-      if (!ok) return
-    }
-
-    setTodos(prev => (
-      applyMode === 'replace'
-        ? replaceSectionsFromAiSuggestion(prev, source)
-        : mergeAiSuggestionIntoTodos(prev, source)
-    ))
-    setApplied(true)
-  }
-
-  const clearHistory = () => {
-    setHistory([])
-    setSuggestion(null)
-    setSaved(false)
-  }
-
-  return (
-    <div className="space-y-3">
-      {history.length > 0 && (
-        <div className="max-h-60 space-y-2 overflow-y-auto">
-          {history.map((msg, i) => (
-            <div key={i} className={['rounded-2xl px-3 py-2 text-xs', msg.role === 'user'
-              ? 'bg-[#162131] text-white/80 text-right'
-              : 'bg-[#0b1320] text-white/70 border border-white/[0.06]'].join(' ')}>
-              {msg.role === 'assistant' ? (
-                <span className="whitespace-pre-wrap">
-                  {msg.content.replace(/```json[\s\S]*?```/g, '').trim()}
-                </span>
-              ) : (
-                msg.content
-              )}
-            </div>
-          ))}
-          {loading && (
-            <div className="rounded-2xl border border-white/[0.06] bg-[#0b1320] px-3 py-2 text-xs uppercase tracking-[0.16em] text-white/35">Generating</div>
-          )}
-        </div>
-      )}
-
-      {suggestion && (
-        <div className="space-y-3 rounded-2xl border border-[#38bdf8]/20 bg-[#0f1726]/88 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8ed8ff]">AI suggestion</p>
-          {suggestion.morning.length > 0 && (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">Morning</p>
-              {suggestion.morning.map(h => (
-                <div key={h.id} className="py-0.5 text-xs text-white/70">
-                  {h.isMust ? '[core] ' : ''}{h.label}{h.minutes ? ` (${h.minutes}m)` : ''}
-                </div>
-              ))}
-            </div>
-          )}
-          {getEveningReflectionItems(suggestion).length > 0 && (
-            <div>
-              <p className="mb-1 mt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">Evening reflection</p>
-              {getEveningReflectionItems(suggestion).map(h => (
-                <div key={h.id} className="py-0.5 text-xs text-white/70">
-                  {h.label}{h.minutes ? ` (${h.minutes}m)` : ''}
-                </div>
-              ))}
-            </div>
-          )}
-          {getEveningPrepItems(suggestion).length > 0 && (
-            <div>
-              <p className="mb-1 mt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">Evening prep</p>
-              {getEveningPrepItems(suggestion).map(h => (
-                <div key={h.id} className="py-0.5 text-xs text-white/70">
-                  {h.label}{h.minutes ? ` (${h.minutes}m)` : ''}
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setApplyMode('append')}
-              className={[
-                'rounded-xl border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors',
-                applyMode === 'append'
-                  ? 'border-[#38bdf8]/40 bg-[#38bdf8]/15 text-[#38bdf8]'
-                  : 'border-white/10 text-white/38 hover:text-white',
-              ].join(' ')}
-            >
-              Append
-            </button>
-            <button
-              type="button"
-              onClick={() => setApplyMode('replace')}
-              className={[
-                'rounded-xl border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors',
-                applyMode === 'replace'
-                  ? 'border-[#f59e0b]/40 bg-[#f59e0b]/15 text-[#f59e0b]'
-                  : 'border-white/10 text-white/38 hover:text-white',
-              ].join(' ')}
-            >
-              Replace
-            </button>
-          </div>
-          <p className="text-[10px] text-white/32">
-            {applyMode === 'append'
-              ? '既存の To Do を残したまま、AI候補を不足分だけ追加します。'
-              : '朝/夜の To Do セクションを AI候補で入れ替えます。'}
-          </p>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saved}
-            className={['mt-2 w-full rounded-full border py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors',
-              saved
-                ? 'bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/30'
-                : 'bg-[#38bdf8]/20 text-[#38bdf8] border border-[#38bdf8]/30 hover:bg-[#38bdf8]/30',
-            ].join(' ')}>
-            {saved ? 'Saved' : 'Save suggestion'}
-          </button>
-          <button
-            type="button"
-            onClick={handleApplyToTodos}
-            className={['w-full rounded-full border py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors',
-              applied
-                ? 'bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]/30'
-                : 'bg-[#f59e0b]/15 text-[#f59e0b] border-[#f59e0b]/30 hover:bg-[#f59e0b]/25',
-            ].join(' ')}
-          >
-            {applied ? 'Applied to todos' : applyMode === 'replace' ? 'Replace todo sections' : 'Apply to todos'}
-          </button>
-        </div>
-      )}
-
-      {!suggestion && savedAiHabits && (
-        <div className="space-y-2 rounded-2xl border border-white/[0.06] bg-[#0f1726]/88 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/60">Saved suggestion</p>
-          <p className="text-xs text-white/32">
-            前回保存したAI候補を、現在の To Do 一覧へまとめて反映できます。
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setApplyMode('append')}
-              className={[
-                'rounded-xl border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors',
-                applyMode === 'append'
-                  ? 'border-[#38bdf8]/40 bg-[#38bdf8]/15 text-[#38bdf8]'
-                  : 'border-white/10 text-white/38 hover:text-white',
-              ].join(' ')}
-            >
-              Append
-            </button>
-            <button
-              type="button"
-              onClick={() => setApplyMode('replace')}
-              className={[
-                'rounded-xl border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors',
-                applyMode === 'replace'
-                  ? 'border-[#f59e0b]/40 bg-[#f59e0b]/15 text-[#f59e0b]'
-                  : 'border-white/10 text-white/38 hover:text-white',
-              ].join(' ')}
-            >
-              Replace
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={handleApplyToTodos}
-            className={['w-full rounded-full border py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors',
-              applied
-                ? 'bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]/30'
-                : 'bg-[#f59e0b]/15 text-[#f59e0b] border-[#f59e0b]/30 hover:bg-[#f59e0b]/25',
-            ].join(' ')}
-          >
-            {applied ? 'Applied to todos' : applyMode === 'replace' ? 'Replace with saved suggestion' : 'Apply saved suggestion'}
-          </button>
-        </div>
-      )}
-
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-          placeholder="例: 毎朝5時に起きて筋トレと英語をやりたい..."
-          className="flex-1 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
-          disabled={loading}
-        />
-        <button
-          type="button"
-          onClick={send}
-          disabled={loading || !input.trim()}
-          className="flex items-center gap-1.5 rounded-full border border-[#38bdf8]/30 bg-[#38bdf8]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#8ed8ff] disabled:opacity-30"
-        >
-          <AiMark />
-          Send
-        </button>
-      </div>
-
-      {history.length > 0 && (
-        <button type="button" onClick={clearHistory}
-          className="text-[10px] uppercase tracking-[0.16em] text-white/24 hover:text-white/45">
-          Reset conversation
-        </button>
-      )}
-    </div>
-  )
-}
 
 const TodoManager = () => {
   const [todos, setTodos] = useTodoDefinitions()
@@ -402,8 +17,8 @@ const TodoManager = () => {
   const [openSection, setOpenSection] = useState<HabitCategory | null>('identity')
   const [addingIn, setAddingIn] = useState<HabitCategory | null>(null)
   const [showHidden, setShowHidden] = useState(false)
-  // 編集中アイテム: id → { label, timing }
-  const [editing, setEditing] = useState<Record<string, { label: string; timing: HabitTiming }>>({})
+  // 編集中アイテム: id → { label, timing, field_type, monthly_target }
+  const [editing, setEditing] = useState<Record<string, { label: string; timing: HabitTiming; field_type: string; monthly_target: string }>>({})
 
   const updateDraft = (section: HabitCategory, key: 'label' | 'timing', value: string) =>
     setDrafts(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }))
@@ -434,7 +49,15 @@ const TodoManager = () => {
     setTodos(prev => prev.filter(t => t.id !== id))
 
   const startEdit = (item: TodoDefinition) =>
-    setEditing(prev => ({ ...prev, [item.id]: { label: item.label, timing: item.timing } }))
+    setEditing(prev => ({
+      ...prev,
+      [item.id]: {
+        label: item.label,
+        timing: item.timing,
+        field_type: item.field_type ?? 'checkbox',
+        monthly_target: item.monthly_target != null ? String(item.monthly_target) : '',
+      },
+    }))
 
   const cancelEdit = (id: string) =>
     setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
@@ -442,7 +65,14 @@ const TodoManager = () => {
   const saveEdit = (id: string) => {
     const e = editing[id]
     if (!e?.label.trim()) return
-    setTodos(prev => prev.map(t => t.id === id ? { ...t, label: e.label.trim(), timing: e.timing } : t))
+    const mt = parseInt(e.monthly_target, 10)
+    setTodos(prev => prev.map(t => t.id === id ? {
+      ...t,
+      label: e.label.trim(),
+      timing: e.timing,
+      field_type: e.field_type as TaskFieldType,
+      monthly_target: !isNaN(mt) && mt > 0 ? mt : undefined,
+    } : t))
     cancelEdit(id)
   }
 
@@ -503,39 +133,69 @@ const TodoManager = () => {
                         <div key={item.id} className="group py-2.5 px-1">
                           {isEditing ? (
                             /* ── 編集モード ── */
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={ed.label}
-                                onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], label: e.target.value } }))}
-                                onKeyDown={e => { if (e.key === 'Enter') saveEdit(item.id); if (e.key === 'Escape') cancelEdit(item.id) }}
-                                autoFocus
-                                className="flex-1 rounded-xl border border-white/[0.12] bg-[#08111c] px-3 py-1.5 text-sm text-white/88 placeholder-white/20 focus:border-white/22 focus:outline-none"
-                              />
-                              <select
-                                value={ed.timing}
-                                onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], timing: e.target.value as HabitTiming } }))}
-                                className="rounded-xl border border-white/[0.08] bg-[#08111c] px-2 py-1.5 text-[11px] text-white/55 focus:outline-none"
-                              >
-                                <option value="morning">朝</option>
-                                <option value="evening">夜</option>
-                                <option value="anytime">常時</option>
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => saveEdit(item.id)}
-                                className="shrink-0 rounded-xl border px-3 py-1.5 text-[11px] font-semibold"
-                                style={{ borderColor: `${section.accent}35`, backgroundColor: `${section.accent}10`, color: section.accent }}
-                              >
-                                保存
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => cancelEdit(item.id)}
-                                className="shrink-0 px-1 text-sm text-white/22 hover:text-white/50"
-                              >
-                                ×
-                              </button>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={ed.label}
+                                  onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], label: e.target.value } }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') saveEdit(item.id); if (e.key === 'Escape') cancelEdit(item.id) }}
+                                  autoFocus
+                                  className="flex-1 rounded-xl border border-white/[0.12] bg-[#08111c] px-3 py-1.5 text-sm text-white/88 placeholder-white/20 focus:border-white/22 focus:outline-none"
+                                />
+                                <select
+                                  value={ed.timing}
+                                  onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], timing: e.target.value as HabitTiming } }))}
+                                  className="rounded-xl border border-white/[0.08] bg-[#08111c] px-2 py-1.5 text-[11px] text-white/55 focus:outline-none"
+                                >
+                                  <option value="morning">朝</option>
+                                  <option value="evening">夜</option>
+                                  <option value="anytime">常時</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => saveEdit(item.id)}
+                                  className="shrink-0 rounded-xl border px-3 py-1.5 text-[11px] font-semibold"
+                                  style={{ borderColor: `${section.accent}35`, backgroundColor: `${section.accent}10`, color: section.accent }}
+                                >
+                                  保存
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => cancelEdit(item.id)}
+                                  className="shrink-0 px-1 text-sm text-white/22 hover:text-white/50"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-3 pl-1">
+                                <select
+                                  value={ed.field_type}
+                                  onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], field_type: e.target.value } }))}
+                                  className="rounded-lg border border-white/[0.08] bg-[#08111c] px-2 py-1 text-[10px] text-white/50 focus:outline-none"
+                                >
+                                  <option value="checkbox">チェック</option>
+                                  <option value="number">数値</option>
+                                  <option value="percent">%</option>
+                                  <option value="select">選択</option>
+                                  <option value="text">テキスト</option>
+                                  <option value="text-ai">テキスト+AI</option>
+                                  <option value="url">URL</option>
+                                </select>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-white/30">月目標</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="31"
+                                    value={ed.monthly_target}
+                                    onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], monthly_target: e.target.value } }))}
+                                    placeholder="–"
+                                    className="w-14 rounded-lg border border-white/[0.08] bg-[#08111c] px-2 py-1 text-[10px] text-white/55 focus:outline-none"
+                                  />
+                                  <span className="text-[10px] text-white/25">回/月</span>
+                                </div>
+                              </div>
                             </div>
                           ) : (
                             /* ── 表示モード ── */
@@ -662,7 +322,7 @@ const TodoManager = () => {
                     type="button"
                     onClick={() => deleteTodo(item.id)}
                     title="完全削除"
-                    className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                    className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/35 transition-all hover:bg-red-500/10 hover:text-red-400"
                   >
                     ×
                   </button>
@@ -730,48 +390,6 @@ const ProfileSettings = () => {
 }
 
 // ─── 体重目標設定 ──────────────────────────────────────────────
-
-const WeightTargetSettings = () => {
-  const [value, setValue] = useState<string>(
-    () => localStorage.getItem('settings:weight-target') ?? '72.9'
-  )
-  const [saved, setSaved] = useState(false)
-
-  const handleSave = () => {
-    const num = parseFloat(value)
-    if (!isNaN(num) && num > 0) {
-      localStorage.setItem('settings:weight-target', String(num))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-    }
-  }
-
-  return (
-    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">体重目標</p>
-      <p className="mt-1 text-[11px] text-white/38">Morning Tab の記録タブに表示される目標体重を設定します</p>
-      <div className="mt-3 flex items-center gap-2">
-        <input
-          type="number"
-          step="0.1"
-          min="30"
-          max="200"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          className="w-24 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-[#7dd3fc]/40"
-        />
-        <span className="text-sm text-white/50">kg</span>
-        <button
-          type="button"
-          onClick={handleSave}
-          className="ml-auto rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-white/70 transition-all hover:border-white/25 hover:text-white"
-        >
-          {saved ? '保存済み ✓' : '保存'}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 // ─── 言語設定 ─────────────────────────────────────────────────
 
@@ -1202,16 +820,9 @@ export const SettingsPage = () => {
         <div className="px-4 pt-4 pb-2 space-y-3">
           <LangSettings />
           <ProfileSettings />
-          <WeightTargetSettings />
           <IntegrationsSettings />
           <JwtTokenSection />
           <ApiKeySettings />
-          <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
-            <p className="mb-3 text-[11px] text-white/34">
-              「なりたい姿」や「やりたいこと」を入力すると、朝・夜の習慣リスト候補をAIが提案します。
-            </p>
-            <AiSetupChat />
-          </div>
         </div>
       )}
     </div>

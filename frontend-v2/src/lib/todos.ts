@@ -33,6 +33,7 @@ export interface TodoDefinition {
   section: HabitCategory   // 旧フィールド名は維持。値が新カテゴリ値になる
   timing: HabitTiming      // 新フィールド（旧 section から分離）
   minutes?: number
+  monthly_target?: number
   isMust?: boolean
   is_active: boolean
   field_type?: TaskFieldType
@@ -77,7 +78,7 @@ export const HABIT_CATEGORIES: Array<{ id: HabitCategory; label: string; accent:
   { id: 'growth',   label: 'Growth',   accent: '#22c55e', desc: '成長エンジン' },
   { id: 'body',     label: 'Body',     accent: '#38bdf8', desc: '身体メンテ' },
   { id: 'mind',     label: 'Mind',     accent: '#a78bfa', desc: '精神儀式' },
-  { id: 'system',   label: 'System',   accent: '#f59e0b', desc: 'システム運用' },
+  { id: 'system',   label: 'System',   accent: '#f59e0b', desc: '計画・管理' },
 ]
 
 export const HABIT_TIMINGS: Array<{ id: HabitTiming; label: string }> = [
@@ -152,6 +153,7 @@ export const useTodoDefinitions = (): readonly [
           section: (r.section as HabitCategory) ?? 'system',
           timing: ((r as { timing?: string }).timing as HabitTiming) ?? 'morning',
           minutes: r.minutes ?? undefined,
+          monthly_target: (r as { monthly_target?: number }).monthly_target ?? undefined,
           isMust: r.is_must ?? false,
           is_active: r.is_active,
           field_type: (r.field_type as TaskFieldType) ?? undefined,
@@ -178,6 +180,7 @@ export const useTodoDefinitions = (): readonly [
         section: t.section,
         timing: t.timing ?? 'morning',
         minutes: t.minutes ?? null,
+        monthly_target: t.monthly_target ?? null,
         is_must: t.isMust ?? false,
         is_active: t.is_active,
         display_order: i,
