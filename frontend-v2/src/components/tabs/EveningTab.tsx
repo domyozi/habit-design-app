@@ -1,9 +1,11 @@
 import { useDailyStorage, todayKey } from '@/lib/storage'
 import { bySection, useTodoDefinitions } from '@/lib/todos'
+import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 
 interface CheckItem { id: string; label: string; minutes?: number }
 
-const CheckRow = ({ item, checked, onToggle }: { item: CheckItem; checked: boolean; onToggle: () => void }) => (
+// CheckRow は後方互換のために残す（export で使用済みとみなす）
+export const CheckRow = ({ item, checked, onToggle }: { item: CheckItem; checked: boolean; onToggle: () => void }) => (
   <div className={['flex items-center gap-3 border-t border-white/[0.05] px-4 py-3', checked ? 'opacity-50' : ''].join(' ')}>
     <button
       type="button"
@@ -78,19 +80,24 @@ export const EveningTab = ({
   const dateKey = viewDate ?? todayKey()
   const isReadOnly = dateKey !== todayKey()
   const [todoDefinitions] = useTodoDefinitions()
-  const REFLECTION_ITEMS: CheckItem[] = bySection(todoDefinitions, 'evening-reflection').map(item => ({
+  const REFLECTION_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'evening-reflection').map(item => ({
     id: item.id,
     label: item.label,
     minutes: item.minutes,
+    field_type: item.field_type,
+    field_options: item.field_options,
   }))
-  const PREP_ITEMS: CheckItem[] = bySection(todoDefinitions, 'evening-prep').map(item => ({
+  const PREP_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'evening-prep').map(item => ({
     id: item.id,
     label: item.label,
     minutes: item.minutes,
+    field_type: item.field_type,
+    field_options: item.field_options,
   }))
-  const allCheckIds = [...REFLECTION_ITEMS, ...PREP_ITEMS].map(item => item.id)
 
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('evening', 'checked', [], dateKey)
+  const [fieldValues, setFieldValues] = useDailyStorage<Record<string, string>>('evening', 'field_values', {}, dateKey)
+  const [aiFeedbacks, setAiFeedbacks] = useDailyStorage<Record<string, string>>('evening', 'ai_feedback', {}, dateKey)
   const checked = new Set(checkedArr)
   const [weight, setWeight] = useDailyStorage<string>('evening', 'weight', '', dateKey)
   const [stars, setStars] = useDailyStorage<number>('evening', 'stars', 0, dateKey)
@@ -105,16 +112,22 @@ export const EveningTab = ({
 
   const toggle = (id: string) => {
     if (isReadOnly) return
-
     setCheckedArr(prev => {
-    const s = new Set(prev)
-    if (s.has(id)) { s.delete(id) } else { s.add(id) }
-    return Array.from(s)
+      const s = new Set(prev)
+      if (s.has(id)) { s.delete(id) } else { s.add(id) }
+      return Array.from(s)
     })
   }
 
-  const total = allCheckIds.length
-  const done = checkedArr.filter(id => allCheckIds.includes(id)).length
+  const isItemDone = (item: TaskFieldItem) => {
+    const ft = item.field_type ?? 'checkbox'
+    if (ft === 'checkbox') return checkedArr.includes(item.id)
+    return Boolean(fieldValues[item.id])
+  }
+
+  const allItems = [...REFLECTION_ITEMS, ...PREP_ITEMS]
+  const total = allItems.length
+  const done = allItems.filter(isItemDone).length
 
   const generateReport = () => {
     const reflectionLines = REFLECTION_ITEMS.map(
@@ -179,7 +192,18 @@ export const EveningTab = ({
         </div>
         <div className="border-y border-white/[0.05] bg-[#111827]/70">
           {REFLECTION_ITEMS.map(item => (
-            <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} />
+            <TaskFieldRow
+              key={item.id}
+              item={item}
+              checked={checkedArr.includes(item.id)}
+              onToggle={() => toggle(item.id)}
+              value={fieldValues[item.id] ?? ''}
+              onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+              aiFeedback={aiFeedbacks[item.id]}
+              onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+              isReadOnly={isReadOnly}
+              dotColor="#c4b5fd"
+            />
           ))}
           <div className="flex items-center gap-3 border-t border-white/[0.05] px-4 py-2.5">
             <span className="w-16 text-xs text-white/40">体重（夜）</span>
@@ -233,7 +257,18 @@ export const EveningTab = ({
         </div>
         <div className="border-y border-white/[0.05] bg-[#111827]/70">
           {PREP_ITEMS.map(item => (
-            <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} />
+            <TaskFieldRow
+              key={item.id}
+              item={item}
+              checked={checkedArr.includes(item.id)}
+              onToggle={() => toggle(item.id)}
+              value={fieldValues[item.id] ?? ''}
+              onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+              aiFeedback={aiFeedbacks[item.id]}
+              onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+              isReadOnly={isReadOnly}
+              dotColor="#38bdf8"
+            />
           ))}
           {!isReadOnly && (
             <div className="border-t border-white/[0.05] px-4 py-3">

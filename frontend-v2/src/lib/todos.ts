@@ -5,6 +5,24 @@ import { fetchTodoDefinitions, saveTodoDefinitions } from '@/lib/api'
 
 export type TodoSection = 'morning-must' | 'morning-routine' | 'evening-reflection' | 'evening-prep'
 
+export type TaskFieldType =
+  | 'checkbox'
+  | 'number'
+  | 'percent'
+  | 'select'
+  | 'radio'
+  | 'text'
+  | 'text-ai'
+  | 'url'
+
+export interface TaskFieldOptions {
+  choices?: string[]
+  unit?: string
+  placeholder?: string
+  min?: number
+  max?: number
+}
+
 export interface TodoDefinition {
   id: string
   label: string
@@ -12,6 +30,8 @@ export interface TodoDefinition {
   minutes?: number
   isMust?: boolean
   is_active: boolean
+  field_type?: TaskFieldType
+  field_options?: TaskFieldOptions
 }
 
 export const DEFAULT_TODO_DEFINITIONS: TodoDefinition[] = [
@@ -77,6 +97,8 @@ export const useTodoDefinitions = (): readonly [
                 is_must: t.isMust ?? false,
                 is_active: t.is_active,
                 display_order: i,
+                field_type: t.field_type ?? 'checkbox',
+                field_options: (t.field_options ?? {}) as Record<string, unknown>,
               }))
             ).catch(() => {/* silent */})
           }
@@ -90,6 +112,8 @@ export const useTodoDefinitions = (): readonly [
           minutes: r.minutes ?? undefined,
           isMust: r.is_must ?? false,
           is_active: r.is_active,
+          field_type: (r.field_type as TaskFieldType) ?? undefined,
+          field_options: (r.field_options as TaskFieldOptions) ?? undefined,
         }))
         setTodos(merged)
       })
@@ -114,6 +138,8 @@ export const useTodoDefinitions = (): readonly [
         is_must: t.isMust ?? false,
         is_active: t.is_active,
         display_order: i,
+        field_type: t.field_type ?? 'checkbox',
+        field_options: (t.field_options ?? {}) as Record<string, unknown>,
       }))
     ).catch(() => {/* silent */})
   }

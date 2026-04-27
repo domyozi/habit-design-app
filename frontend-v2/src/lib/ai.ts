@@ -508,6 +508,21 @@ SMART原則（具体的・測定可能・達成可能・関連性・期限）を
   )
 }
 
+// ─── タスクフィードバック生成 ──────────────────────────────────
+
+export async function generateTaskFeedback(
+  taskLabel: string,
+  userInput: string,
+): Promise<string | null> {
+  const system = `あなたは習慣設計アプリのAIコーチです。
+ユーザーがタスクに記録した内容に対して、50〜100字の短いフィードバックを日本語で返してください。
+励まし・気づき・次のアクションのいずれかにフォーカスしてください。
+プレーンテキストのみ返してください（JSONやMarkdown不要）。`
+  const prompt = `タスク: ${taskLabel}\nユーザーの記録: ${userInput}`
+  const response = await callClaude([{ role: 'user', content: prompt }], system, 150)
+  return response?.trim() ?? null
+}
+
 // ─── インテーク質問生成 ────────────────────────────────────────
 
 export interface IntakeQuestion {

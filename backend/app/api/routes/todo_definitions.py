@@ -55,6 +55,8 @@ async def upsert_todo_definitions(
             "is_must": bool(item.get("is_must", False)),
             "is_active": bool(item.get("is_active", True)),
             "display_order": int(item.get("display_order", 0)),
+            "field_type": item.get("field_type", "checkbox"),
+            "field_options": item.get("field_options", {}),
         }
         records.append(record)
 
@@ -74,7 +76,7 @@ async def patch_todo_definition(
 ):
     supabase = get_supabase()
 
-    allowed_fields = {"label", "section", "minutes", "is_must", "is_active", "display_order"}
+    allowed_fields = {"label", "section", "minutes", "is_must", "is_active", "display_order", "field_type", "field_options"}
     update_data = {k: v for k, v in payload.items() if k in allowed_fields}
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")

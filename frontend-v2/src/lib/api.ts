@@ -339,6 +339,8 @@ export interface TodoDefinitionRecord {
   is_must?: boolean
   is_active: boolean
   display_order?: number
+  field_type?: string
+  field_options?: Record<string, unknown>
 }
 
 /** GET /api/todo-definitions */

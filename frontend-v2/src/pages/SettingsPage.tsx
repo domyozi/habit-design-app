@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
-import { TODO_SECTIONS, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type TodoSection } from '@/lib/todos'
+import { TODO_SECTIONS, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type TodoSection, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 
 // AI設定支援で生成される習慣アイテム
 interface AiHabitItem {
@@ -386,9 +386,28 @@ const TodoManager = () => {
     'evening-reflection': { label: '', minutes: '' },
     'evening-prep': { label: '', minutes: '' },
   })
+  const [newFieldType, setNewFieldType] = useState<TaskFieldType>('checkbox')
+  const [newChoices, setNewChoices] = useState('')
+  const [newUnit, setNewUnit] = useState('')
+  const [newPlaceholder, setNewPlaceholder] = useState('')
+  const [expandedSection, setExpandedSection] = useState<TodoSection | null>(null)
 
   const updateDraft = (section: TodoSection, key: 'label' | 'minutes', value: string) => {
     setDrafts(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }))
+  }
+
+  const buildFieldOptions = (): TaskFieldOptions | undefined => {
+    if (newFieldType === 'select' || newFieldType === 'radio') {
+      const choices = newChoices.split(',').map(s => s.trim()).filter(Boolean)
+      return choices.length > 0 ? { choices } : undefined
+    }
+    if (newFieldType === 'number' || newFieldType === 'percent') {
+      return newUnit ? { unit: newUnit } : undefined
+    }
+    if (['text', 'text-ai', 'url'].includes(newFieldType)) {
+      return newPlaceholder ? { placeholder: newPlaceholder } : undefined
+    }
+    return undefined
   }
 
   const addTodo = (section: TodoSection) => {
@@ -403,10 +422,17 @@ const TodoManager = () => {
       minutes: draft.minutes ? Number(draft.minutes) : undefined,
       isMust: section === 'morning-must',
       is_active: true,
+      field_type: newFieldType !== 'checkbox' ? newFieldType : undefined,
+      field_options: buildFieldOptions(),
     }
 
     setTodos(prev => [...prev, newTodo])
     setDrafts(prev => ({ ...prev, [section]: { label: '', minutes: '' } }))
+    setNewFieldType('checkbox')
+    setNewChoices('')
+    setNewUnit('')
+    setNewPlaceholder('')
+    setExpandedSection(null)
   }
 
   const hideTodo = (id: string) => {
@@ -468,30 +494,93 @@ const TodoManager = () => {
                 )}
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={draft.label}
-                  onChange={e => updateDraft(section.id, 'label', e.target.value)}
-                  placeholder="新しい To Do 名"
-                  className="flex-1 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  value={draft.minutes}
-                  onChange={e => updateDraft(section.id, 'minutes', e.target.value)}
-                  placeholder="分"
-                  className="w-20 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
-                />
-                <button
-                  type="button"
-                  onClick={() => addTodo(section.id)}
-                  disabled={!draft.label.trim()}
-                  className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-30"
-                >
-                  Add
-                </button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={draft.label}
+                    onChange={e => updateDraft(section.id, 'label', e.target.value)}
+                    placeholder="新しい To Do 名"
+                    className="flex-1 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    value={draft.minutes}
+                    onChange={e => updateDraft(section.id, 'minutes', e.target.value)}
+                    placeholder="分"
+                    className="w-20 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setExpandedSection(expandedSection === section.id ? null : section.id)}
+                    className="rounded-full border border-white/10 px-2.5 py-2 text-[11px] text-white/40 hover:text-white/70"
+                  >
+                    {expandedSection === section.id ? '▲' : '▼'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addTodo(section.id)}
+                    disabled={!draft.label.trim()}
+                    className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-30"
+                  >
+                    Add
+                  </button>
+                </div>
+                {expandedSection === section.id && (
+                  <div className="space-y-2 rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">フィールドタイプ</p>
+                      <select
+                        value={newFieldType}
+                        onChange={e => setNewFieldType(e.target.value as TaskFieldType)}
+                        className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1 text-sm text-white/85"
+                      >
+                        <option value="checkbox">チェックボックス</option>
+                        <option value="number">数値入力</option>
+                        <option value="percent">パーセント（%）</option>
+                        <option value="select">選択リスト</option>
+                        <option value="radio">ラジオボタン</option>
+                        <option value="text">テキスト入力</option>
+                        <option value="text-ai">テキスト（AI分析）</option>
+                        <option value="url">URL</option>
+                      </select>
+                    </div>
+                    {(newFieldType === 'select' || newFieldType === 'radio') && (
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">選択肢</p>
+                        <input
+                          value={newChoices}
+                          onChange={e => setNewChoices(e.target.value)}
+                          placeholder="選択肢をコンマ区切りで入力（例: 最高, 良い, 普通, 悪い）"
+                          className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1.5 text-sm text-white/85 placeholder-white/25"
+                        />
+                      </div>
+                    )}
+                    {(newFieldType === 'number' || newFieldType === 'percent') && (
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">単位</p>
+                        <input
+                          value={newUnit}
+                          onChange={e => setNewUnit(e.target.value)}
+                          placeholder="単位（例: kg, 回）"
+                          className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1.5 text-sm text-white/85 placeholder-white/25"
+                        />
+                      </div>
+                    )}
+                    {(newFieldType === 'text' || newFieldType === 'text-ai' || newFieldType === 'url') && (
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">プレースホルダー</p>
+                        <input
+                          value={newPlaceholder}
+                          onChange={e => setNewPlaceholder(e.target.value)}
+                          placeholder="プレースホルダーテキスト（任意）"
+                          className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1.5 text-sm text-white/85 placeholder-white/25"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {inactiveItems.length > 0 && (

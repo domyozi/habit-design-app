@@ -3,6 +3,7 @@ import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type O
 import { bySection, useTodoDefinitions, createTodoId } from '@/lib/todos'
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult } from '@/lib/ai'
 import { getHabits, logHabit, type HabitItem } from '@/lib/api'
+import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 
 // ─── 型 ───────────────────────────────────────────────────────
 interface CheckItem {
@@ -86,7 +87,8 @@ const StarRating = ({ value, onChange, label }: StarRatingProps) => (
   </div>
 )
 
-const CheckRow = ({
+// CheckRow は後方互換のために残す（export で使用済みとみなす）
+export const CheckRow = ({
   item,
   checked,
   onToggle,
@@ -244,25 +246,25 @@ export const MorningTab = ({
   const [briefError, setBriefError] = useState<string | null>(null)
   const [editingBoss, setEditingBoss] = useState(false)
   const [editBossText, setEditBossText] = useState('')
-  const MUST_ITEMS: CheckItem[] = bySection(todoDefinitions, 'morning-must').map(item => ({
+  const MUST_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'morning-must').map(item => ({
     id: item.id,
     label: item.label,
     isMust: item.isMust,
     minutes: item.minutes,
+    field_type: item.field_type,
+    field_options: item.field_options,
   }))
-  const ROUTINE_ITEMS: CheckItem[] = bySection(todoDefinitions, 'morning-routine').map(item => ({
+  const ROUTINE_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'morning-routine').map(item => ({
     id: item.id,
     label: item.label,
     minutes: item.minutes,
+    field_type: item.field_type,
+    field_options: item.field_options,
   }))
-  const visibleIds = new Set([...MUST_ITEMS, ...ROUTINE_ITEMS].map(item => item.id))
-
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('morning', 'checked', [], dateKey)
+  const [fieldValues, setFieldValues] = useDailyStorage<Record<string, string>>('morning', 'field_values', {}, dateKey)
+  const [aiFeedbacks, setAiFeedbacks] = useDailyStorage<Record<string, string>>('morning', 'ai_feedback', {}, dateKey)
   const checked = new Set(checkedArr)
-  const setChecked = (fn: (prev: Set<string>) => Set<string>) => {
-    if (isReadOnly) return
-    setCheckedArr(prev => Array.from(fn(new Set(prev))))
-  }
   const [weight, setWeight] = useDailyStorage<string>('morning', 'weight', '', dateKey)
   const [condition, setCondition] = useDailyStorage<number>('morning', 'condition', 0, dateKey)
   const [journal, setJournal] = useDailyStorage<string>('morning', 'journal', '', dateKey)
@@ -301,16 +303,13 @@ export const MorningTab = ({
     })
   }
 
-  const toggle = (id: string) => {
-    setChecked(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) { next.delete(id) } else { next.add(id) }
-      return next
-    })
+  const isItemDone = (item: TaskFieldItem) => {
+    const ft = item.field_type ?? 'checkbox'
+    if (ft === 'checkbox') return checkedArr.includes(item.id)
+    return Boolean(fieldValues[item.id])
   }
-
   const total = MUST_ITEMS.length + ROUTINE_ITEMS.length
-  const done = checkedArr.filter(id => visibleIds.has(id)).length
+  const done = [...MUST_ITEMS, ...ROUTINE_ITEMS].filter(isItemDone).length
 
   const existingLabels = [...MUST_ITEMS, ...ROUTINE_ITEMS].map(i => i.label)
 
@@ -643,11 +642,27 @@ export const MorningTab = ({
               title="Core tasks"
               time="05:00–06:30"
               color="must"
-              done={MUST_ITEMS.filter(i => checked.has(i.id)).length}
+              done={MUST_ITEMS.filter(isItemDone).length}
               total={MUST_ITEMS.length}
             >
               {MUST_ITEMS.map(item => (
-                <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} dotColor="#7dd3fc" />
+                <TaskFieldRow
+                  key={item.id}
+                  item={item}
+                  checked={checkedArr.includes(item.id)}
+                  onToggle={() => {
+                    if (isReadOnly) return
+                    const s = new Set(checkedArr)
+                    s.has(item.id) ? s.delete(item.id) : s.add(item.id)
+                    setCheckedArr([...s])
+                  }}
+                  value={fieldValues[item.id] ?? ''}
+                  onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+                  aiFeedback={aiFeedbacks[item.id]}
+                  onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+                  isReadOnly={isReadOnly}
+                  dotColor="#7dd3fc"
+                />
               ))}
             </Section>
           )}
@@ -657,11 +672,27 @@ export const MorningTab = ({
               title="Preparation sequence"
               time="06:30–07:30"
               color="routine"
-              done={ROUTINE_ITEMS.filter(i => checked.has(i.id)).length}
+              done={ROUTINE_ITEMS.filter(isItemDone).length}
               total={ROUTINE_ITEMS.length}
             >
               {ROUTINE_ITEMS.map(item => (
-                <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} dotColor="#f59e0b" />
+                <TaskFieldRow
+                  key={item.id}
+                  item={item}
+                  checked={checkedArr.includes(item.id)}
+                  onToggle={() => {
+                    if (isReadOnly) return
+                    const s = new Set(checkedArr)
+                    s.has(item.id) ? s.delete(item.id) : s.add(item.id)
+                    setCheckedArr([...s])
+                  }}
+                  value={fieldValues[item.id] ?? ''}
+                  onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+                  aiFeedback={aiFeedbacks[item.id]}
+                  onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+                  isReadOnly={isReadOnly}
+                  dotColor="#c4b5fd"
+                />
               ))}
             </Section>
           )}

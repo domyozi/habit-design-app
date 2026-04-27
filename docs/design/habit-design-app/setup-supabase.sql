@@ -359,3 +359,8 @@ CREATE TABLE IF NOT EXISTS public.user_context (
 );
 ALTER TABLE public.user_context ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "user_context: own rows only" ON public.user_context FOR ALL USING (auth.uid() = user_id);
+
+-- todo_definitions: フィールドタイプ拡張
+ALTER TABLE public.todo_definitions
+  ADD COLUMN IF NOT EXISTS field_type text DEFAULT 'checkbox',
+  ADD COLUMN IF NOT EXISTS field_options jsonb DEFAULT '{}';
