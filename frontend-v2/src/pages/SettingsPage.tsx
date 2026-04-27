@@ -787,14 +787,159 @@ const IntegrationsSettings = () => {
   )
 }
 
+// ─── メモリビュー ──────────────────────────────────────────────
+
+const MemoryView = () => {
+  const [ctx, updateCtx] = useUserContext()
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+
+  const startEdit = (field: string, current: string) => {
+    setEditing(field)
+    setDraft(current)
+  }
+
+  const save = async (field: string) => {
+    await updateCtx({ [field]: draft })
+    setEditing(null)
+  }
+
+  if (!ctx) return (
+    <div className="px-4 pt-8 text-center text-sm text-white/30">
+      メモリデータを読み込み中…
+    </div>
+  )
+
+  const fields: Array<{ key: string; label: string; desc: string; multiline?: boolean }> = [
+    { key: 'identity',       label: 'アイデンティティ',   desc: 'あなたはどんな人物か',          multiline: true },
+    { key: 'goal_summary',   label: '目標サマリー',       desc: '現在追いかけているゴール',       multiline: true },
+    { key: 'patterns',       label: '行動パターン',       desc: 'AIが観察したあなたの傾向',       multiline: true },
+    { key: 'values_keywords',label: '価値観キーワード',   desc: 'コアバリューを表すキーワード' },
+  ]
+
+  const getDisplay = (key: string): string => {
+    const val = (ctx as Record<string, unknown>)[key]
+    if (!val) return ''
+    if (Array.isArray(val)) return val.join(', ')
+    return String(val)
+  }
+
+  const insightEntries = ctx.insights ? Object.entries(ctx.insights as Record<string, unknown>) : []
+
+  return (
+    <div className="px-4 pt-4 pb-6 space-y-3">
+      <p className="text-[10px] text-white/30 uppercase tracking-[0.2em]">
+        AI コーチがあなたについて記憶している情報です。編集・削除できます。
+      </p>
+
+      {fields.map(f => {
+        const value = getDisplay(f.key)
+        const isEditing = editing === f.key
+        return (
+          <div key={f.key} className="rounded-[20px] border border-white/[0.06] bg-[#111827]/78 px-4 py-3.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8da4c3]">{f.label}</p>
+                <p className="mt-0.5 text-[10px] text-white/28">{f.desc}</p>
+              </div>
+              {!isEditing && (
+                <button
+                  type="button"
+                  onClick={() => startEdit(f.key, value)}
+                  className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/30 hover:bg-white/[0.06] hover:text-white/60"
+                >
+                  ✎
+                </button>
+              )}
+            </div>
+
+            {isEditing ? (
+              <div className="mt-2 space-y-2">
+                {f.multiline ? (
+                  <textarea
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    rows={3}
+                    autoFocus
+                    className="w-full resize-none rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 focus:outline-none"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    autoFocus
+                    className="w-full rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 focus:outline-none"
+                  />
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void save(f.key)}
+                    className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-4 py-1.5 text-xs font-semibold text-[#7dd3fc]"
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void updateCtx({ [f.key]: null }); setEditing(null) }}
+                    className="rounded-full border border-red-500/20 px-4 py-1.5 text-xs text-red-400/70 hover:border-red-500/40"
+                  >
+                    削除
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(null)}
+                    className="ml-auto px-2 text-sm text-white/25 hover:text-white/50"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-relaxed text-white/65 whitespace-pre-wrap">
+                {value || <span className="text-white/20 italic">未記録</span>}
+              </p>
+            )}
+          </div>
+        )
+      })}
+
+      {insightEntries.length > 0 && (
+        <div className="rounded-[20px] border border-white/[0.06] bg-[#111827]/78 px-4 py-3.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8da4c3]">AI インサイト</p>
+          <p className="mt-0.5 text-[10px] text-white/28">コーチングセッションから得られた洞察</p>
+          <div className="mt-3 space-y-2">
+            {insightEntries.map(([k, v]) => (
+              <div key={k} className="flex gap-2">
+                <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-white/28 pt-0.5 w-24">{k}</span>
+                <span className="text-xs text-white/60">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {insightEntries.length === 0 && fields.every(f => !getDisplay(f.key)) && (
+        <div className="rounded-[20px] border border-dashed border-white/[0.08] px-4 py-8 text-center">
+          <p className="text-sm text-white/25">まだメモリがありません</p>
+          <p className="mt-1 text-[11px] text-white/18">AIコーチと会話すると自動的に蓄積されます</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export const SettingsPage = () => {
-  const [activeTab, setActiveTab] = useState<'tasks' | 'ai'>('tasks')
+  const [activeTab, setActiveTab] = useState<'tasks' | 'ai' | 'memory'>('tasks')
+
+  const tabLabel = { tasks: 'タスク定義', ai: 'AI・設定', memory: 'メモリ' }
 
   return (
     <div className="pb-6">
       {/* タブヘッダー */}
       <div className="flex gap-0 border-b border-white/[0.06] px-4 pt-2">
-        {(['tasks', 'ai'] as const).map(t => (
+        {(['tasks', 'ai', 'memory'] as const).map(t => (
           <button
             key={t}
             type="button"
@@ -806,7 +951,7 @@ export const SettingsPage = () => {
                 : 'text-white/40 hover:text-white/70',
             ].join(' ')}
           >
-            {t === 'tasks' ? 'タスク定義' : 'AI・設定'}
+            {tabLabel[t]}
           </button>
         ))}
       </div>
@@ -829,6 +974,8 @@ export const SettingsPage = () => {
           <ApiKeySettings />
         </div>
       )}
+
+      {activeTab === 'memory' && <MemoryView />}
     </div>
   )
 }
