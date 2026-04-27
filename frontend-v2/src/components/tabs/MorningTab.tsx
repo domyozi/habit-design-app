@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type OpsTask } from '@/lib/storage'
+import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } from '@/lib/todos'
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult } from '@/lib/ai'
 import { getHabits, logHabit, type HabitItem } from '@/lib/api'
@@ -545,8 +546,9 @@ export const MorningTab = ({
                 type="button"
                 onClick={handleGenerateBrief}
                 disabled={briefLoading}
-                className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-40"
               >
+                <AiMark />
                 {briefLoading ? 'Generating…' : brief ? 'Regenerate' : 'Generate →'}
               </button>
             )}
@@ -803,8 +805,9 @@ export const MorningTab = ({
             <button
               type="button"
               onClick={generateReport}
-              className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff]"
+              className="flex items-center gap-1.5 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff]"
             >
+              <AiMark />
               Generate report
             </button>
             <button

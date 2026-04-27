@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
+import { AiMark } from '@/components/ui/AiMark'
 import { useUserContext } from '@/lib/user-context'
 import type { AppLang } from '@/lib/lang'
 
@@ -366,8 +367,9 @@ const AiSetupChat = () => {
           type="button"
           onClick={send}
           disabled={loading || !input.trim()}
-          className="rounded-full border border-[#38bdf8]/30 bg-[#38bdf8]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#8ed8ff] disabled:opacity-30"
+          className="flex items-center gap-1.5 rounded-full border border-[#38bdf8]/30 bg-[#38bdf8]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#8ed8ff] disabled:opacity-30"
         >
+          <AiMark />
           Send
         </button>
       </div>
@@ -890,8 +892,9 @@ const AiTaskCreator = () => {
           type="button"
           onClick={() => void parse()}
           disabled={loading || !input.trim()}
-          className="self-end rounded-full border border-[#a78bfa]/30 bg-[#a78bfa]/12 px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#c4b5fd] disabled:opacity-30"
+          className="flex items-center gap-1.5 self-end rounded-full border border-[#a78bfa]/30 bg-[#a78bfa]/12 px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#c4b5fd] disabled:opacity-30"
         >
+          <AiMark />
           {loading ? '…' : 'AI'}
         </button>
       </div>

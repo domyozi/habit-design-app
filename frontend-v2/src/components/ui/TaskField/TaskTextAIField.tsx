@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { generateTaskFeedback } from '@/lib/ai'
 import type { TaskFieldItem } from './index'
+import { AiMark } from '@/components/ui/AiMark'
 
 interface TaskTextAIFieldProps {
   item: TaskFieldItem
@@ -65,8 +66,9 @@ export const TaskTextAIField = ({
               type="button"
               onClick={handleAI}
               disabled={loading}
-              className="flex-shrink-0 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#aee5ff] disabled:opacity-40"
+              className="flex flex-shrink-0 items-center gap-1 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#aee5ff] disabled:opacity-40"
             >
+              <AiMark size={9} />
               {loading ? '...' : 'AI分析'}
             </button>
           )}

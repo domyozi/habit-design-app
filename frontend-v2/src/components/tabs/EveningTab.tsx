@@ -1,4 +1,5 @@
 import { useDailyStorage, todayKey } from '@/lib/storage'
+import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 
@@ -319,7 +320,8 @@ export const EveningTab = ({
         <div className="flex gap-2">
           {!isReadOnly && (
           <button type="button" onClick={generateReport}
-            className="rounded-full border border-[#c4b5fd]/30 bg-[#c4b5fd]/12 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#ddd6fe]">
+            className="flex items-center gap-1.5 rounded-full border border-[#c4b5fd]/30 bg-[#c4b5fd]/12 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#ddd6fe]">
+            <AiMark />
             Generate report
           </button>
           )}
