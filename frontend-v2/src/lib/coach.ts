@@ -1,5 +1,21 @@
 import type { TabId } from '@/types'
 
+export interface UserContextSummary {
+  identity?: string
+  goal_summary?: string
+  patterns?: string
+}
+
+const buildUserContextBlock = (ctx?: UserContextSummary | null): string => {
+  if (!ctx || (!ctx.identity && !ctx.goal_summary && !ctx.patterns)) return ''
+  const lines = ['--- User Context (AI Memory) ---']
+  if (ctx.identity) lines.push(`Identity: ${ctx.identity}`)
+  if (ctx.goal_summary) lines.push(`Goal summary: ${ctx.goal_summary}`)
+  if (ctx.patterns) lines.push(`Patterns: ${ctx.patterns}`)
+  lines.push('---')
+  return '\n' + lines.join('\n')
+}
+
 export interface CoachAction {
   title: string
   detail: string
@@ -25,8 +41,9 @@ export const buildHomeCoachSnapshot = (params: {
   hasBoss: boolean
   bossCompleted: boolean
   eveningCheckedCount: number
+  userContext?: UserContextSummary | null
 }) => {
-  const { completionRate, todayDone, todayTotal, hasBoss, bossCompleted, eveningCheckedCount } = params
+  const { completionRate, todayDone, todayTotal, hasBoss, bossCompleted, eveningCheckedCount, userContext } = params
   const actions: CoachAction[] = []
   const risks: string[] = []
 
@@ -74,7 +91,7 @@ export const buildHomeCoachSnapshot = (params: {
 Completion rate: ${todayDone}/${todayTotal} (${completionRate}%)
 Primary target exists: ${hasBoss ? 'yes' : 'no'}
 Primary target completed: ${bossCompleted ? 'yes' : 'no'}
-Evening review count: ${eveningCheckedCount}
+Evening review count: ${eveningCheckedCount}${buildUserContextBlock(userContext)}
 
 今日の実行者向けコーチングブリーフを簡潔に生成してください。`,
   } satisfies CoachSnapshot
@@ -84,8 +101,9 @@ export const buildMonthlyCoachSnapshot = (params: {
   topWins: Array<{ label: string; actual: number; target: number }>
   underTarget: Array<{ label: string; actual: number; target: number }>
   activeGoalCount: number
+  userContext?: UserContextSummary | null
 }) => {
-  const { topWins, underTarget, activeGoalCount } = params
+  const { topWins, underTarget, activeGoalCount, userContext } = params
   const lead = topWins[0]
   const gap = underTarget[0]
 
@@ -125,7 +143,7 @@ export const buildMonthlyCoachSnapshot = (params: {
     aiPrompt: `Surface: Monthly analysis
 Top wins: ${topWins.map(item => `${item.label} ${item.actual}/${item.target}`).join(', ') || 'none'}
 Under target: ${underTarget.map(item => `${item.label} ${item.actual}/${item.target}`).join(', ') || 'none'}
-Active goal count: ${activeGoalCount}
+Active goal count: ${activeGoalCount}${buildUserContextBlock(userContext)}
 
 今月の実行重視のコーチングブリーフを生成してください。`,
   } satisfies CoachSnapshot
@@ -135,8 +153,9 @@ export const buildSettingsCoachSnapshot = (params: {
   activeTodoCount: number
   inactiveTodoCount: number
   hasSavedSuggestion: boolean
+  userContext?: UserContextSummary | null
 }) => {
-  const { activeTodoCount, inactiveTodoCount, hasSavedSuggestion } = params
+  const { activeTodoCount, inactiveTodoCount, hasSavedSuggestion, userContext } = params
 
   const actions: CoachAction[] = [
     {
@@ -169,7 +188,7 @@ export const buildSettingsCoachSnapshot = (params: {
     aiPrompt: `Surface: Settings
 Active todo count: ${activeTodoCount}
 Inactive todo count: ${inactiveTodoCount}
-Saved AI suggestion: ${hasSavedSuggestion ? 'yes' : 'no'}
+Saved AI suggestion: ${hasSavedSuggestion ? 'yes' : 'no'}${buildUserContextBlock(userContext)}
 
 習慣システム設定のコーチングブリーフを生成してください。`,
   } satisfies CoachSnapshot
@@ -178,8 +197,9 @@ Saved AI suggestion: ${hasSavedSuggestion ? 'yes' : 'no'}
 export const buildIdentityCoachSnapshot = (params: {
   criticalCount: number
   activeCount: number
+  userContext?: UserContextSummary | null
 }) => {
-  const { criticalCount, activeCount } = params
+  const { criticalCount, activeCount, userContext } = params
 
   return {
     heading: 'Coach panel',
@@ -201,7 +221,7 @@ export const buildIdentityCoachSnapshot = (params: {
     ]),
     aiPrompt: `Surface: Identity board
 Active goals: ${activeCount}
-Critical goals: ${criticalCount}
+Critical goals: ${criticalCount}${buildUserContextBlock(userContext)}
 
 アイデンティティと実行の整合ブリーフを生成してください。`,
   } satisfies CoachSnapshot

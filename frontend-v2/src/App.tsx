@@ -18,6 +18,7 @@ import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
 import { PrimaryTargetEditor, type TaskApplyMode } from '@/components/ui/PrimaryTargetEditor'
 import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSnapshot, buildSettingsCoachSnapshot, type CoachAction } from '@/lib/coach'
+import { useUserContext } from '@/lib/user-context'
 import { saveJournalEntry } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
 import type { JournalBriefResult } from '@/lib/ai'
@@ -227,6 +228,7 @@ function MainApp() {
   const { boss, setBoss, toggleCompleted } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
   const [currentOps, setOps] = useOpsStorage()
+  const [userContext, updateUserContext] = useUserContext()
   const [savedAiHabits] = useLocalStorage<unknown>('settings:ai:habits', null)
   const [goals] = useLocalStorage<Array<{ priority?: string; title?: string }>>('wannabe:goals', [])
   const [morningChecked, setMorningChecked] = useDailyStorage<string[]>('morning', 'checked', [])
@@ -310,28 +312,32 @@ function MainApp() {
         hasBoss: Boolean(bossValue),
         bossCompleted,
         eveningCheckedCount: eveningChecked.length,
+        userContext,
       })
     }
     if (tab === 'monthly' || tab === 'report') {
-      return buildMonthlyCoachSnapshot({ topWins, underTarget, activeGoalCount })
+      return buildMonthlyCoachSnapshot({ topWins, underTarget, activeGoalCount, userContext })
     }
     if (tab === 'settings') {
       return buildSettingsCoachSnapshot({
         activeTodoCount,
         inactiveTodoCount,
         hasSavedSuggestion: Boolean(savedAiHabits),
+        userContext,
       })
     }
     if (tab === 'wanna-be') {
       return buildIdentityCoachSnapshot({
         criticalCount: criticalGoalCount,
         activeCount: activeGoalCount,
+        userContext,
       })
     }
     return buildSettingsCoachSnapshot({
       activeTodoCount,
       inactiveTodoCount,
       hasSavedSuggestion: Boolean(savedAiHabits),
+      userContext,
     })
   })()
 
@@ -383,6 +389,11 @@ function MainApp() {
   }
 
   const handleJournalApply = ({ target, tasks, feedback, taskMode }: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string; taskMode?: TaskApplyMode }) => {
+    // user_context に goal_summary を自動更新
+    if (target) {
+      void updateUserContext({ goal_summary: target }).catch(() => {/* silent */})
+    }
+
     // DB に非同期保存（失敗しても UI には影響させない）
     void saveJournalEntry({
       entry_date: todayKey(),
