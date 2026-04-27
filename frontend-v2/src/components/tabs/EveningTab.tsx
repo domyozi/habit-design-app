@@ -320,8 +320,8 @@ export const EveningTab = ({
         <div className="flex gap-2">
           {!isReadOnly && (
           <button type="button" onClick={generateReport}
-            className="flex items-center gap-1.5 rounded-full border border-[#c4b5fd]/30 bg-[#c4b5fd]/12 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#ddd6fe]">
-            <AiMark />
+            className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#c4b5fd]/45 bg-gradient-to-r from-[#a78bfa]/15 to-[#7dd3fc]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#ddd6fe]">
+            <AiMark size={11} />
             Generate report
           </button>
           )}

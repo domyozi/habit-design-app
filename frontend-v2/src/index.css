@@ -17,6 +17,35 @@
   --purple: #a78bfa;
 }
 
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(125,211,252,0.18), 0 0 32px rgba(125,211,252,0.08); }
+  50%       { box-shadow: 0 0 22px rgba(125,211,252,0.38), 0 0 56px rgba(167,139,250,0.18); }
+}
+.ai-btn-generate {
+  position: relative;
+  overflow: hidden;
+  animation: glow-pulse 2.8s ease-in-out infinite;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.ai-btn-generate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.13) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: shimmer 2.4s ease-in-out infinite;
+}
+.ai-btn-generate:hover {
+  transform: scale(1.04);
+}
+.ai-btn-generate:active {
+  transform: scale(0.97);
+}
+
 * { box-sizing: border-box; }
 
 body {

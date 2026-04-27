@@ -546,9 +546,9 @@ export const MorningTab = ({
                 type="button"
                 onClick={handleGenerateBrief}
                 disabled={briefLoading}
-                className="flex items-center gap-1.5 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-40"
+                className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#7dd3fc]/45 bg-gradient-to-r from-[#7dd3fc]/15 to-[#a78bfa]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#aee5ff] disabled:opacity-40 disabled:animation-none"
               >
-                <AiMark />
+                <AiMark size={11} />
                 {briefLoading ? 'Generating…' : brief ? 'Regenerate' : 'Generate →'}
               </button>
             )}
@@ -805,9 +805,9 @@ export const MorningTab = ({
             <button
               type="button"
               onClick={generateReport}
-              className="flex items-center gap-1.5 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff]"
+              className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#7dd3fc]/45 bg-gradient-to-r from-[#7dd3fc]/15 to-[#a78bfa]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#aee5ff]"
             >
-              <AiMark />
+              <AiMark size={11} />
               Generate report
             </button>
             <button
