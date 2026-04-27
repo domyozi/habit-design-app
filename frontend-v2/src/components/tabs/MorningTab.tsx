@@ -260,8 +260,6 @@ export const MorningTab = ({
     }))
   )
   // 後方互換: MUST/ROUTINE の区別を isMust で再現
-  const MUST_ITEMS: TaskFieldItem[] = ALL_MORNING_ITEMS.filter(i => i.isMust)
-  const ROUTINE_ITEMS: TaskFieldItem[] = ALL_MORNING_ITEMS.filter(i => !i.isMust)
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('morning', 'checked', [], dateKey)
   const [fieldValues, setFieldValues] = useDailyStorage<Record<string, string>>('morning', 'field_values', {}, dateKey)
   const [aiFeedbacks, setAiFeedbacks] = useDailyStorage<Record<string, string>>('morning', 'ai_feedback', {}, dateKey)
@@ -271,7 +269,7 @@ export const MorningTab = ({
   const [journal, setJournal] = useDailyStorage<string>('morning', 'journal', '', dateKey)
   const [, setSavedReport] = useDailyStorage<string>('morning', 'report', '', dateKey)
   const [, setSavedReportAt] = useDailyStorage<string>('morning', 'reportAt', '', dateKey)
-  const [activeTaskTab, setActiveTaskTab] = useDailyStorage<'core' | 'routine' | 'state'>('morning', 'task-tab', 'core', dateKey)
+  const [activeTaskTab, setActiveTaskTab] = useDailyStorage<'tasks' | 'record'>('morning', 'task-tab', 'tasks', dateKey)
   const [dbHabits, setDbHabits] = useState<HabitItem[]>([])
   const [habitChecked, setHabitChecked] = useState<Set<string>>(new Set())
 
@@ -309,10 +307,10 @@ export const MorningTab = ({
     if (ft === 'checkbox') return checkedArr.includes(item.id)
     return Boolean(fieldValues[item.id])
   }
-  const total = MUST_ITEMS.length + ROUTINE_ITEMS.length
-  const done = [...MUST_ITEMS, ...ROUTINE_ITEMS].filter(isItemDone).length
+  const total = ALL_MORNING_ITEMS.length
+  const done = ALL_MORNING_ITEMS.filter(isItemDone).length
 
-  const existingLabels = [...MUST_ITEMS, ...ROUTINE_ITEMS].map(i => i.label)
+  const existingLabels = ALL_MORNING_ITEMS.map(i => i.label)
 
   const handleGenerateBrief = async () => {
     if (!journal.trim() || briefLoading) return
@@ -370,14 +368,9 @@ export const MorningTab = ({
   }
 
   const generateReport = () => {
-    const mustLines = MUST_ITEMS.map(
-      i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}`
+    const taskLines = ALL_MORNING_ITEMS.map(
+      i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}${i.isMust ? ' [MUST]' : ''}`
     ).join('\n')
-    const routineLines = ROUTINE_ITEMS.map(
-      i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}`
-    ).join('\n')
-    const mustDone = MUST_ITEMS.filter(i => checked.has(i.id)).length
-    const routineDone = ROUTINE_ITEMS.filter(i => checked.has(i.id)).length
 
     const text = [
       `# Morning report — ${formatDate()}`,
@@ -387,11 +380,8 @@ export const MorningTab = ({
       `## Primary target`,
       boss ? boss : '（未設定）',
       '',
-      `## Core tasks (${mustDone}/${MUST_ITEMS.length})`,
-      mustLines,
-      '',
-      `## Routine tasks (${routineDone}/${ROUTINE_ITEMS.length})`,
-      routineLines,
+      `## Tasks (${done}/${total})`,
+      taskLines,
       '',
       `## Condition`,
       `${stars(condition)}（${condition}/5）`,
@@ -641,15 +631,14 @@ export const MorningTab = ({
 
       <div className="mx-4 mt-4 rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
-          <TaskTabButton active={activeTaskTab === 'core'} label="Core tasks" count={MUST_ITEMS.length} onClick={() => setActiveTaskTab('core')} />
-          <TaskTabButton active={activeTaskTab === 'routine'} label="Routine tasks" count={ROUTINE_ITEMS.length} onClick={() => setActiveTaskTab('routine')} />
-          <TaskTabButton active={activeTaskTab === 'state'} label="State" count={2} onClick={() => setActiveTaskTab('state')} />
+          <TaskTabButton active={activeTaskTab === 'tasks'} label="タスク" count={ALL_MORNING_ITEMS.length} onClick={() => setActiveTaskTab('tasks')} />
+          <TaskTabButton active={activeTaskTab === 'record'} label="記録" count={2} onClick={() => setActiveTaskTab('record')} />
         </div>
 
         <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
-          {activeTaskTab === 'core' && (
+          {activeTaskTab === 'tasks' && (
             HABIT_CATEGORIES.map(cat => {
-              const catItems: TaskFieldItem[] = morningGrouped[cat.id].filter(i => i.isMust).map(item => ({
+              const catItems: TaskFieldItem[] = morningGrouped[cat.id].map(item => ({
                 id: item.id, label: item.label, isMust: item.isMust,
                 minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
               }))
@@ -687,47 +676,7 @@ export const MorningTab = ({
             })
           )}
 
-          {activeTaskTab === 'routine' && (
-            HABIT_CATEGORIES.map(cat => {
-              const catItems: TaskFieldItem[] = morningGrouped[cat.id].filter(i => !i.isMust).map(item => ({
-                id: item.id, label: item.label, isMust: item.isMust,
-                minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
-              }))
-              if (catItems.length === 0) return null
-              return (
-                <Section
-                  key={cat.id}
-                  title={`${cat.label} — ${cat.desc}`}
-                  time=""
-                  accentColor={cat.accent}
-                  done={catItems.filter(isItemDone).length}
-                  total={catItems.length}
-                >
-                  {catItems.map(item => (
-                    <TaskFieldRow
-                      key={item.id}
-                      item={item}
-                      checked={checkedArr.includes(item.id)}
-                      onToggle={() => {
-                        if (isReadOnly) return
-                        const s = new Set(checkedArr)
-                        s.has(item.id) ? s.delete(item.id) : s.add(item.id)
-                        setCheckedArr([...s])
-                      }}
-                      value={fieldValues[item.id] ?? ''}
-                      onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
-                      aiFeedback={aiFeedbacks[item.id]}
-                      onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
-                      isReadOnly={isReadOnly}
-                      dotColor={cat.accent}
-                    />
-                  ))}
-                </Section>
-              )
-            })
-          )}
-
-          {activeTaskTab === 'state' && (
+          {activeTaskTab === 'record' && (
             <div className="space-y-3">
               <WeightInput value={weight} target={72.9} onChange={setWeight} slot="morning" />
               <StarRating value={condition} onChange={setCondition} label="コンディション" />
