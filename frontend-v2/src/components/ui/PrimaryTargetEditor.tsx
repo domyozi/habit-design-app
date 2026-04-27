@@ -6,7 +6,7 @@ interface PrimaryTargetEditorProps {
   currentGoal: string | null
   identity: string
   existingTaskLabels: string[]
-  onApply: (result: { target: string; tasks: JournalBriefResult['tasks'] }) => void
+  onApply: (result: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string }) => void
   onClose: () => void
 }
 
@@ -67,12 +67,12 @@ export const PrimaryTargetEditor = ({
   const handleApplySelected = () => {
     if (!result) return
     const selected = result.tasks.filter((_, i) => selectedIndices.has(i))
-    onApply({ target: result.primary_target, tasks: selected })
+    onApply({ target: result.primary_target, tasks: selected, feedback: result.feedback })
   }
 
   const handleApplyTargetOnly = () => {
     if (!result) return
-    onApply({ target: result.primary_target, tasks: [] })
+    onApply({ target: result.primary_target, tasks: [], feedback: result.feedback })
   }
 
   return (

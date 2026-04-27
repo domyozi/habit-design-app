@@ -281,3 +281,48 @@ export const createHabit = async (title: string, wannaBeConnectionText?: string)
 export const logHabit = async (habitId: string, completed: boolean): Promise<void> => {
   await apiPatch(`/api/habits/${habitId}/log`, { completed })
 }
+
+// ============================================================
+// Journal API クライアント
+// ============================================================
+
+export interface JournalContent {
+  primary_target: string
+  feedback: string
+  tasks: Array<{ label: string; section: string; reason: string }>
+}
+
+/**
+ * ジャーナルエントリーを保存する（日付+タイプで upsert）
+ * POST /api/journals
+ */
+export const saveJournalEntry = async (params: {
+  entry_date: string
+  raw_input: string
+  content: JournalContent
+}): Promise<void> => {
+  await apiPost('/api/journals', {
+    entry_date: params.entry_date,
+    entry_type: 'journaling',
+    raw_input: params.raw_input,
+    content: JSON.stringify(params.content),
+  })
+}
+
+/**
+ * ジャーナル一覧を取得する（直近 N 件）
+ * GET /api/journals
+ */
+export const fetchJournals = (limit = 30) =>
+  apiGet<Array<{ id: string; entry_date: string; content: string; raw_input: string | null; created_at: string }>>(
+    `/api/journals?entry_type=journaling&limit=${limit}`,
+  )
+
+/**
+ * 特定日のジャーナルを取得する
+ * GET /api/journals/{date}
+ */
+export const fetchJournalByDate = (date: string) =>
+  apiGet<{ id: string; entry_date: string; content: string; raw_input: string | null } | null>(
+    `/api/journals/${date}?entry_type=journaling`,
+  )

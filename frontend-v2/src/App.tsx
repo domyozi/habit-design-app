@@ -18,6 +18,7 @@ import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
 import { PrimaryTargetEditor } from '@/components/ui/PrimaryTargetEditor'
 import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSnapshot, buildSettingsCoachSnapshot, type CoachAction } from '@/lib/coach'
+import { saveJournalEntry } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
 import type { JournalBriefResult } from '@/lib/ai'
 import type { TabId } from '@/types'
@@ -380,7 +381,14 @@ function MainApp() {
     }
   }
 
-  const handleJournalApply = ({ target, tasks }: { target: string; tasks: JournalBriefResult['tasks'] }) => {
+  const handleJournalApply = ({ target, tasks, feedback }: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string }) => {
+    // DB に非同期保存（失敗しても UI には影響させない）
+    void saveJournalEntry({
+      entry_date: todayKey(),
+      raw_input: morningJournal,
+      content: { primary_target: target, feedback: feedback ?? '', tasks },
+    }).catch(() => {/* silent */})
+
     if (target && bossValue && target !== bossValue) {
       setPendingTarget(target)
       setPendingTasks(tasks)
