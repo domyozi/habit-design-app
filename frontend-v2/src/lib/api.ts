@@ -474,6 +474,7 @@ export interface UserContext {
   goal_summary?: string
   patterns?: string
   insights?: Record<string, unknown>
+  lang?: 'ja' | 'en'
 }
 
 /**

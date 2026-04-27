@@ -1,13 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { TabId } from '@/types'
-
-const NAV_ITEMS: { id: TabId | 'cal'; label: string; short: string }[] = [
-  { id: 'home',    label: 'Home', short: 'HM' },
-  { id: 'morning', label: '朝',   short: 'AM' },
-  { id: 'evening', label: '夜',   short: 'PM' },
-  { id: 'cal',     label: 'Cal',  short: 'DT' },
-  { id: 'more',    label: 'More', short: 'MX' },
-]
+import { getBottomItems } from '@/lib/lang'
+import type { AppLang } from '@/lib/lang'
 
 const todayKey = () => {
   const d = new Date()
@@ -138,17 +132,19 @@ interface BottomNavProps {
   currentPeriod?: 'morning' | 'evening' | null
   viewDate?: string
   onViewDateChange?: (d: string) => void
+  lang?: AppLang
 }
 
-export const BottomNav = ({ active, onChange, currentPeriod, viewDate, onViewDateChange }: BottomNavProps) => {
+export const BottomNav = ({ active, onChange, currentPeriod, viewDate, onViewDateChange, lang = 'ja' }: BottomNavProps) => {
   const [showCal, setShowCal] = useState(false)
   const today = todayKey()
   const effectiveViewDate = viewDate ?? today
+  const NAV_ITEMS = getBottomItems(lang)
 
   const handleDateSelect = (date: string) => {
     onViewDateChange?.(date)
     setShowCal(false)
-    const isMorningOrEvening = ['morning', 'journal', 'evening'].includes(active)
+    const isMorningOrEvening = ['morning', 'evening'].includes(active)
     if (!isMorningOrEvening) {
       onChange('morning')
     }

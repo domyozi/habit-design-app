@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
 import { TODO_SECTIONS, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type TodoSection, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
+import { useUserContext } from '@/lib/user-context'
+import type { AppLang } from '@/lib/lang'
 
 // AI設定支援で生成される習慣アイテム
 interface AiHabitItem {
@@ -670,6 +672,239 @@ const ProfileSettings = () => {
   )
 }
 
+// ─── 言語設定 ─────────────────────────────────────────────────
+
+const LangSettings = () => {
+  const [ctx, updateCtx] = useUserContext()
+  const lang: AppLang = ctx?.lang ?? 'ja'
+
+  const setLang = (next: AppLang) => {
+    void updateCtx({ lang: next })
+  }
+
+  return (
+    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">Language / 言語</p>
+      <p className="mt-1 text-[11px] text-white/38">ナビゲーションメニューの表示言語を切り替えます</p>
+      <div className="mt-3 flex gap-2">
+        {([['ja', '日本語'], ['en', 'English']] as [AppLang, string][]).map(([val, label]) => (
+          <button
+            key={val}
+            type="button"
+            onClick={() => setLang(val)}
+            className={[
+              'flex-1 rounded-full border py-2 text-xs font-semibold transition-all',
+              lang === val
+                ? 'border-[#a78bfa]/40 bg-[#a78bfa]/15 text-[#c4b5fd]'
+                : 'border-white/10 bg-white/[0.02] text-white/42 hover:border-white/25',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── AIタスク登録 ──────────────────────────────────────────────
+
+interface AiParsedTask {
+  label: string
+  section: TodoSection
+  field_type: TaskFieldType
+  minutes: number | null
+  field_options: TaskFieldOptions | null
+  confirmation: string
+}
+
+const AI_TASK_PARSE_SYSTEM = `あなたは習慣管理アプリの入力パーサーです。ユーザーが自然言語で説明したタスクを、アプリのデータ形式に変換してください。
+
+必ず以下のJSON形式のみで返答してください（説明文は不要、JSONのみ）：
+\`\`\`json
+{
+  "label": "タスク名（簡潔に）",
+  "section": "morning-must",
+  "field_type": "checkbox",
+  "minutes": null,
+  "field_options": null,
+  "confirmation": "こういうことでOKですか？（1〜2文で確認）"
+}
+\`\`\`
+
+section の判断基準:
+- 朝の核心習慣（毎日必須） → "morning-must"
+- 朝のルーティン（補助的） → "morning-routine"
+- 夜の振り返り・記録 → "evening-reflection"
+- 翌日の準備 → "evening-prep"
+
+field_type の判断基準:
+- 数値を記録（体重・歩数・時間など） → "number"
+- 達成率・パーセント → "percent"
+- 選択肢から選ぶ → "select"
+- テキストで記録（日記・メモ） → "text"
+- テキスト＋AIフィードバックが欲しい → "text-ai"
+- URLを保存 → "url"
+- それ以外（やった/やってない） → "checkbox"
+
+field_options:
+- number/percent の場合: { "unit": "kg" } など単位があれば
+- select の場合: { "choices": ["選択肢1", "選択肢2"] }
+- text/text-ai/url の場合: { "placeholder": "入力例..." } があれば
+- それ以外: null`
+
+const AiTaskCreator = () => {
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [parsed, setParsed] = useState<AiParsedTask | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [added, setAdded] = useState(false)
+  const [, setTodos] = useTodoDefinitions()
+
+  const parse = async () => {
+    if (!input.trim() || loading) return
+    setLoading(true)
+    setParsed(null)
+    setError(null)
+    setAdded(false)
+
+    try {
+      const reply = await callClaude(
+        [{ role: 'user', content: input.trim() }],
+        AI_TASK_PARSE_SYSTEM,
+        512
+      )
+      const match = /```json\s*([\s\S]*?)\s*```/.exec(reply)
+      if (!match) throw new Error('parse error')
+      const result = JSON.parse(match[1]) as AiParsedTask
+      setParsed(result)
+    } catch {
+      setError('AIの解析に失敗しました。もう少し詳しく入力してみてください。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirm = () => {
+    if (!parsed) return
+    const newTodo: TodoDefinition = {
+      id: createTodoId(parsed.label),
+      label: parsed.label,
+      section: parsed.section,
+      minutes: parsed.minutes ?? undefined,
+      isMust: parsed.section === 'morning-must',
+      is_active: true,
+      field_type: parsed.field_type !== 'checkbox' ? parsed.field_type : undefined,
+      field_options: parsed.field_options ?? undefined,
+    }
+    setTodos(prev => [...prev, newTodo])
+    setAdded(true)
+    setParsed(null)
+    setInput('')
+  }
+
+  const sectionLabel: Record<TodoSection, string> = {
+    'morning-must':      '朝のMUST',
+    'morning-routine':   '朝のルーティン',
+    'evening-reflection':'夜の振り返り',
+    'evening-prep':      '夜の準備',
+  }
+
+  const fieldTypeLabel: Record<TaskFieldType, string> = {
+    checkbox: 'チェックボックス',
+    number:   '数値入力',
+    percent:  'パーセント',
+    select:   '選択リスト',
+    radio:    'ラジオ',
+    text:     'テキスト',
+    'text-ai':'テキスト＋AI',
+    url:      'URL',
+  }
+
+  return (
+    <div className="space-y-3 rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">AIに項目を登録してもらう</p>
+      <p className="text-[11px] text-white/42">
+        追加したい項目を自然な言葉で伝えると、AIが適切な設定を提案します。
+      </p>
+
+      {added && (
+        <div className="rounded-2xl border border-[#22c55e]/25 bg-[#22c55e]/8 px-3 py-2.5">
+          <p className="text-xs text-[#4ade80]">追加しました。タスク定義タブで確認できます。</p>
+        </div>
+      )}
+
+      {parsed && !added && (
+        <div className="space-y-3 rounded-2xl border border-[#a78bfa]/20 bg-[#a78bfa]/5 p-4">
+          <p className="text-[11px] font-semibold text-[#c4b5fd]">{parsed.confirmation}</p>
+          <div className="space-y-1.5">
+            <Row label="項目名" value={parsed.label} />
+            <Row label="セクション" value={sectionLabel[parsed.section] ?? parsed.section} />
+            <Row label="入力タイプ" value={fieldTypeLabel[parsed.field_type] ?? parsed.field_type} />
+            {parsed.minutes && <Row label="目安時間" value={`${parsed.minutes}分`} />}
+            {parsed.field_options?.unit && <Row label="単位" value={parsed.field_options.unit} />}
+            {parsed.field_options?.choices && (
+              <Row label="選択肢" value={parsed.field_options.choices.join(' / ')} />
+            )}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={confirm}
+              className="flex-1 rounded-full border border-[#a78bfa]/40 bg-[#a78bfa]/15 py-2 text-xs font-semibold text-[#c4b5fd]"
+            >
+              はい、追加する
+            </button>
+            <button
+              type="button"
+              onClick={() => setParsed(null)}
+              className="flex-1 rounded-full border border-white/10 py-2 text-xs text-white/40 hover:text-white/70"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p className="text-xs text-red-400/80">{error}</p>
+      )}
+
+      <div className="flex gap-2">
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              void parse()
+            }
+          }}
+          placeholder="例: 毎朝起きたら体重を計って記録したい"
+          rows={2}
+          className="flex-1 resize-none rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2.5 text-sm text-white placeholder-white/20"
+          disabled={loading}
+        />
+        <button
+          type="button"
+          onClick={() => void parse()}
+          disabled={loading || !input.trim()}
+          className="self-end rounded-full border border-[#a78bfa]/30 bg-[#a78bfa]/12 px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#c4b5fd] disabled:opacity-30"
+        >
+          {loading ? '…' : 'AI'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const Row = ({ label, value }: { label: string; value: string }) => (
+  <div className="flex items-start gap-2">
+    <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-white/36 pt-0.5 w-20">{label}</span>
+    <span className="text-xs text-white/80">{value}</span>
+  </div>
+)
+
 export const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState<'tasks' | 'ai'>('tasks')
 
@@ -698,7 +933,9 @@ export const SettingsPage = () => {
 
       {activeTab === 'ai' && (
         <div className="px-4 pt-4 pb-2 space-y-3">
+          <LangSettings />
           <ProfileSettings />
+          <AiTaskCreator />
           <ApiKeySettings />
           <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
             <p className="mb-3 text-[11px] text-white/34">

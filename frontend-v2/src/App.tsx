@@ -21,6 +21,7 @@ import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSn
 import { useUserContext } from '@/lib/user-context'
 import { saveJournalEntry } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
+import { getNavItems } from '@/lib/lang'
 import type { JournalBriefResult } from '@/lib/ai'
 import type { TabId } from '@/types'
 
@@ -67,15 +68,6 @@ const useIsDesktop = () => {
   return isDesktop
 }
 
-const DESKTOP_NAV_ITEMS: { id: TabId; icon: string; label: string; note: string; color: string }[] = [
-  { id: 'home',     icon: '⌂', label: 'Home',     note: 'daily execution',    color: '#7dd3fc' },
-  { id: 'morning',  icon: '◎', label: 'Morning',  note: 'core + routine',     color: '#7dd3fc' },
-  { id: 'journal',  icon: '✎', label: 'Journal',  note: 'daily journaling',   color: '#86efac' },
-  { id: 'evening',  icon: '◑', label: 'Evening',  note: 'review + next day',  color: '#c4b5fd' },
-  { id: 'monthly',  icon: '⊞', label: '分析',      note: '習慣分析・レポート',  color: '#38bdf8' },
-  { id: 'wanna-be', icon: '◆', label: 'Wanna Be', note: 'identity board',     color: '#f59e0b' },
-  { id: 'settings', icon: '⊙', label: 'Settings', note: 'system design',      color: '#a78bfa' },
-]
 
 const DesktopRail = ({
   active,
@@ -85,6 +77,7 @@ const DesktopRail = ({
   onToggleCollapse,
   morningDone,
   eveningDone,
+  lang,
 }: {
   active: TabId
   onChange: (id: TabId) => void
@@ -93,11 +86,14 @@ const DesktopRail = ({
   onToggleCollapse?: () => void
   morningDone?: boolean
   eveningDone?: boolean
+  lang?: import('@/lib/lang').AppLang
 }) => {
+  const navItems = getNavItems(lang ?? 'ja')
+
   if (collapsed) {
     return (
       <aside className="hidden lg:flex lg:flex-col lg:items-center lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl lg:py-4 lg:gap-2 lg:w-[48px] lg:min-w-[48px] lg:overflow-hidden">
-        {DESKTOP_NAV_ITEMS.map(item => {
+        {navItems.map(item => {
           const isActive = active === item.id || (item.id === 'monthly' && active === 'report')
           return (
             <button
@@ -137,14 +133,14 @@ const DesktopRail = ({
         <p className="mt-3 text-sm leading-relaxed text-white/42">実行、分析、設定、長期目標を横断して扱う作業面です。</p>
       </div>
       <div className="flex-1 space-y-2 px-3 py-4">
-        {DESKTOP_NAV_ITEMS.map(item => {
+        {navItems.map(item => {
           const isActive = active === item.id || (item.id === 'monthly' && active === 'report')
           const isPeriodMatch =
-            (currentPeriod === 'morning' && (item.id === 'morning' || item.id === 'journal')) ||
+            (currentPeriod === 'morning' && item.id === 'morning') ||
             (currentPeriod === 'evening' && item.id === 'evening')
           const isDone =
             (item.id === 'evening' && eveningDone) ||
-            ((item.id === 'morning' || item.id === 'journal') && morningDone)
+            (item.id === 'morning' && morningDone)
           const showNudge = isPeriodMatch && !isActive && !isDone
           return (
             <button
@@ -361,9 +357,7 @@ function MainApp() {
   // BottomNavのアクティブ表示: monthly/wanna-be/report は "more" をハイライト
   const navActive: TabId = (['monthly', 'wanna-be', 'report', 'settings'] as TabId[]).includes(tab)
     ? 'more'
-    : tab === 'journal'
-      ? 'morning'
-      : tab
+    : tab
 
   const handleCoachAction = (action: CoachAction) => {
     if (!action.tab) return
@@ -448,10 +442,10 @@ function MainApp() {
           onClearEveningBanner={() => setEveningDoneBanner(false)}
         />
       )}
-      {(tab === 'morning' || tab === 'journal' || tab === 'evening') && (
+      {(tab === 'morning' || tab === 'evening') && (
         <DateNav viewDate={viewDate} onViewDateChange={setViewDate} />
       )}
-      {(tab === 'morning' || tab === 'journal')  && (
+      {tab === 'morning' && (
         <MorningTab
           key={`${currentDate}:${viewDate}`}
           boss={bossValue}
@@ -507,6 +501,7 @@ function MainApp() {
           onToggleCollapse={() => setRailCollapsed(p => !p)}
           morningDone={morningDone}
           eveningDone={eveningDone}
+          lang={userContext?.lang ?? 'ja'}
         />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
@@ -620,9 +615,10 @@ function MainApp() {
         onChange={handleNavChange}
         currentPeriod={currentPeriod}
         viewDate={viewDate}
+        lang={userContext?.lang ?? 'ja'}
         onViewDateChange={date => {
           setViewDate(date)
-          if (!(['morning', 'journal', 'evening'] as string[]).includes(tab)) {
+          if (!(['morning', 'evening'] as string[]).includes(tab)) {
             setTab('morning')
           }
         }}

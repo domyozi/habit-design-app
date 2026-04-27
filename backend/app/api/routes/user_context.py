@@ -20,7 +20,7 @@ async def get_user_context(
     supabase = get_supabase()
     result = (
         supabase.table("user_context")
-        .select("identity, values_keywords, goal_summary, patterns, insights")
+        .select("identity, values_keywords, goal_summary, patterns, insights, lang")
         .eq("user_id", user_id)
         .execute()
     )
@@ -36,7 +36,7 @@ async def patch_user_context(
 
     data = {"user_id": user_id}
 
-    allowed_fields = {"identity", "values_keywords", "goal_summary", "patterns", "insights"}
+    allowed_fields = {"identity", "values_keywords", "goal_summary", "patterns", "insights", "lang"}
     for field in allowed_fields:
         if field in payload:
             data[field] = payload[field]
