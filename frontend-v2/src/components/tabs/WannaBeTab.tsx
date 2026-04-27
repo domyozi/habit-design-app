@@ -347,6 +347,14 @@ export const WannaBeTab = () => {
               >
                 印刷
               </button>
+              {/* F-15: スキップ後も習慣シートを再表示できるボタン */}
+              <button
+                type="button"
+                onClick={() => { setPendingMandalaForHabits(mandala); setShowHabitSheet(true) }}
+                className="rounded-full border border-[#7dd3fc]/25 bg-[#7dd3fc]/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff]/70 hover:text-[#aee5ff] print-hide"
+              >
+                習慣を設定する
+              </button>
             </div>
           )}
         </div>

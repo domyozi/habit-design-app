@@ -799,7 +799,11 @@ export const MorningTab = ({
             </button>
             <button
               type="button"
-              onClick={() => { setCheckedArr([]); setWeight(''); setCondition(0 as number) }}
+              onClick={() => {
+                const ok = window.confirm('今日のデータをリセットします。続けますか？')
+                if (!ok) return
+                setCheckedArr([]); setWeight(''); setCondition(0 as number)
+              }}
               className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-white/38 hover:text-white/72"
             >
               Reset today

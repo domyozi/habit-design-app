@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { BrandMark } from '@/components/ui/BrandMark'
 
 export const AuthPage = () => {
   const { signIn } = useAuth()
@@ -25,8 +24,19 @@ export const AuthPage = () => {
       <div className="pointer-events-none absolute bottom-[-20%] right-[-10%] h-[60vw] w-[60vw] rounded-full bg-[#a78bfa]/5 blur-[140px]" />
 
       <div className="relative z-10 w-full max-w-sm">
-        <div className="mb-8 flex justify-center">
-          <BrandMark subtitle="habit design system" />
+        {/* F-13: バリュープロポジション */}
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-white">Daily OS</h1>
+          <p className="mt-2 text-sm text-white/52">習慣を設計し、人生を変えるデイリープランナー</p>
+          <div className="mt-5 flex flex-col gap-2">
+            {[
+              '✦ 朝の習慣チェック & ジャーナル',
+              '✦ 夜の振り返り & コーチング',
+              '✦ Mandala Chart で目標を可視化',
+            ].map((feat) => (
+              <p key={feat} className="text-[12px] text-white/40">{feat}</p>
+            ))}
+          </div>
         </div>
 
         <div

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
@@ -697,6 +697,7 @@ const GRANULARITY_OPTIONS = [
 ] as const
 
 const ProfileSettings = () => {
+  // F-17: TODO: migrate to API when /api/user-context supports granularity field
   const [granularity, setGranularity] = useState<string>(
     () => localStorage.getItem('settings:profile:granularity') ?? 'adult'
   )
@@ -973,6 +974,57 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   </div>
 )
 
+// ─── F-16: iOS Shortcuts JWT トークン表示 UI ─────────────────
+
+const JwtTokenSection = () => {
+  const [token, setToken] = useState<string>('')
+  const [tokenCopied, setTokenCopied] = useState(false)
+
+  useEffect(() => {
+    const stored = localStorage.getItem('auth:token') ?? ''
+    setToken(stored)
+  }, [])
+
+  const handleCopyToken = async () => {
+    if (!token) return
+    try {
+      await navigator.clipboard.writeText(token)
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 2000)
+    } catch {
+      // クリップボードアクセス失敗時は無視
+    }
+  }
+
+  if (!token) return null
+
+  return (
+    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">iOS Shortcuts 連携 — JWT トークン</p>
+      <p className="text-[11px] text-white/42">
+        iOS ショートカットの Authorization ヘッダーに使用するアクセストークンです。
+      </p>
+      <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2">
+        <span className="flex-1 truncate text-[11px] font-mono text-white/60">
+          {token.length > 40 ? `${token.slice(0, 20)}...${token.slice(-10)}` : token}
+        </span>
+        <button
+          type="button"
+          onClick={() => void handleCopyToken()}
+          className={[
+            'shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors',
+            tokenCopied
+              ? 'border-[#22c55e]/30 bg-[#22c55e]/10 text-[#4ade80]'
+              : 'border-white/10 text-white/42 hover:border-white/25 hover:text-white/70',
+          ].join(' ')}
+        >
+          {tokenCopied ? 'Copied' : 'コピー'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── iOS Shortcuts 連携設定 ──────────────────────────────────
 
 const IntegrationsSettings = () => {
@@ -1096,6 +1148,7 @@ export const SettingsPage = () => {
           <LangSettings />
           <ProfileSettings />
           <IntegrationsSettings />
+          <JwtTokenSection />
           <ApiKeySettings />
           <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
             <p className="mb-3 text-[11px] text-white/34">

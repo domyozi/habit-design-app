@@ -178,11 +178,34 @@ export const EveningTab = ({
     onGenerateReport?.(text)
   }
 
+  // F-12: Evening プログレスバー用集計
+  const eveningProgressTotal = allItems.length + 3 // タスク + Gap + Insight + Tomorrow
+  const eveningProgressDone = done +
+    (gap.trim() ? 1 : 0) +
+    (insight.trim() ? 1 : 0) +
+    (tomorrow.trim() ? 1 : 0)
+  const eveningProgressPct = eveningProgressTotal > 0
+    ? Math.round((eveningProgressDone / eveningProgressTotal) * 100)
+    : 0
+
   return (
     <div className={['pb-6', isReadOnly ? 'select-none' : ''].join(' ')}>
       {isReadOnly && (
         <div className="mx-4 mb-1 mt-3 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
           <span className="text-[11px] uppercase tracking-[0.18em] text-white/38">Read only record</span>
+        </div>
+      )}
+
+      {/* F-12: Evening プログレスバー */}
+      {!isReadOnly && (
+        <div className="mx-4 mt-3 mb-1 flex items-center gap-2">
+          <div className="relative flex-1 h-[2px] rounded-full bg-white/[0.06] overflow-hidden">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+              style={{ width: `${eveningProgressPct}%`, backgroundColor: '#a78bfa' }}
+            />
+          </div>
+          <span className="text-[10px] text-white/40 tabular-nums">{eveningProgressDone} / {eveningProgressTotal}</span>
         </div>
       )}
 

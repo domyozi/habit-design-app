@@ -313,12 +313,39 @@ export const HomePage = ({
   const morningDone = todayTotal > 0 && todayDone >= todayTotal
   const eveningDone = eveningCheckedArr.length > 0
 
-  const coachLines = [
-    '今月のペースは安定しています。',
-    morningDone
-      ? '朝のシーケンスは完了しています。夕方の振り返りで今日を閉じましょう。'
-      : `朝のタスクが残り ${todayTotal - todayDone} 件あります。`,
-  ]
+  const morningPct = todayTotal > 0 ? Math.round((todayDone / todayTotal) * 100) : 0
+  const coachLines = (() => {
+    if (todayTotal === 0) {
+      return [
+        '今日もゼロから始めよう。最初の一歩を踏み出して。',
+        '習慣を設定すると、ここに進捗が表示されます。',
+      ]
+    }
+    if (morningPct === 0) {
+      return [
+        '今日もゼロから始めよう。最初の一歩を踏み出して。',
+        `${todayTotal} 件の朝タスクが待っています。`,
+      ]
+    }
+    if (morningPct < 50) {
+      return [
+        'いい調子！引き続き積み上げていこう。',
+        `残り ${todayTotal - todayDone} 件。一つずつ着実に。`,
+      ]
+    }
+    if (morningPct < 80) {
+      return [
+        '折り返しを超えた。このまま駆け抜けよう！',
+        morningDone ? '朝のシーケンスが完了しています。' : `あと ${todayTotal - todayDone} 件で完了です。`,
+      ]
+    }
+    return [
+      '素晴らしい完成度！今日も全力で走り切った。',
+      morningDone && eveningDone
+        ? '朝・夜のルーティンを制覇しました。'
+        : eveningDone ? '朝のシーケンスが完了しています。' : '夕方の振り返りで今日を閉じましょう。',
+    ]
+  })()
 
   return (
     <div className="space-y-3 px-4 py-4 pb-8">
