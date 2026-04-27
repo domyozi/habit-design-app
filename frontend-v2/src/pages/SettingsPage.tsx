@@ -482,9 +482,6 @@ const TodoManager = () => {
                   <div key={item.id} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-white/80">{item.label}</p>
-                      <p className="text-[10px] text-white/28">
-                        {item.minutes ? `${item.minutes}分` : '所要時間なし'}
-                      </p>
                     </div>
                     <span className={[
                       'shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
@@ -516,14 +513,6 @@ const TodoManager = () => {
                     onChange={e => updateDraft(section.id as HabitCategory, 'label', e.target.value)}
                     placeholder="新しい To Do 名"
                     className="flex-1 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    value={draft.minutes}
-                    onChange={e => updateDraft(section.id as HabitCategory, 'minutes', e.target.value)}
-                    placeholder="分"
-                    className="w-20 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
                   />
                   <select
                     value={draft.timing}
@@ -616,9 +605,6 @@ const TodoManager = () => {
                       <div key={item.id} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 opacity-75">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm text-white/60">{item.label}</p>
-                          <p className="text-[10px] text-white/28">
-                            {item.minutes ? `${item.minutes}分` : '所要時間なし'}
-                          </p>
                         </div>
                         <button
                           type="button"
