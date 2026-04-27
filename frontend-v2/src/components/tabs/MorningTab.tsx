@@ -594,32 +594,35 @@ export const MorningTab = ({
 
             {/* Tasks */}
             <div className="rounded-2xl border border-white/[0.06] bg-black/10 px-3 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">Tasks ({brief.tasks.length})</p>
-                {brief.tasks.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleApplyBriefTasks(brief.tasks)}
-                    className="shrink-0 rounded-full border border-[#34d399]/25 bg-[#34d399]/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7ef0be]"
-                  >
-                    Apply all
-                  </button>
-                )}
-              </div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">Tasks ({brief.tasks.length})</p>
               <div className="mt-2 space-y-1.5">
                 {brief.tasks.length === 0 && <p className="text-xs text-white/32">新規タスクなし</p>}
                 {brief.tasks.map((task, i) => {
                   const isDupe = existingLabels.some(l => l.toLowerCase() === task.label.toLowerCase())
                   return (
                     <div key={`${task.label}-${i}`} className={['rounded-xl border px-2.5 py-2', isDupe ? 'border-white/[0.04] opacity-40' : 'border-white/[0.06] bg-[#09111c]'].join(' ')}>
-                      <div className="flex items-center gap-1.5">
-                        <span className={['text-[10px] rounded px-1 py-0.5 font-semibold uppercase', task.section === 'morning-must' ? 'bg-[#ff6b35]/12 text-[#ff9966]' : 'bg-[#f59e0b]/10 text-[#fbd38d]'].join(' ')}>
-                          {task.section === 'morning-must' ? 'must' : 'routine'}
-                        </span>
-                        <p className="text-xs text-white/80">{task.label}</p>
-                        {isDupe && <span className="ml-auto text-[10px] text-white/30">既存</span>}
+                      <div className="flex items-start gap-1.5">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={['text-[10px] rounded px-1 py-0.5 font-semibold uppercase shrink-0', task.section === 'morning-must' ? 'bg-[#ff6b35]/12 text-[#ff9966]' : 'bg-[#f59e0b]/10 text-[#fbd38d]'].join(' ')}>
+                              {task.section === 'morning-must' ? 'must' : 'routine'}
+                            </span>
+                            <p className="text-xs text-white/80">{task.label}</p>
+                          </div>
+                          <p className="mt-1 text-[11px] text-white/36">{task.reason}</p>
+                        </div>
+                        {isDupe ? (
+                          <span className="shrink-0 text-[10px] text-white/30 pt-0.5">既存</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleApplyBriefTasks([task])}
+                            className="shrink-0 rounded-full border border-[#34d399]/25 bg-[#34d399]/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7ef0be] hover:bg-[#34d399]/18"
+                          >
+                            Apply
+                          </button>
+                        )}
                       </div>
-                      <p className="mt-1 text-[11px] text-white/36">{task.reason}</p>
                     </div>
                   )
                 })}
