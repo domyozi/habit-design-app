@@ -25,6 +25,20 @@ const addDays = (dateStr: string, days: number): string => {
   ].join('-')
 }
 
+const ChevronLeft = ({ dim }: { dim?: boolean }) => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    style={{ opacity: dim ? 0.2 : 1 }}>
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+)
+
+const ChevronRight = ({ dim }: { dim?: boolean }) => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    style={{ opacity: dim ? 0.2 : 1 }}>
+    <path d="M9 18l6-6-6-6" />
+  </svg>
+)
+
 export const DateNav = ({ viewDate, onViewDateChange, maxPastDays = 7 }: DateNavProps) => {
   const today = todayKey()
   const isToday = viewDate === today
@@ -34,32 +48,32 @@ export const DateNav = ({ viewDate, onViewDateChange, maxPastDays = 7 }: DateNav
   const canGoForward = viewDate < today
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06] bg-[#0d0d0d]">
+    <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#06090f] px-3 py-1.5">
       {/* 前の日へ */}
       <button
         type="button"
         onClick={() => canGoBack && onViewDateChange(addDays(viewDate, -1))}
         disabled={!canGoBack}
-        className="w-8 h-8 flex items-center justify-center rounded text-[#555] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+        className="flex h-7 w-7 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed"
         aria-label="前の日"
       >
-        ‹
+        <ChevronLeft dim={!canGoBack} />
       </button>
 
       {/* 日付表示 */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-mono text-white">{formatLabel(viewDate)}</span>
+      <div className="flex flex-1 items-center justify-center gap-2">
+        <span className="text-sm font-semibold text-white/90">{formatLabel(viewDate)}</span>
         {isToday ? (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/30">
+          <span className="rounded border border-[#22c55e]/30 bg-[#22c55e]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#22c55e]">
             今日
           </span>
         ) : (
           <button
             type="button"
             onClick={() => onViewDateChange(today)}
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-[#555] border border-white/10 hover:text-white transition-colors"
+            className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-white/45 transition-colors hover:text-white"
           >
-            今日に戻る
+            今日に戻る →
           </button>
         )}
       </div>
@@ -69,10 +83,10 @@ export const DateNav = ({ viewDate, onViewDateChange, maxPastDays = 7 }: DateNav
         type="button"
         onClick={() => canGoForward && onViewDateChange(addDays(viewDate, 1))}
         disabled={!canGoForward}
-        className="w-8 h-8 flex items-center justify-center rounded text-[#555] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+        className="flex h-7 w-7 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed"
         aria-label="次の日"
       >
-        ›
+        <ChevronRight dim={!canGoForward} />
       </button>
     </div>
   )

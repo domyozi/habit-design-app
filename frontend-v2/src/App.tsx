@@ -94,7 +94,7 @@ const DesktopRail = ({
 }) => {
   if (collapsed) {
     return (
-      <aside className="hidden lg:flex lg:flex-col lg:items-center lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl lg:py-4 lg:gap-2">
+      <aside className="hidden lg:flex lg:flex-col lg:items-center lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl lg:py-4 lg:gap-2 lg:w-[48px] lg:min-w-[48px] lg:overflow-hidden">
         {DESKTOP_NAV_ITEMS.map(item => {
           const isActive = active === item.id || (item.id === 'monthly' && active === 'report')
           return (
@@ -577,7 +577,18 @@ function MainApp() {
         </div>
       </div>
 
-      <BottomNav active={navActive} onChange={handleNavChange} currentPeriod={currentPeriod} />
+      <BottomNav
+        active={navActive}
+        onChange={handleNavChange}
+        currentPeriod={currentPeriod}
+        viewDate={viewDate}
+        onViewDateChange={date => {
+          setViewDate(date)
+          if (!(['morning', 'journal', 'evening'] as string[]).includes(tab)) {
+            setTab('morning')
+          }
+        }}
+      />
     </div>
   )
 }
