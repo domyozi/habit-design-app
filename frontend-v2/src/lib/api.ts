@@ -326,3 +326,29 @@ export const fetchJournalByDate = (date: string) =>
   apiGet<{ id: string; entry_date: string; content: string; raw_input: string | null } | null>(
     `/api/journals/${date}?entry_type=journaling`,
   )
+
+// ============================================================
+// Todo定義 API クライアント
+// ============================================================
+
+export interface TodoDefinitionRecord {
+  id: string
+  label: string
+  section: string
+  minutes?: number | null
+  is_must?: boolean
+  is_active: boolean
+  display_order?: number
+}
+
+/** GET /api/todo-definitions */
+export const fetchTodoDefinitions = () =>
+  apiGet<TodoDefinitionRecord[]>('/api/todo-definitions')
+
+/** POST /api/todo-definitions — 配列 upsert */
+export const saveTodoDefinitions = (items: TodoDefinitionRecord[]) =>
+  apiPost<TodoDefinitionRecord[]>('/api/todo-definitions', items)
+
+/** PATCH /api/todo-definitions/{id} — 個別更新 */
+export const patchTodoDefinition = (id: string, patch: Partial<TodoDefinitionRecord>) =>
+  apiPatch<TodoDefinitionRecord>(`/api/todo-definitions/${id}`, patch)

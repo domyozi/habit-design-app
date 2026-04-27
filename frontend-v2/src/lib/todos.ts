@@ -1,5 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocalStorage } from '@/lib/storage'
+import { fetchTodoDefinitions, saveTodoDefinitions } from '@/lib/api'
 
 export type TodoSection = 'morning-must' | 'morning-routine' | 'evening-reflection' | 'evening-prep'
 
@@ -55,14 +57,65 @@ export const useTodoDefinitions = (): readonly [
   Dispatch<SetStateAction<TodoDefinition[]>>,
 ] => {
   const [todos, setTodos] = useLocalStorage<TodoDefinition[]>('settings:todo-definitions', DEFAULT_TODO_DEFINITIONS)
+  const migratedRef = useRef(false)
+
+  // バックグラウンドで API から取得し、localStorage と同期する
+  useEffect(() => {
+    fetchTodoDefinitions()
+      .then(records => {
+        if (records.length === 0 && !migratedRef.current) {
+          // API が空 → localStorage のデータを初回マイグレーション
+          migratedRef.current = true
+          const localData = normalizeTodoDefinitions(todos)
+          if (localData.length > 0) {
+            void saveTodoDefinitions(
+              localData.map((t, i) => ({
+                id: t.id,
+                label: t.label,
+                section: t.section,
+                minutes: t.minutes ?? null,
+                is_must: t.isMust ?? false,
+                is_active: t.is_active,
+                display_order: i,
+              }))
+            ).catch(() => {/* silent */})
+          }
+          return
+        }
+        // API にデータあり → state と localStorage を更新
+        const merged: TodoDefinition[] = records.map(r => ({
+          id: r.id,
+          label: r.label,
+          section: r.section as TodoSection,
+          minutes: r.minutes ?? undefined,
+          isMust: r.is_must ?? false,
+          is_active: r.is_active,
+        }))
+        setTodos(merged)
+      })
+      .catch(() => {/* オフライン時は localStorage のまま継続 */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const setNormalized: Dispatch<SetStateAction<TodoDefinition[]>> = (value) => {
-    if (typeof value === 'function') {
-      setTodos(prev => normalizeTodoDefinitions((value as (prevState: TodoDefinition[]) => TodoDefinition[])(normalizeTodoDefinitions(prev))))
-      return
-    }
+    const next = typeof value === 'function'
+      ? normalizeTodoDefinitions((value as (prevState: TodoDefinition[]) => TodoDefinition[])(normalizeTodoDefinitions(todos)))
+      : normalizeTodoDefinitions(value)
 
-    setTodos(normalizeTodoDefinitions(value))
+    setTodos(next)
+
+    // API にも非同期保存（失敗しても UI には影響させない）
+    void saveTodoDefinitions(
+      next.map((t, i) => ({
+        id: t.id,
+        label: t.label,
+        section: t.section,
+        minutes: t.minutes ?? null,
+        is_must: t.isMust ?? false,
+        is_active: t.is_active,
+        display_order: i,
+      }))
+    ).catch(() => {/* silent */})
   }
 
   return [normalizeTodoDefinitions(todos), setNormalized] as const

@@ -271,6 +271,7 @@ const TodayTasksCard = ({
   completionRate,
   todayDone,
   todayTotal,
+  morningDone,
   onOpen,
 }: {
   coreTasks: Array<{ label: string; checked: boolean; minutes?: number }>
@@ -278,47 +279,71 @@ const TodayTasksCard = ({
   completionRate: number
   todayDone: number
   todayTotal: number
+  morningDone: boolean
   onOpen: () => void
-}) => (
-  <div className="rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-5">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/35">Today tasks</p>
-        <p className="mt-2 text-lg font-semibold text-white">今朝の core 3 と残りを把握します。</p>
+}) => {
+  if (morningDone) {
+    return (
+      <div className="rounded-[28px] border border-[#34d399]/25 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.10),transparent_50%),linear-gradient(180deg,rgba(9,16,27,0.98),rgba(8,13,22,0.92))] px-4 py-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#34d399]/60">Today tasks</p>
+        <div className="mt-3 flex items-center gap-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#34d399]/40 bg-[#34d399]/15 text-base text-[#34d399]">✓</span>
+          <p className="text-lg font-semibold text-[#7ef0be]">モーニング完了</p>
+        </div>
+        <p className="mt-2 text-sm text-[#34d399]/60">{todayDone} / {todayTotal} タスク達成</p>
+        <button type="button" onClick={onOpen} className="mt-4 rounded-full border border-[#34d399]/25 bg-[#34d399]/8 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7ef0be]">
+          詳細を見る
+        </button>
       </div>
-      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Completion</p>
-        <p className="mt-1 text-xl font-semibold text-white">{completionRate}%</p>
-        <p className="text-[11px] text-white/32">{todayDone} / {todayTotal}</p>
+    )
+  }
+
+  return (
+    <div className="rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/35">Today tasks</p>
+          <p className="mt-2 text-lg font-semibold text-white">今朝の core 3 と残りを把握します。</p>
+        </div>
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">完了率</p>
+          <p className="mt-1 text-xl font-semibold text-white">{completionRate}%</p>
+          <p className="text-[11px] text-white/32">{todayDone} / {todayTotal}</p>
+        </div>
       </div>
-    </div>
-    <div className="mt-4 space-y-2">
-      {coreTasks.map(task => (
-        <div key={task.label} className="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3 py-3">
-          <div className="min-w-0">
-            <p className={['text-sm', task.checked ? 'text-white/34 line-through' : 'text-white/86'].join(' ')}>{task.label}</p>
-            {task.minutes ? <p className="mt-1 text-[11px] text-white/28">{task.minutes}m</p> : null}
+      <div className="mt-4 space-y-2">
+        {coreTasks.map(task => (
+          <div
+            key={task.label}
+            className={['flex items-center justify-between rounded-2xl border px-3 py-3 transition-colors', task.checked ? 'border-white/[0.04] bg-white/[0.01]' : 'border-white/[0.06] bg-white/[0.02]'].join(' ')}
+            style={!task.checked ? { animation: 'pulse-subtle 3s ease-in-out infinite' } : undefined}
+          >
+            <div className="min-w-0">
+              <p className={['text-sm', task.checked ? 'text-white/30 line-through' : 'text-white/86'].join(' ')}>{task.label}</p>
+              {task.minutes ? <p className="mt-1 text-[11px] text-white/28">{task.minutes}m</p> : null}
+            </div>
+            <span className={['rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]', task.checked ? 'border-[#34d399]/25 bg-[#34d399]/10 text-[#7ef0be]' : 'border-white/[0.08] bg-white/[0.03] text-white/45'].join(' ')}>
+              {task.checked ? 'done' : 'open'}
+            </span>
           </div>
-          <span className={['rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]', task.checked ? 'border-[#34d399]/25 bg-[#34d399]/10 text-[#7ef0be]' : 'border-white/[0.08] bg-white/[0.03] text-white/45'].join(' ')}>
-            {task.checked ? 'done' : 'open'}
-          </span>
-        </div>
-      ))}
-      {extraCount > 0 && (
-        <div className="rounded-2xl border border-white/[0.06] bg-black/10 px-3 py-2 text-sm text-white/48">
-          remaining tasks {extraCount} items
-        </div>
-      )}
+        ))}
+        {extraCount > 0 && (
+          <div className="flex items-center gap-3 rounded-2xl border border-[#ff6b35]/20 bg-[#ff6b35]/6 px-3 py-3">
+            <span className="text-2xl font-bold text-[#ff9966]">{extraCount}</span>
+            <span className="text-sm text-white/50">件残り — 潰してしまおう</span>
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-4 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff]"
+      >
+        Open morning
+      </button>
     </div>
-    <button
-      type="button"
-      onClick={onOpen}
-      className="mt-4 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff]"
-    >
-      Open morning
-    </button>
-  </div>
-)
+  )
+}
 
 const IdentityAnchorCard = ({
   title,
@@ -788,6 +813,7 @@ export const HomePage = ({
         completionRate={completionRate}
         todayDone={todayDone}
         todayTotal={todayTotal}
+        morningDone={morningDone}
         onOpen={() => onNavigate('morning')}
       />
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useDailyStorage, todayKey } from '@/lib/storage'
+import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type OpsTask } from '@/lib/storage'
 import { bySection, useTodoDefinitions, createTodoId } from '@/lib/todos'
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult } from '@/lib/ai'
 import { getHabits, logHabit, type HabitItem } from '@/lib/api'
@@ -732,6 +732,8 @@ export const MorningTab = ({
         </div>
       )}
 
+      <TodayOpsSection dateKey={dateKey} isReadOnly={isReadOnly} />
+
       <div className="mx-4 mt-4 flex items-center justify-between">
         <span className="text-xs text-white/36">
           {isReadOnly ? 'Record' : 'Completion rate'}{' '}
@@ -754,6 +756,127 @@ export const MorningTab = ({
               Reset today
             </button>
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── TodayOpsSection ─────────────────────────────────────────
+const TodayOpsSection = ({
+  dateKey,
+  isReadOnly,
+}: {
+  dateKey: string
+  isReadOnly: boolean
+}) => {
+  const [ops, setOps] = useOpsStorage(dateKey)
+  const [inputText, setInputText] = useState('')
+  const [showInput, setShowInput] = useState(false)
+  const [rolloverCount, setRolloverCount] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // 昨日の未完タスクを確認
+  useEffect(() => {
+    const yk = yesterdayKey()
+    const yesterdayOps = readOps(yk)
+    const unfinished = yesterdayOps.filter(t => !t.done)
+    if (unfinished.length > 0 && ops.length === 0) {
+      setRolloverCount(unfinished.length)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleRollover = () => {
+    const yk = yesterdayKey()
+    const unfinished = readOps(yk).filter(t => !t.done)
+    const newOps = unfinished.map(t => ({ ...t, done: false, createdAt: new Date().toISOString() }))
+    setOps([...ops, ...newOps])
+    setRolloverCount(0)
+  }
+
+  const addTask = () => {
+    const title = inputText.trim()
+    if (!title) return
+    const newTask: OpsTask = {
+      id: `ops-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title,
+      done: false,
+      createdAt: new Date().toISOString(),
+    }
+    setOps([...ops, newTask])
+    setInputText('')
+    setShowInput(false)
+  }
+
+  const toggleDone = (id: string) => {
+    setOps(ops.map(t => t.id === id ? { ...t, done: !t.done } : t))
+  }
+
+  const removeTask = (id: string) => {
+    setOps(ops.filter(t => t.id !== id))
+  }
+
+  return (
+    <div className="mt-4 mx-4">
+      <div className="flex items-center justify-between border-l-2 border-[#f59e0b] px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#fbd38d]">今日のオペレーション</span>
+        <span className="text-[10px] text-white/28">{ops.filter(t => t.done).length} / {ops.length}</span>
+      </div>
+
+      {rolloverCount > 0 && !isReadOnly && (
+        <div className="mt-2 flex items-center justify-between rounded-2xl border border-[#f59e0b]/25 bg-[#f59e0b]/8 px-3 py-2.5">
+          <span className="text-xs text-[#fbd38d]">昨日の未完 {rolloverCount} 件を引き継ぐ？</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={handleRollover} className="rounded-full border border-[#f59e0b]/30 bg-[#f59e0b]/12 px-2.5 py-1 text-[10px] font-semibold text-[#fbd38d]">引き継ぐ</button>
+            <button type="button" onClick={() => setRolloverCount(0)} className="text-[10px] text-white/30 hover:text-white/60">スキップ</button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-2 space-y-1.5 rounded-2xl border border-white/[0.05] bg-[#111827]/60 p-2">
+        {ops.length === 0 && (
+          <p className="px-2 py-3 text-xs text-white/28">タスクなし。ジャーナルから生成するか手動で追加できます。</p>
+        )}
+        {ops.map(task => (
+          <div key={task.id} className={['flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-colors', task.done ? 'border-white/[0.04] opacity-50' : 'border-white/[0.06]'].join(' ')}>
+            <button
+              type="button"
+              disabled={isReadOnly}
+              onClick={() => toggleDone(task.id)}
+              className={['flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors', task.done ? 'border-[#34d399]/50 bg-[#34d399]/15' : 'border-white/20 bg-white/[0.03]'].join(' ')}
+            >
+              {task.done && <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+            </button>
+            <span className={['flex-1 text-sm', task.done ? 'line-through text-white/30' : 'text-white/80'].join(' ')}>{task.title}</span>
+            {!isReadOnly && (
+              <button type="button" onClick={() => removeTask(task.id)} className="text-white/20 hover:text-white/50 text-xs leading-none">×</button>
+            )}
+          </div>
+        ))}
+
+        {!isReadOnly && (
+          showInput ? (
+            <div className="flex items-center gap-2 px-2 pt-1">
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputText}
+                onChange={e => setInputText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addTask(); if (e.key === 'Escape') setShowInput(false) }}
+                placeholder="タスクを入力して Enter"
+                autoFocus
+                className="flex-1 rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2 text-sm text-white/88 placeholder-white/20 focus:border-[#f59e0b]/30 focus:outline-none"
+              />
+              <button type="button" onClick={addTask} className="rounded-xl border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-3 py-2 text-[11px] font-semibold text-[#fbd38d]">追加</button>
+              <button type="button" onClick={() => setShowInput(false)} className="text-white/30 text-xs">×</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => { setShowInput(true); setTimeout(() => inputRef.current?.focus(), 50) }}
+              className="flex w-full items-center gap-2 px-2 py-2 text-xs text-white/30 hover:text-white/60">
+              <span className="text-base leading-none">+</span> タスクを追加
+            </button>
+          )
         )}
       </div>
     </div>

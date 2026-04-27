@@ -367,6 +367,47 @@ export const readDailyField = (
   })
 }
 
+// 今日のオペレーションタスク（ジャーナルから生成された日次タスク）
+export interface OpsTask {
+  id: string
+  title: string
+  done: boolean
+  createdAt: string
+}
+
+const opsKey = (dateKey: string) => `daily:${dateKey}:ops`
+
+export const readOps = (dateKey: string): OpsTask[] => {
+  try {
+    const raw = localStorage.getItem(opsKey(dateKey))
+    return raw ? (JSON.parse(raw) as OpsTask[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function useOpsStorage(dateOverride?: string): [OpsTask[], (tasks: OpsTask[]) => void] {
+  const dateKey = dateOverride ?? todayKey()
+  const isToday = dateKey === todayKey()
+  const key = opsKey(dateKey)
+  const [tasks, setTasks] = useState<OpsTask[]>(() => readOps(dateKey))
+
+  const setAndSync = (next: OpsTask[]) => {
+    setTasks(next)
+    if (isToday) {
+      try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* quota */ }
+      window.dispatchEvent(new CustomEvent('local-storage', { detail: { key } }))
+    }
+  }
+
+  useEffect(() => {
+    setTasks(readOps(dateKey))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateKey])
+
+  return [tasks, setAndSync]
+}
+
 // ボス用: { value, date } で保存し、今日 or 昨日のものだけ返す
 export interface BossData {
   value: string

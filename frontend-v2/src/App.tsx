@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, useTodayStorage, todayKey } from '@/lib/storage'
+import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, useTodayStorage, todayKey, useOpsStorage, type OpsTask } from '@/lib/storage'
 import { useTodoDefinitions } from '@/lib/todos'
 import { useAuth } from '@/hooks/useAuth'
 import { AuthPage } from '@/pages/AuthPage'
@@ -16,7 +16,7 @@ import { SettingsPage } from '@/pages/SettingsPage'
 import { DateNav } from '@/components/ui/DateNav'
 import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
-import { PrimaryTargetEditor } from '@/components/ui/PrimaryTargetEditor'
+import { PrimaryTargetEditor, type TaskApplyMode } from '@/components/ui/PrimaryTargetEditor'
 import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSnapshot, buildSettingsCoachSnapshot, type CoachAction } from '@/lib/coach'
 import { saveJournalEntry } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
@@ -226,6 +226,7 @@ function MainApp() {
   const [tab, setTab] = useState<TabId>('home')
   const { boss, setBoss, toggleCompleted } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
+  const [currentOps, setOps] = useOpsStorage()
   const [savedAiHabits] = useLocalStorage<unknown>('settings:ai:habits', null)
   const [goals] = useLocalStorage<Array<{ priority?: string; title?: string }>>('wannabe:goals', [])
   const [morningChecked, setMorningChecked] = useDailyStorage<string[]>('morning', 'checked', [])
@@ -381,7 +382,7 @@ function MainApp() {
     }
   }
 
-  const handleJournalApply = ({ target, tasks, feedback }: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string }) => {
+  const handleJournalApply = ({ target, tasks, feedback, taskMode }: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string; taskMode?: TaskApplyMode }) => {
     // DB に非同期保存（失敗しても UI には影響させない）
     void saveJournalEntry({
       entry_date: todayKey(),
@@ -389,12 +390,30 @@ function MainApp() {
       content: { primary_target: target, feedback: feedback ?? '', tasks },
     }).catch(() => {/* silent */})
 
+    const applyTasks = (taskList: JournalBriefResult['tasks']) => {
+      if (taskMode === 'today-only') {
+        if (taskList.length === 0) return
+        const existingTitles = new Set(currentOps.map(t => t.title.toLowerCase()))
+        const newOps: OpsTask[] = taskList
+          .filter(t => !existingTitles.has(t.label.toLowerCase()))
+          .map(t => ({
+            id: `ops-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            title: t.label,
+            done: false,
+            createdAt: new Date().toISOString(),
+          }))
+        setOps([...currentOps, ...newOps])
+      } else {
+        applyJournalTasks(taskList)
+      }
+    }
+
     if (target && bossValue && target !== bossValue) {
       setPendingTarget(target)
       setPendingTasks(tasks)
     } else {
       if (target) setBoss(target)
-      applyJournalTasks(tasks)
+      applyTasks(tasks)
       setShowJournalEditor(false)
     }
   }

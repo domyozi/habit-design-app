@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { generateJournalBrief, type JournalBriefResult } from '@/lib/ai'
 
+export type TaskApplyMode = 'today-only' | 'routine'
+
 interface PrimaryTargetEditorProps {
   journal: string
   currentGoal: string | null
   identity: string
   existingTaskLabels: string[]
-  onApply: (result: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string }) => void
+  onApply: (result: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string; taskMode: TaskApplyMode }) => void
   onClose: () => void
 }
 
@@ -22,6 +24,7 @@ export const PrimaryTargetEditor = ({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
+  const [taskMode, setTaskMode] = useState<TaskApplyMode>('today-only')
   const existingSet = new Set(existingTaskLabels.map(l => l.toLowerCase()))
 
   // 当日の最後のジャーナルブリーフをローカルストレージから復元
@@ -78,12 +81,12 @@ export const PrimaryTargetEditor = ({
   const handleApplySelected = () => {
     if (!result) return
     const selected = result.tasks.filter((_, i) => selectedIndices.has(i))
-    onApply({ target: result.primary_target, tasks: selected, feedback: result.feedback })
+    onApply({ target: result.primary_target, tasks: selected, feedback: result.feedback, taskMode })
   }
 
   const handleApplyTargetOnly = () => {
     if (!result) return
-    onApply({ target: result.primary_target, tasks: [], feedback: result.feedback })
+    onApply({ target: result.primary_target, tasks: [], feedback: result.feedback, taskMode })
   }
 
   return (
@@ -185,6 +188,25 @@ export const PrimaryTargetEditor = ({
                   </button>
                 )}
               </div>
+              {/* 追加先トグル */}
+              {result.tasks.length > 0 && (
+                <div className="mt-2 flex rounded-xl border border-white/[0.06] bg-white/[0.02] p-0.5 text-[10px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setTaskMode('today-only')}
+                    className={['flex-1 rounded-lg py-1 transition-colors', taskMode === 'today-only' ? 'bg-[#f59e0b]/20 text-[#fbd38d]' : 'text-white/30'].join(' ')}
+                  >
+                    今日のみ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTaskMode('routine')}
+                    className={['flex-1 rounded-lg py-1 transition-colors', taskMode === 'routine' ? 'bg-[#7dd3fc]/15 text-[#aee5ff]' : 'text-white/30'].join(' ')}
+                  >
+                    ルーティンに追加
+                  </button>
+                </div>
+              )}
               <div className="mt-2 space-y-1.5">
                 {result.tasks.length === 0 && (
                   <p className="text-xs text-white/32">新規タスクなし</p>
