@@ -12,7 +12,10 @@ import {
   type IntakeQuestion,
   type Granularity,
 } from '@/lib/ai'
-import { getWannaBe, getMandala, saveWannaBe, saveMandala, createHabit } from '@/lib/api'
+import {
+  getWannaBe, getMandala, saveWannaBe, saveMandala, createHabit,
+  getMandalaCheck, patchMandalaCheck, getMandalaTracked, patchMandalaTracked,
+} from '@/lib/api'
 import { MandalaGrid } from '@/components/mandala/MandalaGrid'
 import { HabitSelectSheet } from '@/components/mandala/HabitSelectSheet'
 import { CellSuggestionPanel } from '@/components/mandala/CellSuggestionPanel'
@@ -63,20 +66,28 @@ export const WannaBeTab = () => {
   const [loadingQuestions, setLoadingQuestions] = useState(false)
   const [streamText, setStreamText] = useState('')
 
-  // ─── Daily check (Sprint A) ───────────────────────────────────
+  // ─── Daily check (F-18: API-backed, localStorage fallback) ──────
+  const today = new Date().toISOString().slice(0, 10)
   const [checkedActions, setCheckedActions] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem(`mandala:daily-check:${new Date().toISOString().slice(0, 10)}`) ?? '{}') }
+    try { return JSON.parse(localStorage.getItem(`mandala:daily-check:${today}`) ?? '{}') }
     catch { return {} }
   })
+
+  useEffect(() => {
+    getMandalaCheck(today)
+      .then(remote => { if (Object.keys(remote).length > 0) setCheckedActions(remote) })
+      .catch(() => {})
+  }, [today])
 
   const toggleAction = useCallback((elementIdx: number, actionIdx: number) => {
     const key = `${elementIdx}-${actionIdx}`
     setCheckedActions(prev => {
       const next = { ...prev, [key]: !prev[key] }
-      localStorage.setItem(`mandala:daily-check:${new Date().toISOString().slice(0, 10)}`, JSON.stringify(next))
+      localStorage.setItem(`mandala:daily-check:${today}`, JSON.stringify(next))
+      patchMandalaCheck(today, next).catch(() => {})
       return next
     })
-  }, [])
+  }, [today])
 
   const completedCount = Object.values(checkedActions).filter(Boolean).length
   const progressPct = mandala ? Math.round((completedCount / 64) * 100) : 0
@@ -84,17 +95,24 @@ export const WannaBeTab = () => {
     el.actions.every((_, j) => checkedActions[`${i}-${j}`])
   ).length ?? 0
 
-  // ─── Tracking targets ─────────────────────────────────────────
+  // ─── Tracking targets (F-19: API-backed, localStorage fallback) ──
   const [trackedActions, setTrackedActions] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem('mandala:tracked') ?? '{}') }
     catch { return {} }
   })
+
+  useEffect(() => {
+    getMandalaTracked()
+      .then(remote => { if (Object.keys(remote).length > 0) setTrackedActions(remote) })
+      .catch(() => {})
+  }, [])
 
   const toggleTracked = useCallback((elementIdx: number, actionIdx: number) => {
     const key = `${elementIdx}-${actionIdx}`
     setTrackedActions(prev => {
       const next = { ...prev, [key]: !prev[key] }
       localStorage.setItem('mandala:tracked', JSON.stringify(next))
+      patchMandalaTracked({ [key]: next[key] }).catch(() => {})
       return next
     })
   }, [])

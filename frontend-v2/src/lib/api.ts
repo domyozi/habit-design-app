@@ -247,6 +247,22 @@ export const saveMandala = async (cells: unknown): Promise<void> => {
   await apiPost('/api/mandala', { cells })
 }
 
+/** F-18: GET /api/mandala/daily-check?date=YYYY-MM-DD */
+export const getMandalaCheck = (date: string): Promise<Record<string, boolean>> =>
+  apiGet<Record<string, boolean>>(`/api/mandala/daily-check?date=${date}`)
+
+/** F-18: PATCH /api/mandala/daily-check?date=YYYY-MM-DD */
+export const patchMandalaCheck = (date: string, checks: Record<string, boolean>): Promise<Record<string, boolean>> =>
+  apiPatch<Record<string, boolean>>(`/api/mandala/daily-check?date=${date}`, checks)
+
+/** F-19: GET /api/mandala/tracked */
+export const getMandalaTracked = (): Promise<Record<string, boolean>> =>
+  apiGet<Record<string, boolean>>('/api/mandala/tracked')
+
+/** F-19: PATCH /api/mandala/tracked */
+export const patchMandalaTracked = (tracked: Record<string, boolean>): Promise<Record<string, boolean>> =>
+  apiPatch<Record<string, boolean>>('/api/mandala/tracked', tracked)
+
 // ============================================================
 // Habits API クライアント
 // ============================================================

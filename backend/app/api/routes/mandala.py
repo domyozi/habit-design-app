@@ -1,21 +1,22 @@
 """
 マンダラチャート API
-Sprint 1: F-02/F-03 マンダラ保存・取得エンドポイント
 
 【エンドポイント】:
-  GET  /api/mandala  - 認証ユーザーの最新マンダラを取得（未登録時 204）
-  POST /api/mandala  - マンダラを保存（upsert: 1ユーザー1レコード）
+  GET  /api/mandala                          - 最新マンダラを取得（未登録時 204）
+  POST /api/mandala                          - マンダラを保存（upsert）
+  GET  /api/mandala/daily-check?date=YYYY-MM-DD  - 当日のチェック状態を取得
+  PATCH /api/mandala/daily-check?date=YYYY-MM-DD - チェック状態を更新
+  GET  /api/mandala/tracked                  - 追跡アクション一覧を取得
+  PATCH /api/mandala/tracked                 - 追跡アクション状態を更新
 
-【設計方針】:
-- user_id でユニークに管理（1ユーザー1レコード）
-- 既存レコードがある場合は cells と wanna_be_id を更新（upsert）
-- RLS により自分のレコードのみアクセス可能
-
-🔵 信頼性レベル: Sprint Spec F-01/F-02/F-03 より
+【DB要件】:
+  ALTER TABLE public.mandala_charts
+    ADD COLUMN IF NOT EXISTS daily_checks jsonb DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS tracked_actions jsonb DEFAULT '{}';
 """
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from app.core.security import get_current_user
@@ -26,19 +27,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_mandala_id(supabase, user_id: str) -> str | None:
+    result = (
+        supabase.table("mandala_charts")
+        .select("id")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0]["id"] if result.data else None
+
+
 @router.get("/mandala")
 async def get_mandala(
     user_id: str = Depends(get_current_user),
 ):
-    """
-    【GET /mandala】: 認証ユーザーの最新マンダラを取得
-    【204レスポンス】: マンダラ未登録の場合は 204 No Content
-    【認証必須】: JWTから user_id を取得
-    🔵 信頼性レベル: Sprint Spec F-03 より
-    """
     supabase = get_supabase()
-
-    # 【DB取得】: user_id でフィルタし、最新1件を取得
     result = (
         supabase.table("mandala_charts")
         .select("*")
@@ -47,11 +52,8 @@ async def get_mandala(
         .limit(1)
         .execute()
     )
-
-    # 【未登録チェック】: レコードがない場合は 204 No Content を返す
     if not result.data:
         return Response(status_code=204)
-
     return APIResponse(success=True, data=MandalaChart(**result.data[0]))
 
 
@@ -60,15 +62,7 @@ async def save_mandala(
     request: SaveMandalaRequest,
     user_id: str = Depends(get_current_user),
 ):
-    """
-    【POST /mandala】: マンダラを保存（upsert: 1ユーザー1レコード）
-    【upsert設計】: 既存レコードがある場合は cells と wanna_be_id を更新
-    【認証必須】: JWTから user_id を取得
-    🔵 信頼性レベル: Sprint Spec F-02 より
-    """
     supabase = get_supabase()
-
-    # 【既存レコード確認】: user_id で最新レコードを取得
     existing = (
         supabase.table("mandala_charts")
         .select("id")
@@ -77,14 +71,11 @@ async def save_mandala(
         .limit(1)
         .execute()
     )
-
     if existing.data:
-        # 【UPDATE】: 既存レコードの cells と wanna_be_id を更新
         record_id = existing.data[0]["id"]
         update_data: dict = {"cells": request.cells}
         if request.wanna_be_id is not None:
             update_data["wanna_be_id"] = request.wanna_be_id
-
         result = (
             supabase.table("mandala_charts")
             .update(update_data)
@@ -93,15 +84,98 @@ async def save_mandala(
         )
         saved = result.data[0] if result.data else existing.data[0]
     else:
-        # 【INSERT】: 新規レコードを作成
-        insert_data: dict = {
-            "user_id": user_id,
-            "cells": request.cells,
-        }
+        insert_data: dict = {"user_id": user_id, "cells": request.cells}
         if request.wanna_be_id is not None:
             insert_data["wanna_be_id"] = request.wanna_be_id
-
         result = supabase.table("mandala_charts").insert(insert_data).execute()
         saved = result.data[0] if result.data else {}
-
     return APIResponse(success=True, data=MandalaChart(**saved))
+
+
+# ─── F-18: Daily check API ────────────────────────────────────
+
+@router.get("/mandala/daily-check")
+async def get_daily_check(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    user_id: str = Depends(get_current_user),
+):
+    supabase = get_supabase()
+    result = (
+        supabase.table("mandala_charts")
+        .select("daily_checks")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return {}
+    all_checks: dict = result.data[0].get("daily_checks") or {}
+    return all_checks.get(date, {})
+
+
+@router.patch("/mandala/daily-check")
+async def patch_daily_check(
+    payload: dict,
+    date: str = Query(..., description="YYYY-MM-DD"),
+    user_id: str = Depends(get_current_user),
+):
+    supabase = get_supabase()
+    record_id = _get_mandala_id(supabase, user_id)
+    if not record_id:
+        return Response(status_code=404)
+
+    current = (
+        supabase.table("mandala_charts")
+        .select("daily_checks")
+        .eq("id", record_id)
+        .execute()
+    )
+    all_checks: dict = (current.data[0].get("daily_checks") or {}) if current.data else {}
+    all_checks[date] = payload
+
+    supabase.table("mandala_charts").update({"daily_checks": all_checks}).eq("id", record_id).execute()
+    return all_checks[date]
+
+
+# ─── F-19: Tracked actions API ───────────────────────────────
+
+@router.get("/mandala/tracked")
+async def get_tracked(
+    user_id: str = Depends(get_current_user),
+):
+    supabase = get_supabase()
+    result = (
+        supabase.table("mandala_charts")
+        .select("tracked_actions")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return {}
+    return result.data[0].get("tracked_actions") or {}
+
+
+@router.patch("/mandala/tracked")
+async def patch_tracked(
+    payload: dict,
+    user_id: str = Depends(get_current_user),
+):
+    supabase = get_supabase()
+    record_id = _get_mandala_id(supabase, user_id)
+    if not record_id:
+        return Response(status_code=404)
+
+    current = (
+        supabase.table("mandala_charts")
+        .select("tracked_actions")
+        .eq("id", record_id)
+        .execute()
+    )
+    tracked: dict = (current.data[0].get("tracked_actions") or {}) if current.data else {}
+    tracked.update(payload)
+
+    supabase.table("mandala_charts").update({"tracked_actions": tracked}).eq("id", record_id).execute()
+    return tracked
