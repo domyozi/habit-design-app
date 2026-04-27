@@ -1,0 +1,48 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - generic [ref=e9]: Habit Design
+    - navigation "サイトナビゲーション" [ref=e10]:
+      - link "About" [ref=e11] [cursor=pointer]:
+        - /url: "#"
+      - link "Science" [ref=e12] [cursor=pointer]:
+        - /url: "#"
+      - link "Pricing" [ref=e13] [cursor=pointer]:
+        - /url: "#"
+  - generic [ref=e14]:
+    - generic [ref=e16]:
+      - generic [ref=e19]: AI-native habit system
+      - heading "未来の自分に、 今の習慣を合わせる。" [level=1] [ref=e20]:
+        - generic [ref=e21]: 未来の自分に、
+        - generic [ref=e22]: 今の習慣を合わせる。
+      - paragraph [ref=e23]: AI と一緒に「なりたい自分」から逆算して習慣を組み立てるワークスペース。 毎日戻りたくなる静かな高揚感を設計します。
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]: ◆
+          - text: Clarity
+        - generic [ref=e27]:
+          - generic [ref=e28]: ◆
+          - text: Momentum
+        - generic [ref=e29]:
+          - generic [ref=e30]: ◆
+          - text: Taste
+    - generic [ref=e32]:
+      - generic [ref=e33]:
+        - heading "ワークスペースへ" [level=2] [ref=e34]
+        - paragraph [ref=e35]: アカウントでサインインして始める
+      - generic [ref=e36]:
+        - button "Google で始める" [ref=e37] [cursor=pointer]:
+          - img [ref=e38]
+          - generic [ref=e43]: Google で始める
+        - button "Apple で始める" [ref=e44] [cursor=pointer]:
+          - img [ref=e45]
+          - generic [ref=e47]: Apple で始める
+      - paragraph [ref=e48]:
+        - text: 続行することで
+        - link "利用規約" [ref=e49] [cursor=pointer]:
+          - /url: "#"
+        - text: と
+        - link "プライバシーポリシー" [ref=e50] [cursor=pointer]:
+          - /url: "#"
+        - text: に同意したものとみなされます。

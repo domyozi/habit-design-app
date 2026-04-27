@@ -1,0 +1,267 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --app-bg: #020617;
+    --app-surface: rgba(255, 255, 255, 0.08);
+    --app-surface-strong: rgba(255, 255, 255, 0.12);
+    --app-border: rgba(255, 255, 255, 0.12);
+    --app-text: #f8fafc;
+    --app-text-muted: #cbd5e1;
+    --app-accent: #8ef2d2;
+    --app-accent-strong: #6dc7ff;
+    --app-shadow: 0 32px 120px rgba(2, 6, 23, 0.48);
+    --app-radius-xl: 2rem;
+    --pointer-x: 50%;
+    --pointer-y: 22%;
+  }
+
+  html {
+    background: var(--app-bg);
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    background:
+      radial-gradient(circle at top, rgba(109, 199, 255, 0.16), transparent 28%),
+      radial-gradient(circle at 20% 20%, rgba(142, 242, 210, 0.12), transparent 24%),
+      linear-gradient(180deg, #020617 0%, #0f172a 52%, #020617 100%);
+    color: var(--app-text);
+    font-family:
+      "Avenir Next",
+      "Segoe UI",
+      "Helvetica Neue",
+      sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .login-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 88%);
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .login-shell::after {
+    content: '';
+    position: absolute;
+    inset: -12%;
+    background:
+      radial-gradient(
+        circle at var(--pointer-x) var(--pointer-y),
+        rgba(142, 242, 210, 0.18),
+        rgba(125, 198, 255, 0.12) 18%,
+        rgba(2, 6, 23, 0) 42%
+      );
+    opacity: 0.9;
+    pointer-events: none;
+    transition:
+      background-position 220ms ease-out,
+      opacity 220ms ease-out;
+  }
+
+  .motion-panel {
+    position: relative;
+    overflow: hidden;
+    transition:
+      transform 280ms ease,
+      border-color 280ms ease,
+      box-shadow 280ms ease,
+      background-color 280ms ease;
+  }
+
+  .motion-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.16),
+        rgba(255, 255, 255, 0.03) 38%,
+        rgba(125, 198, 255, 0.08) 100%
+      );
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  .motion-panel:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 38px 140px rgba(2, 6, 23, 0.58);
+  }
+
+  .motion-card {
+    transition:
+      transform 240ms ease,
+      border-color 240ms ease,
+      background-color 240ms ease;
+  }
+
+  .motion-card:hover {
+    transform: translateY(-6px);
+    border-color: rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .motion-cta {
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 18px 40px rgba(255, 255, 255, 0.1);
+  }
+
+  .motion-cta::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.1) 35%,
+      rgba(255, 255, 255, 0.42) 50%,
+      rgba(255, 255, 255, 0.12) 64%,
+      transparent 100%
+    );
+    transform: translateX(-130%);
+    transition: transform 520ms ease;
+    pointer-events: none;
+  }
+
+  .motion-cta:hover::after {
+    transform: translateX(130%);
+  }
+
+  .motion-float {
+    animation: float-gentle 9s ease-in-out infinite;
+  }
+
+  .motion-pulse {
+    animation: pulse-soft 6.4s ease-in-out infinite;
+  }
+
+  .motion-aurora {
+    transform-origin: center;
+  }
+
+  .motion-aurora-a {
+    animation: aurora-drift-a 18s ease-in-out infinite alternate;
+  }
+
+  .motion-aurora-b {
+    animation: aurora-drift-b 22s ease-in-out infinite alternate;
+  }
+
+  .motion-aurora-c {
+    animation: aurora-drift-c 20s ease-in-out infinite alternate;
+  }
+}
+
+@layer utilities {
+  @keyframes float-gentle {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: scale(0.98);
+    }
+    50% {
+      opacity: 0.9;
+      transform: scale(1.04);
+    }
+  }
+
+  @keyframes aurora-drift-a {
+    0% {
+      transform: translate3d(-3%, 0, 0) scale(1);
+    }
+    100% {
+      transform: translate3d(4%, 5%, 0) scale(1.08);
+    }
+  }
+
+  @keyframes aurora-drift-b {
+    0% {
+      transform: translate3d(0, -4%, 0) scale(0.96);
+    }
+    100% {
+      transform: translate3d(-5%, 6%, 0) scale(1.08);
+    }
+  }
+
+  @keyframes aurora-drift-c {
+    0% {
+      transform: translate3d(0, 0, 0) scale(0.98);
+    }
+    100% {
+      transform: translate3d(6%, -4%, 0) scale(1.06);
+    }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    .login-shell::after {
+      opacity: 0.42;
+    }
+  }
+}

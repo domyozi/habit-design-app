@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wanna Be - Goal Setter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+JP:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body{background:#020617;color:#f8fafc;overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent;font-family:'Inter','Noto Sans JP',sans-serif;}
+        .ambient-glow{position:fixed;border-radius:50%;filter:blur(80px);opacity:.15;z-index:0;pointer-events:none;}
+        .glass-panel{background:rgba(255,255,255,0.03);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);}
+        .glass-input{background:rgba(255,255,255,0.02);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.06);transition:all .3s cubic-bezier(.4,0,.2,1);}
+        .glass-input:focus{outline:none;border-color:#10b981;box-shadow:0 0 0 1px rgba(16,185,129,0.5),inset 0 0 12px rgba(16,185,129,0.1);background:rgba(255,255,255,0.04);}
+        .cursor-blink{display:inline-block;width:8px;height:14px;background:#10b981;vertical-align:middle;margin-left:2px;animation:blink 1s step-end infinite;}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+        .hide-scrollbar::-webkit-scrollbar{display:none;}.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
+        @keyframes aurora-1{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-50px) scale(1.1)}66%{transform:translate(-20px,20px) scale(0.9)}}
+        @keyframes aurora-2{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-30px,40px) scale(1.2)}66%{transform:translate(20px,-20px) scale(0.8)}}
+        .animate-aurora-1{animation:aurora-1 20s ease-in-out infinite;}
+        .animate-aurora-2{animation:aurora-2 25s ease-in-out infinite;}
+    </style>
+</head>
+<body class="antialiased selection:bg-emerald-500/30 selection:text-emerald-100 relative">
+<main class="w-full max-w-[440px] mx-auto min-h-[100dvh] relative flex flex-col hide-scrollbar overflow-x-hidden shadow-2xl shadow-black/50 border-x border-white/5 sm:my-8 sm:h-[90dvh] sm:rounded-3xl sm:overflow-hidden">
+    <div class="ambient-glow bg-teal-500/40 w-[300px] h-[300px] top-[-100px] left-[-100px] animate-aurora-1"></div>
+    <div class="ambient-glow bg-sky-600/30 w-[250px] h-[250px] top-[40%] right-[-50px] animate-aurora-2"></div>
+    <div class="ambient-glow bg-emerald-600/20 w-[350px] h-[350px] bottom-[-100px] left-[10%] animate-aurora-1" style="animation-duration:22s"></div>
+    <header class="relative z-20 flex items-center justify-between px-5 pt-8 pb-4 bg-gradient-to-b from-[#020617] via-[#020617]/90 to-transparent">
+        <button class="w-10 h-10 flex items-center justify-center rounded-full glass-panel text-slate-300"><i class="ph ph-arrow-left text-xl"></i></button>
+        <div class="flex flex-col items-center">
+            <span class="text-[10px] font-semibold tracking-widest text-slate-500 uppercase">Goal Setting</span>
+            <h1 class="text-base font-medium text-slate-50 tracking-wide mt-0.5">Wanna Be</h1>
+        </div>
+        <div class="w-10 h-10 flex items-center justify-center text-emerald-400">
+            <i class="ph ph-infinity text-2xl drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]"></i>
+        </div>
+    </header>
+    <div class="relative z-10 flex-1 overflow-y-auto hide-scrollbar px-5 pb-44 space-y-6">
+        <section class="space-y-3 mt-2">
+            <label class="flex items-center space-x-2 text-sm font-medium text-slate-300 ml-1">
+                <i class="ph-fill ph-sparkle text-emerald-400"></i><span>なりたい自分</span>
+            </label>
+            <div class="relative group">
+                <textarea rows="4" class="w-full glass-input rounded-2xl p-4 text-sm text-slate-100 placeholder:text-slate-600 resize-none leading-relaxed" placeholder="例：1年後の自分は毎朝6時に起き、英語でプレゼンできて...">海外のスタートアップで通用する、フロントエンドとデザインを繋ぐアーキテクトになりたい。</textarea>
+                <div class="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/20 rounded-tl-xl group-focus-within:border-emerald-500/50 transition-colors"></div>
+                <div class="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/20 rounded-br-xl group-focus-within:border-emerald-500/50 transition-colors"></div>
+            </div>
+        </section>
+        <button class="w-full relative group transform transition-all duration-300 active:scale-[0.98]">
+            <div class="absolute -inset-0.5 bg-gradient-to-r from-emerald-500 to-teal-400 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+            <div class="relative flex items-center justify-center space-x-2 w-full bg-gradient-to-r from-emerald-600 to-teal-500 py-3.5 rounded-xl border border-white/10 text-white font-medium text-sm">
+                <i class="ph ph-magic-wand text-lg"></i><span>AIに相談する</span>
+            </div>
+        </button>
+        <section class="mt-4 relative">
+            <div class="glass-panel p-5 rounded-3xl relative overflow-hidden">
+                <div class="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-teal-400/30 to-transparent"></div>
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="relative w-8 h-8 rounded-full bg-[#020617] flex items-center justify-center border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+                        <i class="ph-fill ph-robot text-teal-400 text-sm"></i>
+                        <div class="absolute top-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#020617] animate-pulse"></div>
+                    </div>
+                    <div><p class="text-xs font-semibold text-emerald-400 tracking-wider">AI MENTOR</p><p class="text-[10px] text-slate-500">分析中...</p></div>
+                </div>
+                <p class="text-sm text-slate-300 leading-relaxed mb-5">グローバル基準のUI設計とエンジニアリングを融合させる目標ですね。<span class="text-white font-medium">3つの具体的なマイルストーン</span>を提案します<span class="cursor-blink"></span></p>
+                <div class="space-y-3">
+                    <label class="block cursor-pointer group">
+                        <input type="checkbox" class="peer sr-only"/>
+                        <div class="bg-[#020617]/50 border border-white/5 rounded-xl p-4 hover:bg-white/[0.03] transition-all peer-checked:border-emerald-500/50 peer-checked:bg-emerald-500/5">
+                            <div class="flex items-start gap-4">
+                                <div class="mt-0.5 w-5 h-5 rounded border border-slate-600 flex items-center justify-center group-hover:border-slate-400 transition-colors bg-[#020617] peer-checked:bg-emerald-500/20 flex-shrink-0">
+                                    <i class="ph-bold ph-check text-emerald-400 text-xs opacity-0 group-has-[:checked]:opacity-100"></i>
+                                </div>
+                                <div><h4 class="text-sm font-medium text-slate-100 mb-1">デザインシステムの自作</h4><p class="text-xs text-slate-400">トークン設計からコンポーネント実装まで独自DSをFigmaとReactで展開する</p></div>
+                            </div>
+                        </div>
+                    </label>
+                    <label class="block cursor-pointer group">
+                        <input type="checkbox" class="peer sr-only" checked/>
+                        <div class="bg-[#020617]/50 border border-emerald-500/30 rounded-xl p-4 bg-emerald-500/5 transition-all">
+                            <div class="flex items-start gap-4">
+                                <div class="mt-0.5 w-5 h-5 rounded border border-emerald-500 flex items-center justify-center bg-emerald-500/20 flex-shrink-0"><i class="ph-bold ph-check text-emerald-400 text-xs"></i></div>
+                                <div><h4 class="text-sm font-medium text-slate-100 mb-1">海外コミュニティで英語発信</h4><p class="text-xs text-slate-400">学んだ設計思想を英語で記事化しDev.toで月1回発信する</p></div>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </section>
+    </div>
+    <div class="absolute bottom-0 inset-x-0 z-30 pt-16 pb-6 px-5 bg-gradient-to-t from-[#020617] via-[#020617]/95 to-transparent pointer-events-none">
+        <div class="pointer-events-auto">
+            <div class="flex justify-between items-end mb-3">
+                <h3 class="text-xs font-semibold text-slate-400 tracking-wider uppercase">Saved Goals</h3>
+                <span class="text-[10px] text-emerald-500 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">1/3 Active</span>
+            </div>
+            <ul class="space-y-2">
+                <li class="flex items-center gap-3 bg-white/[0.02] border border-white/5 rounded-lg p-2.5 backdrop-blur-md">
+                    <div class="w-6 h-6 rounded bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-lg flex-shrink-0"><span class="text-[10px] font-bold text-[#020617]">1</span></div>
+                    <p class="text-xs text-slate-200 font-medium truncate flex-1">デザインシステム構築の体系化</p>
+                    <button class="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-red-400"><i class="ph ph-x"></i></button>
+                </li>
+                <li class="flex items-center gap-3 border border-dashed border-white/10 rounded-lg p-2.5 opacity-50">
+                    <div class="w-6 h-6 rounded border border-white/20 flex items-center justify-center flex-shrink-0"><span class="text-[10px] font-bold text-slate-500">2</span></div>
+                    <p class="text-xs text-slate-600 truncate flex-1">提案から選んでください...</p>
+                </li>
+                <li class="flex items-center gap-3 border border-dashed border-white/10 rounded-lg p-2.5 opacity-50">
+                    <div class="w-6 h-6 rounded border border-white/20 flex items-center justify-center flex-shrink-0"><span class="text-[10px] font-bold text-slate-500">3</span></div>
+                    <p class="text-xs text-slate-600 truncate flex-1">提案から選んでください...</p>
+                </li>
+            </ul>
+        </div>
+    </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja" class="antialiased">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Habit Design - Premium Mobile Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --glass-bg: rgba(255,255,255,0.04); --glass-border: rgba(255,255,255,0.08); }
+        body { font-family:'Plus Jakarta Sans','Noto Sans JP',sans-serif; background:#000; display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0; overflow:hidden; }
+        #mobile-shell { width:100%; max-width:390px; height:100vh; max-height:844px; background:#020617; position:relative; overflow:hidden; box-shadow:0 25px 50px -12px rgba(52,211,153,0.05),inset 0 0 0 1px var(--glass-border); }
+        @media(min-width:450px){#mobile-shell{height:90vh;border-radius:40px;}}
+        .hide-scrollbar::-webkit-scrollbar{display:none;}.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
+        @keyframes drift1{0%,100%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.15}50%{transform:translate(30px,-50px) scale(1.1) rotate(10deg);opacity:.25}}
+        @keyframes drift2{0%,100%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.1}50%{transform:translate(-40px,40px) scale(1.15) rotate(-10deg);opacity:.2}}
+        .aurora-emerald{background:radial-gradient(circle at center,#34d399 0%,transparent 60%);animation:drift1 12s ease-in-out infinite;}
+        .aurora-sky{background:radial-gradient(circle at center,#38bdf8 0%,transparent 60%);animation:drift2 15s ease-in-out infinite reverse;}
+        .glass-panel{background:var(--glass-bg);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--glass-border);}
+        .glass-nav{background:rgba(2,6,23,0.65);backdrop-filter:blur(32px) saturate(180%);-webkit-backdrop-filter:blur(32px) saturate(180%);border:1px solid var(--glass-border);}
+        .progress-ring__circle{transition:stroke-dashoffset 1.2s cubic-bezier(0.65,0,0.35,1);transform:rotate(-90deg);transform-origin:50% 50%;}
+        .habit-card{transition:transform .2s ease,background .3s ease;}.habit-card:active{transform:scale(0.98);}
+        .text-gradient{background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-image:linear-gradient(135deg,#f8fafc 0%,#94a3b8 100%);}
+    </style>
+</head>
+<body>
+<div id="mobile-shell">
+    <div class="absolute top-[-10%] left-[-20%] w-[350px] h-[350px] rounded-full mix-blend-screen filter blur-[70px] aurora-emerald pointer-events-none z-0"></div>
+    <div class="absolute bottom-[20%] right-[-20%] w-[300px] h-[300px] rounded-full mix-blend-screen filter blur-[70px] aurora-sky pointer-events-none z-0"></div>
+    <div class="absolute top-[40%] left-[20%] w-[200px] h-[200px] bg-indigo-500/10 rounded-full filter blur-[80px] pointer-events-none z-0"></div>
+    <div class="absolute top-0 w-full h-8 bg-gradient-to-b from-[#020617] to-transparent z-40 pointer-events-none"></div>
+    <div class="relative z-10 w-full h-full overflow-y-auto hide-scrollbar pt-14 pb-32 px-5">
+        <header class="flex items-center justify-between mb-8">
+            <div class="flex items-center gap-2">
+                <div class="relative w-8 h-8 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/10 shadow-[0_0_15px_rgba(52,211,153,0.15)]">
+                    <i class="ph ph-infinity text-emerald-400 text-xl font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]"></i>
+                </div>
+                <span class="text-white font-bold text-sm tracking-widest uppercase">Habit Design</span>
+            </div>
+            <div class="w-10 h-10 rounded-full p-[1px] bg-gradient-to-br from-emerald-400/50 to-sky-500/20">
+                <div class="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-slate-300 text-xs font-bold">TS</div>
+            </div>
+        </header>
+        <section class="glass-panel rounded-[28px] p-5 mb-8 relative overflow-hidden">
+            <div class="relative z-10 flex items-center justify-between">
+                <div class="flex flex-col gap-1">
+                    <span class="text-xs font-semibold text-emerald-400 tracking-wider uppercase mb-1">Today</span>
+                    <h2 class="text-3xl font-bold text-white tracking-tight flex items-baseline gap-1">5<span class="text-slate-500 text-lg font-medium">/7</span></h2>
+                    <p class="text-sm text-slate-400 font-medium">今日の習慣</p>
+                </div>
+                <div class="relative w-20 h-20 flex items-center justify-center">
+                    <div class="absolute inset-0 bg-emerald-400/5 rounded-full filter blur-md"></div>
+                    <svg class="w-full h-full drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]" viewBox="0 0 100 100">
+                        <circle class="text-white/[0.06] stroke-current" stroke-width="8" cx="50" cy="50" r="42" fill="transparent"></circle>
+                        <circle class="text-emerald-400 stroke-current progress-ring__circle" stroke-width="8" stroke-linecap="round" cx="50" cy="50" r="42" fill="transparent" stroke-dasharray="264" stroke-dashoffset="75.5"></circle>
+                    </svg>
+                    <i class="ph-fill ph-check-circle text-2xl text-emerald-400 absolute"></i>
+                </div>
+            </div>
+        </section>
+        <section class="flex flex-col gap-3">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold text-slate-200">Morning Routine</h3>
+                <div class="h-[1px] flex-grow bg-gradient-to-r from-transparent via-white/10 to-transparent mx-4"></div>
+            </div>
+            <div class="habit-card glass-panel rounded-2xl p-4 flex items-center gap-4 cursor-pointer relative overflow-hidden bg-gradient-to-r from-emerald-500/[0.03] to-transparent">
+                <div class="w-1 bg-emerald-400 h-1/2 absolute left-0 top-1/4 rounded-r-md shadow-[0_0_8px_#34d399]"></div>
+                <button class="w-7 h-7 rounded-[10px] bg-emerald-400 flex items-center justify-center shadow-[0_0_12px_rgba(52,211,153,0.4)]"><i class="ph-bold ph-check text-slate-900 text-sm"></i></button>
+                <div class="flex-grow flex items-center justify-between">
+                    <div><span class="text-base font-semibold text-slate-300 line-through decoration-emerald-500/50">朝のメディテーション</span><span class="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5"><i class="ph ph-clock"></i> 06:00</span></div>
+                    <div class="glass-panel px-2.5 py-1 rounded-full flex items-center gap-1.5"><span class="text-xs">🔥</span><span class="text-xs font-bold text-gradient">24日</span></div>
+                </div>
+            </div>
+            <div class="habit-card glass-panel rounded-2xl p-4 flex items-center gap-4 cursor-pointer ring-1 ring-white/20 bg-white/[0.08]">
+                <button class="w-7 h-7 rounded-[10px] border border-white/30 flex items-center justify-center bg-black/20"></button>
+                <div class="flex-grow flex items-center justify-between">
+                    <div><span class="text-base font-semibold text-white">英語学習 (30分)</span><span class="text-xs text-emerald-400 flex items-center gap-1.5 mt-0.5"><i class="ph-fill ph-clock"></i> 10:00</span></div>
+                    <div class="glass-panel px-2.5 py-1 rounded-full flex items-center gap-1.5 bg-emerald-500/10 border-emerald-500/20"><span class="text-xs">🔥</span><span class="text-xs font-bold text-emerald-300">3日</span></div>
+                </div>
+            </div>
+            <div class="habit-card glass-panel rounded-2xl p-4 flex items-center gap-4 cursor-pointer hover:bg-white/[0.06]">
+                <button class="w-7 h-7 rounded-[10px] border border-white/10 flex items-center justify-center bg-black/20"></button>
+                <div class="flex-grow flex items-center justify-between">
+                    <div><span class="text-base font-medium text-slate-300">読書 (20ページ)</span><span class="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5"><i class="ph ph-clock"></i> 18:30</span></div>
+                    <div class="px-2.5 py-1 rounded-full flex items-center gap-1.5 opacity-50"><i class="ph-fill ph-plant text-emerald-500/70 text-xs"></i><span class="text-xs font-medium text-slate-400">New</span></div>
+                </div>
+            </div>
+        </section>
+    </div>
+    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2.5rem)] glass-nav rounded-3xl p-1.5 z-50 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8),0_0_20px_-5px_rgba(52,211,153,0.15)] flex justify-between items-center">
+        <button class="relative w-14 h-12 flex flex-col items-center justify-center rounded-2xl bg-white/[0.06] text-emerald-400"><i class="ph-fill ph-house text-[22px] drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]"></i><div class="w-1 h-1 rounded-full bg-emerald-400 absolute bottom-1"></div></button>
+        <button class="w-14 h-12 flex flex-col items-center justify-center rounded-2xl text-slate-500"><i class="ph ph-shooting-star text-[22px]"></i></button>
+        <button class="w-14 h-12 flex flex-col items-center justify-center rounded-2xl text-slate-500"><i class="ph ph-chart-line-up text-[22px]"></i></button>
+        <button class="w-14 h-12 flex flex-col items-center justify-center rounded-2xl text-slate-500"><i class="ph ph-gear-six text-[22px]"></i></button>
+    </div>
+</div>
+</body>
+</html>

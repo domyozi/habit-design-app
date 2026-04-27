@@ -1,0 +1,41 @@
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - generic [ref=e8]:
+      - link "note" [ref=e11] [cursor=pointer]:
+        - /url: https://note.com/
+        - img "note" [ref=e12]
+      - navigation "アカウント"
+  - main [ref=e17]:
+    - heading "ログイン" [level=1] [ref=e18]
+    - generic [ref=e19]:
+      - list [ref=e20]:
+        - listitem [ref=e21]:
+          - generic [ref=e22]:
+            - button "Google" [ref=e23] [cursor=pointer]:
+              - img [ref=e26]
+            - generic [ref=e27]: Google
+        - listitem [ref=e28]:
+          - generic [ref=e29]:
+            - button "X" [ref=e30] [cursor=pointer]
+            - generic [ref=e34]: X
+        - listitem [ref=e35]:
+          - generic [ref=e36]:
+            - button "Apple" [ref=e37] [cursor=pointer]
+            - generic [ref=e40]: Apple
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - heading "メールアドレス または note ID" [level=2] [ref=e44]
+          - textbox "mail@example.com or note ID" [ref=e46]
+        - generic [ref=e47]:
+          - heading "パスワード" [level=2] [ref=e49]
+          - textbox "パスワード" [ref=e51]
+        - generic [ref=e52]:
+          - link "パスワードを忘れた方" [ref=e53] [cursor=pointer]:
+            - /url: /reset_password
+          - generic [ref=e54]: /
+          - link "ログインでお困りの方" [ref=e55] [cursor=pointer]:
+            - /url: https://help-note.com/hc/ja/articles/900000023046
+        - button "ログイン" [disabled] [ref=e57]:
+          - generic [ref=e58]: ログイン
+      - link "会員登録はこちら" [ref=e60] [cursor=pointer]:
+        - /url: https://note.com/signup

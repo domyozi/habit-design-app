@@ -1,0 +1,10 @@
+[     590ms] [LOG] 10 CDN assets loaded OK @ https://slk-demo.slack.com/ssb/redirect:144
+[     599ms] [INFO] Apr-15 07:58:38.574 [TRACER] Tracing is not sampled by default for this session. @ https://a.slack-edge.com/bv1-13-br/ssb-redirect-core.9c18b17f0ae870423bf2.primer.min.js:140
+[     604ms] [WARNING] Error in Optanon wrapper, please review your code. ReferenceError: loadGTM is not defined @ https://cdn.cookielaw.org/scripttemplates/202402.1.0/otBannerSdk.js:6
+[     686ms] [ERROR] Not allowed to launch 'slack://T05297XNRMY/magic-login/10919239878404-713ddc0fe86f1d10cb3f5a193049e5e1a9dc0a290e903e4fe5f3ce258cb5911a?id=1' because a user gesture is required. @ https://slk-demo.slack.com/ssb/redirect:0
+[     806ms] [ERROR] Access to XMLHttpRequest at 'https://slack.com/clog/track/' from origin 'https://slk-demo.slack.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://slk-demo.slack.com/ssb/redirect:0
+[     806ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://slack.com/clog/track/:0
+[     809ms] [ERROR] Access to XMLHttpRequest at 'https://slack.com/clog/track/' from origin 'https://slk-demo.slack.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://slk-demo.slack.com/ssb/redirect:0
+[     809ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://slack.com/clog/track/:0
+[   34401ms] [ERROR] Access to XMLHttpRequest at 'https://slack.com/clog/track/' from origin 'https://slk-demo.slack.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://slk-demo.slack.com/ssb/redirect:0
+[   34401ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://slack.com/clog/track/:0

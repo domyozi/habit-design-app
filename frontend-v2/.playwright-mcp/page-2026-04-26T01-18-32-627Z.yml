@@ -1,0 +1,214 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img [ref=e10]
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: Daily OS
+          - paragraph [ref=e14]: execution workspace
+      - paragraph [ref=e15]: 実行、分析、設定、長期目標を横断して扱う作業面です。
+    - generic [ref=e16]:
+      - button "Home daily execution" [ref=e17] [cursor=pointer]:
+        - generic [ref=e19]:
+          - paragraph [ref=e20]: Home
+          - paragraph [ref=e21]: daily execution
+      - button "Morning core + routine" [active] [ref=e23] [cursor=pointer]:
+        - generic [ref=e25]:
+          - paragraph [ref=e26]: Morning
+          - paragraph [ref=e27]: core + routine
+      - button "Journal daily journaling" [ref=e29] [cursor=pointer]:
+        - generic [ref=e31]:
+          - paragraph [ref=e32]: Journal
+          - paragraph [ref=e33]: daily journaling
+      - button "Evening review + next day" [ref=e35] [cursor=pointer]:
+        - generic [ref=e37]:
+          - paragraph [ref=e38]: Evening
+          - paragraph [ref=e39]: review + next day
+      - button "Monthly analysis + reports" [ref=e41] [cursor=pointer]:
+        - generic [ref=e43]:
+          - paragraph [ref=e44]: Monthly
+          - paragraph [ref=e45]: analysis + reports
+      - button "Wanna Be identity board" [ref=e47] [cursor=pointer]:
+        - generic [ref=e49]:
+          - paragraph [ref=e50]: Wanna Be
+          - paragraph [ref=e51]: identity board
+      - button "Settings system design" [ref=e53] [cursor=pointer]:
+        - generic [ref=e55]:
+          - paragraph [ref=e56]: Settings
+          - paragraph [ref=e57]: system design
+  - generic [ref=e59]:
+    - banner [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - paragraph [ref=e63]: Primary target
+          - paragraph [ref=e64]: 未設定
+        - button "Setup" [ref=e65] [cursor=pointer]
+    - generic [ref=e66]:
+      - generic [ref=e364]:
+        - button "前の日" [ref=e365] [cursor=pointer]: ‹
+        - generic [ref=e366]:
+          - generic [ref=e367]: 4/26（日）
+          - generic [ref=e368]: 今日
+        - button "次の日" [disabled] [ref=e369]: ›
+      - generic [ref=e370]:
+        - generic [ref=e371]:
+          - generic [ref=e372]:
+            - generic [ref=e373]: Primary target
+            - button "Set target" [ref=e375] [cursor=pointer]
+          - paragraph [ref=e376]: 今日の最重要タスクを設定してください。
+        - generic [ref=e377]:
+          - generic [ref=e378]:
+            - generic [ref=e379]:
+              - paragraph [ref=e380]: Morning journal
+              - paragraph [ref=e381]: 朝の思考を書き殴るためのスペースです。
+              - paragraph [ref=e382]: 今日の宣言、気分、懸念、やることを自由にまとめてください。
+            - generic [ref=e383]:
+              - paragraph [ref=e384]: Journal
+              - paragraph [ref=e385]: open
+          - 'textbox "例: ・今日は英語学習を最優先にする ・午前中に資料を仕上げる ・気になっていることを先に片づける ・昼までに頭を軽くしておく" [ref=e386]':
+            - /placeholder: "例:\n・今日は英語学習を最優先にする\n・午前中に資料を仕上げる\n・気になっていることを先に片づける\n・昼までに頭を軽くしておく"
+          - generic [ref=e387]:
+            - paragraph [ref=e388]: 自由記述はそのまま日報やAI要約の元データになります。
+            - button "Clear journal" [ref=e390] [cursor=pointer]
+        - generic [ref=e391]:
+          - generic [ref=e392]:
+            - button "Core tasks 5" [ref=e393] [cursor=pointer]
+            - button "Routine tasks 8" [ref=e394] [cursor=pointer]
+            - button "State 2" [ref=e395] [cursor=pointer]
+          - generic [ref=e397]:
+            - generic [ref=e398]:
+              - generic [ref=e399]: Core tasks
+              - generic [ref=e400]: 05:00–06:30
+            - generic [ref=e401]:
+              - generic [ref=e402]:
+                - button [ref=e403] [cursor=pointer]
+                - generic [ref=e404]: 早起き（5時台起床）
+                - generic [ref=e406]: MUST
+              - generic [ref=e407]:
+                - button [ref=e408] [cursor=pointer]
+                - generic [ref=e409]: 筋トレ
+                - generic [ref=e411]: MUST
+              - generic [ref=e412]:
+                - button [ref=e413] [cursor=pointer]
+                - generic [ref=e414]: 英語学習
+                - generic [ref=e416]: MUST
+              - generic [ref=e417]:
+                - button [ref=e418] [cursor=pointer]
+                - generic [ref=e419]: 副業推進
+                - generic [ref=e421]: MUST
+              - generic [ref=e422]:
+                - button [ref=e423] [cursor=pointer]
+                - generic [ref=e424]: 有酸素運動
+                - generic [ref=e426]: MUST
+        - generic [ref=e427]:
+          - generic [ref=e428]:
+            - text: Completion rate
+            - generic [ref=e429]: 0 / 13
+          - generic [ref=e430]:
+            - button "Generate report" [ref=e431] [cursor=pointer]
+            - button "Reset today" [ref=e432] [cursor=pointer]
+  - generic [ref=e229]:
+    - complementary [ref=e230]:
+      - generic [ref=e231]:
+        - generic [ref=e232]:
+          - paragraph [ref=e233]: Coach panel
+          - paragraph [ref=e234]: 0/13 completed
+        - button "Ask coach" [ref=e235] [cursor=pointer]
+      - generic [ref=e236]:
+        - paragraph [ref=e237]: Next actions
+        - generic [ref=e238]:
+          - generic [ref=e241]:
+            - paragraph [ref=e242]: Morning sequence を再開する
+            - paragraph [ref=e243]: 未完了の task が 13 件あります。
+            - button "Open morning" [ref=e244] [cursor=pointer]
+          - generic [ref=e247]:
+            - paragraph [ref=e248]: 明日の primary target を定義する
+            - paragraph [ref=e249]: Evening review に次の最重要タスクを置くと、翌朝の迷いが減ります。
+            - button "Open evening" [ref=e250] [cursor=pointer]
+      - generic [ref=e251]:
+        - paragraph [ref=e252]: Risks
+        - generic [ref=e253]: Primary target が未設定のまま日を終える可能性があります。
+        - generic [ref=e254]: Evening review が未着手だと、翌日の計画精度が下がります。
+    - complementary [ref=e255]:
+      - generic [ref=e256]:
+        - paragraph [ref=e257]: Task list
+        - generic [ref=e258]: 0/22
+      - generic [ref=e259]:
+        - generic [ref=e260]:
+          - generic [ref=e261]:
+            - paragraph [ref=e263]: 朝の MUST
+            - generic [ref=e264]: 0/5
+          - generic [ref=e265]:
+            - button "早起き（5時台起床）" [ref=e266] [cursor=pointer]:
+              - generic [ref=e268]: 早起き（5時台起床）
+            - button "筋トレ" [ref=e269] [cursor=pointer]:
+              - generic [ref=e271]: 筋トレ
+            - button "英語学習" [ref=e272] [cursor=pointer]:
+              - generic [ref=e274]: 英語学習
+            - button "副業推進" [ref=e275] [cursor=pointer]:
+              - generic [ref=e277]: 副業推進
+            - button "有酸素運動" [ref=e278] [cursor=pointer]:
+              - generic [ref=e280]: 有酸素運動
+        - generic [ref=e281]:
+          - generic [ref=e282]:
+            - paragraph [ref=e284]: 朝のルーティン
+            - generic [ref=e285]: 0/8
+          - generic [ref=e286]:
+            - button "白湯を飲む 5m" [ref=e287] [cursor=pointer]:
+              - generic [ref=e289]: 白湯を飲む
+              - generic [ref=e290]: 5m
+            - button "前日の振り返り（やったこと・学び・Next） 10m" [ref=e291] [cursor=pointer]:
+              - generic [ref=e293]: 前日の振り返り（やったこと・学び・Next）
+              - generic [ref=e294]: 10m
+            - button "体重測定 3m" [ref=e295] [cursor=pointer]:
+              - generic [ref=e297]: 体重測定
+              - generic [ref=e298]: 3m
+            - button "カレンダーを埋める 10m" [ref=e299] [cursor=pointer]:
+              - generic [ref=e301]: カレンダーを埋める
+              - generic [ref=e302]: 10m
+            - button "シャワー 15m" [ref=e303] [cursor=pointer]:
+              - generic [ref=e305]: シャワー
+              - generic [ref=e306]: 15m
+            - button "瞑想 10m" [ref=e307] [cursor=pointer]:
+              - generic [ref=e309]: 瞑想
+              - generic [ref=e310]: 10m
+            - button "心得を暗唱する 5m" [ref=e311] [cursor=pointer]:
+              - generic [ref=e313]: 心得を暗唱する
+              - generic [ref=e314]: 5m
+            - button "舌を回す 2m" [ref=e315] [cursor=pointer]:
+              - generic [ref=e317]: 舌を回す
+              - generic [ref=e318]: 2m
+        - generic [ref=e319]:
+          - generic [ref=e320]:
+            - paragraph [ref=e322]: 夜の振り返り
+            - generic [ref=e323]: 0/6
+          - generic [ref=e324]:
+            - button "体重測定（夜） 3m" [ref=e325] [cursor=pointer]:
+              - generic [ref=e327]: 体重測定（夜）
+              - generic [ref=e328]: 3m
+            - button "ダッシュボードのGap確認 3m" [ref=e329] [cursor=pointer]:
+              - generic [ref=e331]: ダッシュボードのGap確認
+              - generic [ref=e332]: 3m
+            - button "目標実績を更新する 2m" [ref=e333] [cursor=pointer]:
+              - generic [ref=e335]: 目標実績を更新する
+              - generic [ref=e336]: 2m
+            - button "気づきを更新する 10m" [ref=e337] [cursor=pointer]:
+              - generic [ref=e339]: 気づきを更新する
+              - generic [ref=e340]: 10m
+            - button "心得・意識すべきことを見る 2m" [ref=e341] [cursor=pointer]:
+              - generic [ref=e343]: 心得・意識すべきことを見る
+              - generic [ref=e344]: 2m
+            - button "翌日の予定をスケジューリング（★余裕30m） 10m" [ref=e345] [cursor=pointer]:
+              - generic [ref=e347]: 翌日の予定をスケジューリング（★余裕30m）
+              - generic [ref=e348]: 10m
+        - generic [ref=e349]:
+          - generic [ref=e350]:
+            - paragraph [ref=e352]: 夜の準備
+            - generic [ref=e353]: 0/3
+          - generic [ref=e354]:
+            - button "水とコップをデスクにセット" [ref=e355] [cursor=pointer]:
+              - generic [ref=e357]: 水とコップをデスクにセット
+            - button "アラームをセットして机の上に置く" [ref=e358] [cursor=pointer]:
+              - generic [ref=e360]: アラームをセットして机の上に置く
+            - button "アウターを部屋に持ってくる" [ref=e361] [cursor=pointer]:
+              - generic [ref=e363]: アウターを部屋に持ってくる

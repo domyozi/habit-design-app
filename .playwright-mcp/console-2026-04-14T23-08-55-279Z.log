@@ -1,0 +1,2 @@
+[     442ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ https://note.com/login:0
+[     983ms] [LOG] %cnote color: #000; font-weight: bold; font-size: 35px; @ https://frontend.st-note.com/nuxt/production/note.43506d9f37aa276ce173.js:0

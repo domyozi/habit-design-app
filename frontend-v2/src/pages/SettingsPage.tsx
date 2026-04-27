@@ -396,6 +396,8 @@ const TodoManager = () => {
   const [openSection, setOpenSection] = useState<HabitCategory | null>('identity')
   const [addingIn, setAddingIn] = useState<HabitCategory | null>(null)
   const [showHidden, setShowHidden] = useState(false)
+  // 編集中アイテム: id → { label, timing }
+  const [editing, setEditing] = useState<Record<string, { label: string; timing: HabitTiming }>>({})
 
   const updateDraft = (section: HabitCategory, key: 'label' | 'timing', value: string) =>
     setDrafts(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }))
@@ -422,13 +424,29 @@ const TodoManager = () => {
   const restoreTodo = (id: string) =>
     setTodos(prev => prev.map(t => t.id === id ? { ...t, is_active: true } : t))
 
-  const allHidden = todos.filter(t => !t.is_active)
+  const deleteTodo = (id: string) =>
+    setTodos(prev => prev.filter(t => t.id !== id))
 
-  const timingLabel = (timing: HabitTiming) =>
-    timing === 'morning' ? 'AM' : timing === 'evening' ? 'PM' : '∞'
+  const startEdit = (item: TodoDefinition) =>
+    setEditing(prev => ({ ...prev, [item.id]: { label: item.label, timing: item.timing } }))
+
+  const cancelEdit = (id: string) =>
+    setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
+
+  const saveEdit = (id: string) => {
+    const e = editing[id]
+    if (!e?.label.trim()) return
+    setTodos(prev => prev.map(t => t.id === id ? { ...t, label: e.label.trim(), timing: e.timing } : t))
+    cancelEdit(id)
+  }
+
+  const allHidden = todos.filter(t => !t.is_active)
 
   const timingColor = (timing: HabitTiming) =>
     timing === 'morning' ? '#7dd3fc' : timing === 'evening' ? '#a78bfa' : '#94a3b8'
+
+  const timingLabel = (timing: HabitTiming) =>
+    timing === 'morning' ? 'AM' : timing === 'evening' ? 'PM' : '∞'
 
   return (
     <div className="px-4 py-3 space-y-2">
@@ -450,14 +468,8 @@ const TodoManager = () => {
               onClick={() => setOpenSection(isOpen ? null : section.id as HabitCategory)}
               className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02]"
             >
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: section.accent }}
-              />
-              <span
-                className="text-[11px] font-semibold uppercase tracking-[0.22em]"
-                style={{ color: section.accent }}
-              >
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: section.accent }} />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: section.accent }}>
                 {section.label}
               </span>
               <span className="text-[10px] text-white/28">{section.desc}</span>
@@ -473,39 +485,89 @@ const TodoManager = () => {
 
             {/* ── 展開エリア ── */}
             {isOpen && (
-              <div
-                className="border-t px-3 pb-3 pt-1"
-                style={{ borderColor: `${section.accent}14` }}
-              >
+              <div className="border-t px-3 pb-3 pt-1" style={{ borderColor: `${section.accent}14` }}>
+
                 {/* アイテム一覧 */}
                 {activeItems.length > 0 ? (
                   <div className="mb-2 divide-y divide-white/[0.04]">
-                    {activeItems.map(item => (
-                      <div
-                        key={item.id}
-                        className="group flex items-center gap-3 py-2.5 px-1"
-                      >
-                        <span
-                          className="h-3.5 w-0.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: `${timingColor(item.timing)}55` }}
-                        />
-                        <p className="flex-1 text-sm text-white/72 leading-snug">{item.label}</p>
-                        <span
-                          className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.14em]"
-                          style={{ color: `${timingColor(item.timing)}80` }}
-                        >
-                          {timingLabel(item.timing)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => hideTodo(item.id)}
-                          title="非表示"
-                          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/20 opacity-0 transition-all hover:bg-white/[0.06] hover:text-white/50 group-hover:opacity-100"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
+                    {activeItems.map(item => {
+                      const isEditing = Boolean(editing[item.id])
+                      const ed = editing[item.id]
+                      return (
+                        <div key={item.id} className="group py-2.5 px-1">
+                          {isEditing ? (
+                            /* ── 編集モード ── */
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={ed.label}
+                                onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], label: e.target.value } }))}
+                                onKeyDown={e => { if (e.key === 'Enter') saveEdit(item.id); if (e.key === 'Escape') cancelEdit(item.id) }}
+                                autoFocus
+                                className="flex-1 rounded-xl border border-white/[0.12] bg-[#08111c] px-3 py-1.5 text-sm text-white/88 placeholder-white/20 focus:border-white/22 focus:outline-none"
+                              />
+                              <select
+                                value={ed.timing}
+                                onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], timing: e.target.value as HabitTiming } }))}
+                                className="rounded-xl border border-white/[0.08] bg-[#08111c] px-2 py-1.5 text-[11px] text-white/55 focus:outline-none"
+                              >
+                                <option value="morning">朝</option>
+                                <option value="evening">夜</option>
+                                <option value="anytime">常時</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => saveEdit(item.id)}
+                                className="shrink-0 rounded-xl border px-3 py-1.5 text-[11px] font-semibold"
+                                style={{ borderColor: `${section.accent}35`, backgroundColor: `${section.accent}10`, color: section.accent }}
+                              >
+                                保存
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => cancelEdit(item.id)}
+                                className="shrink-0 px-1 text-sm text-white/22 hover:text-white/50"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ) : (
+                            /* ── 表示モード ── */
+                            <div className="flex items-center gap-3">
+                              <span
+                                className="h-3.5 w-0.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: `${timingColor(item.timing)}55` }}
+                              />
+                              <p className="flex-1 text-sm text-white/72 leading-snug">{item.label}</p>
+                              <span
+                                className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.14em]"
+                                style={{ color: `${timingColor(item.timing)}80` }}
+                              >
+                                {timingLabel(item.timing)}
+                              </span>
+                              {/* 編集ボタン（ホバー時） */}
+                              <button
+                                type="button"
+                                onClick={() => startEdit(item)}
+                                title="編集"
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-0 transition-all hover:bg-white/[0.06] hover:text-white/50 group-hover:opacity-100"
+                              >
+                                ✎
+                              </button>
+                              {/* 非表示ボタン（ホバー時） */}
+                              <button
+                                type="button"
+                                onClick={() => hideTodo(item.id)}
+                                title="非表示"
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-0 transition-all hover:bg-white/[0.06] hover:text-white/50 group-hover:opacity-100"
+                              >
+                                —
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 ) : (
                   <p className="px-1 py-2 text-[11px] text-white/22">まだ習慣がありません</p>
@@ -540,18 +602,14 @@ const TodoManager = () => {
                       onClick={() => addTodo(section.id as HabitCategory)}
                       disabled={!draft.label.trim()}
                       className="shrink-0 rounded-xl border px-3 py-2 text-[11px] font-semibold disabled:opacity-30"
-                      style={{
-                        borderColor: `${section.accent}35`,
-                        backgroundColor: `${section.accent}10`,
-                        color: section.accent,
-                      }}
+                      style={{ borderColor: `${section.accent}35`, backgroundColor: `${section.accent}10`, color: section.accent }}
                     >
                       追加
                     </button>
                     <button
                       type="button"
                       onClick={() => setAddingIn(null)}
-                      className="shrink-0 text-white/22 hover:text-white/50 text-sm leading-none px-1"
+                      className="shrink-0 px-1 text-sm text-white/22 hover:text-white/50"
                     >
                       ×
                     </button>
@@ -572,28 +630,21 @@ const TodoManager = () => {
         )
       })}
 
-      {/* ── 非表示アイテム（全カテゴリ一括） ── */}
+      {/* ── 非表示アイテム（Restore + 完全削除） ── */}
       {allHidden.length > 0 && (
         <div className="overflow-hidden rounded-[20px] border border-white/[0.04]">
           <button
             type="button"
             onClick={() => setShowHidden(p => !p)}
-            className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+            className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-white/[0.02]"
           >
-            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/22">
-              Hidden
-            </span>
-            <span className="text-[10px] font-mono text-white/18">
-              {allHidden.length} {showHidden ? '▲' : '▼'}
-            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/22">Hidden</span>
+            <span className="text-[10px] font-mono text-white/18">{allHidden.length} {showHidden ? '▲' : '▼'}</span>
           </button>
           {showHidden && (
             <div className="border-t border-white/[0.04] divide-y divide-white/[0.04]">
               {allHidden.map(item => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 px-4 py-2.5"
-                >
+                <div key={item.id} className="group flex items-center gap-3 px-4 py-2.5">
                   <p className="flex-1 text-sm text-white/25 line-through leading-snug">{item.label}</p>
                   <button
                     type="button"
@@ -601,6 +652,14 @@ const TodoManager = () => {
                     className="shrink-0 rounded-full border border-white/[0.07] px-2.5 py-1 text-[10px] text-white/30 transition-colors hover:border-white/14 hover:text-white/55"
                   >
                     Restore
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteTodo(item.id)}
+                    title="完全削除"
+                    className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                  >
+                    ×
                   </button>
                 </div>
               ))}
@@ -1020,10 +1079,10 @@ export const SettingsPage = () => {
 
       {activeTab === 'tasks' && (
         <>
-          <TodoManager />
-          <div className="px-4 pb-4 space-y-3">
+          <div className="px-4 pt-4 pb-2">
             <AiTaskCreator />
           </div>
+          <TodoManager />
         </>
       )}
 

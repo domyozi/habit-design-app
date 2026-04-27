@@ -79,6 +79,57 @@
 
 ---
 
+## TASK-0003 実施記録（2026-04-13）
+
+### Supabase セットアップ手順
+
+#### ステップ1: Supabase プロジェクト作成
+
+1. https://supabase.com にサインイン
+2. 「New project」を作成
+   - Project name: `habit-design-app`
+   - Region: Northeast Asia (Tokyo)
+3. 以下の認証情報を `backend/.env` と `frontend/.env` に記入:
+   - `Settings > API > Project URL` → `SUPABASE_URL` / `VITE_SUPABASE_URL`
+   - `Settings > API > anon public` → `VITE_SUPABASE_ANON_KEY`
+   - `Settings > API > service_role` → `SUPABASE_SERVICE_ROLE_KEY`
+   - `Settings > API > JWT Secret` → `SUPABASE_JWT_SECRET`
+
+#### ステップ2: DBスキーマ適用
+
+1. Supabase ダッシュボード `SQL Editor` を開く
+2. `docs/design/habit-design-app/setup-supabase.sql` の内容を**全選択してコピー**
+3. SQL Editor に貼り付けて「RUN」を実行
+4. 確認クエリを実行:
+   ```sql
+   SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+   ```
+   → 全テーブルの `rowsecurity` が `true` であることを確認
+
+5. バッジデータ確認:
+   ```sql
+   SELECT id, name FROM public.badge_definitions ORDER BY condition_value;
+   ```
+   → 5件（streak_3, streak_7, streak_14, streak_30, streak_100）が表示されることを確認
+
+#### ステップ3: Google OAuth 設定
+
+1. [Google Cloud Console](https://console.cloud.google.com) でOAuth 2.0クライアントIDを作成
+   - アプリケーションの種類: ウェブアプリケーション
+   - 承認済みリダイレクトURI: `https://<project-ref>.supabase.co/auth/v1/callback`
+2. Supabase `Authentication > Providers > Google` で有効化
+   - Client ID と Client Secret を入力して保存
+
+#### ステップ4: 完了確認
+
+- [ ] Supabase ダッシュボードで全10テーブルが確認できること
+- [ ] RLS が全テーブルで有効（rowsecurity = true）
+- [ ] バッジ定義マスターデータ（5件）が投入されていること
+- [ ] Google OAuth が設定されていること
+- [ ] `frontend/.env` と `backend/.env` に認証情報が記入されていること
+
+---
+
 ## 関連文書
 
 - **要件定義書**: [requirements.md](requirements.md)

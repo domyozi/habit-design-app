@@ -58,9 +58,18 @@ related_files: []
 | 認証エラー | OAuth失敗時 | エラートースト表示 <!-- 🔵 --> |
 | 認証キャンセル | OAuth画面でキャンセル時 | 「ログインがキャンセルされました」トースト表示 <!-- 🟡 --> |
 
+## デザイン受け入れ条件
+
+- ファーストビューでアプリの価値と主CTAが同時に視認できること
+- CTA は desktop / mobile の両方でファーストビュー内に存在すること
+- 背景演出・グラデーション・装飾要素が本文とボタンの可読性を下げないこと
+- タイポグラフィに階層があり、見出し・本文・補助情報の差が明確であること
+- Playwright の visual review で desktop / mobile の baseline を管理できること
+
 ## 備考
 
 - バリデーションはSupabase OAuthに委任。フォーム入力フィールドは存在しない
 - ユーザーIDとプロフィール情報はOAuth成功後にSupabase DBへ自動保存される
 - 初回ログイン判定はSupabase Authのセッション情報またはユーザーレコードの存在確認で行う <!-- 🔴 -->
 - SupabaseクライアントはReactフロントエンド（`src/lib/supabase.ts`）で初期化される
+- visual review の運用は `docs/dev/ui-review-cycle.md` を参照
