@@ -531,12 +531,12 @@ export const MorningTab = ({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-[11px] text-white/34">自由記述はそのまま日報やAI要約の元データになります。</p>
           <div className="flex items-center gap-2">
-            {!isReadOnly && journal.trim() && (
+            {!isReadOnly && (
               <button
                 type="button"
                 onClick={handleGenerateBrief}
-                disabled={briefLoading}
-                className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#7dd3fc]/45 bg-gradient-to-r from-[#7dd3fc]/15 to-[#a78bfa]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#aee5ff] disabled:opacity-40 disabled:animation-none"
+                disabled={briefLoading || !journal.trim()}
+                className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#7dd3fc]/45 bg-gradient-to-r from-[#7dd3fc]/15 to-[#a78bfa]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#aee5ff] disabled:opacity-30"
               >
                 <AiMark size={11} />
                 {briefLoading ? 'Generating…' : brief ? 'Regenerate' : 'Generate →'}
