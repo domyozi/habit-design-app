@@ -542,9 +542,9 @@ const GranularityTabs = ({
 }) => (
   <div className="grid grid-cols-3 gap-2 rounded-[24px] border border-white/[0.06] bg-[#0b1320]/84 p-2">
     {([
-      { id: 'weekly', label: 'Week', note: 'rolling 7d' },
-      { id: 'monthly', label: 'Month', note: 'current view' },
-      { id: 'yearly', label: 'Year', note: 'annual signal' },
+      { id: 'weekly', label: '週次', note: 'rolling 7d' },
+      { id: 'monthly', label: '月次', note: 'current month' },
+      { id: 'yearly', label: '年次', note: 'annual signal' },
     ] as const).map(item => (
       <button
         key={item.id}
@@ -582,29 +582,29 @@ const WeeklyView = ({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">This week</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">今週 <span className="text-white/20">/ THIS WEEK</span></p>
           <p className="mt-2 text-2xl font-semibold text-white">{currentWeekTotal}</p>
-          <p className="mt-1 text-xs text-white/35">checked tasks</p>
+          <p className="mt-1 text-xs text-white/35">完了タスク数</p>
         </div>
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Last week</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">先週 <span className="text-white/20">/ LAST WEEK</span></p>
           <p className="mt-2 text-2xl font-semibold text-white">{previousWeekTotal}</p>
-          <p className="mt-1 text-xs text-white/35">{currentWeekTotal - previousWeekTotal >= 0 ? '+' : ''}{currentWeekTotal - previousWeekTotal} change</p>
+          <p className="mt-1 text-xs text-white/35">{currentWeekTotal - previousWeekTotal >= 0 ? '+' : ''}{currentWeekTotal - previousWeekTotal} 前週比</p>
         </div>
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Leading habit</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">牽引習慣 <span className="text-white/20">/ LEADING</span></p>
           <p className="mt-2 text-lg font-semibold text-white">{lead?.label ?? '—'}</p>
-          <p className="mt-1 text-xs text-white/35">{lead ? `${lead.actual}/${lead.target}` : 'No data'}</p>
+          <p className="mt-1 text-xs text-white/35">{lead ? `${lead.actual}/${lead.target}` : 'データなし'}</p>
         </div>
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">At risk</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">要注意 <span className="text-white/20">/ AT RISK</span></p>
           <p className="mt-2 text-lg font-semibold text-white">{lag?.label ?? '—'}</p>
-          <p className="mt-1 text-xs text-white/35">{lag ? `${lag.actual}/${lag.target}` : 'No data'}</p>
+          <p className="mt-1 text-xs text-white/35">{lag ? `${lag.actual}/${lag.target}` : 'データなし'}</p>
         </div>
       </div>
 
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">4-week distribution</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">4週間の分布</p>
         <div className="space-y-4">
           {habits.map(habit => (
             <div key={habit.id}>
@@ -683,7 +683,7 @@ const MonthlyView = ({
     <div className="rounded-[28px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-4 py-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8da4c3]">Monthly analysis</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8da4c3]">習慣分析 <span className="text-[#8da4c3]/40">/ ANALYSIS</span></p>
           <p className="mt-2 text-lg font-semibold text-white">{today.getMonth() + 1}月の進捗と着地予測を確認します。</p>
           <p className="mt-1 text-sm text-white/48">習慣の強度、比較、AI分析、保存済みレポートを一画面で扱います。</p>
         </div>
@@ -699,7 +699,7 @@ const MonthlyView = ({
 
     <div className="rounded-[24px] border border-white/[0.08] bg-[#0b1320]/85 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">This month overview</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">今月の概要</span>
         <span className="text-[10px] uppercase tracking-[0.14em] text-white/25">Live</span>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -719,30 +719,30 @@ const MonthlyView = ({
 
     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">This month total</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">今月の合計</p>
         <p className="mt-2 text-2xl font-semibold text-white">{sumCounts(monthlyCounts)}</p>
-        <p className="mt-1 text-xs text-white/35">checked completions</p>
+        <p className="mt-1 text-xs text-white/35">完了回数</p>
       </div>
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Last month total</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">先月の合計</p>
         <p className="mt-2 text-2xl font-semibold text-white">{sumCounts(lastMonthCounts)}</p>
-        <p className="mt-1 text-xs text-white/35">baseline for comparison</p>
+        <p className="mt-1 text-xs text-white/35">比較基準</p>
       </div>
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">All-time best</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">自己最高</p>
         <p className="mt-2 text-lg font-semibold text-white">
           {habits.slice().sort((a, b) => (b.best ?? 0) - (a.best ?? 0))[0]?.label ?? '—'}
         </p>
         <p className="mt-1 text-xs text-white/35">
           {habits.slice().sort((a, b) => (b.best ?? 0) - (a.best ?? 0))[0]
-            ? `${habits.slice().sort((a, b) => (b.best ?? 0) - (a.best ?? 0))[0].best} peak`
-            : 'No signal yet'}
+            ? `${habits.slice().sort((a, b) => (b.best ?? 0) - (a.best ?? 0))[0].best} 日の最高`
+            : '記録なし'}
         </p>
       </div>
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Tracked habits</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">習慣数</p>
         <p className="mt-2 text-2xl font-semibold text-white">{habits.length}</p>
-        <p className="mt-1 text-xs text-white/35">execution surface</p>
+        <p className="mt-1 text-xs text-white/35">追跡中</p>
       </div>
     </div>
 
@@ -759,7 +759,7 @@ const MonthlyView = ({
     <RatingTrendChart />
 
     <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Comparative signals</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">習慣の比較</p>
       <div className="space-y-4">
         {habits.map(habit => (
           <ComparisonBar
@@ -777,8 +777,8 @@ const MonthlyView = ({
 
     <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">End of month projection</span>
-        <span className="text-[11px] text-white/28">{daysLeft} days left</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">月末予測</span>
+        <span className="text-[11px] text-white/28">残り {daysLeft} 日</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {habits.map(habit => {
@@ -787,8 +787,8 @@ const MonthlyView = ({
           return (
             <div key={habit.id} className="rounded-2xl border border-white/[0.06] bg-[#111827]/72 p-3">
               <p className="mb-1 text-[11px] text-white/32">{habit.label}</p>
-              <p className="text-base font-bold" style={{ color: habit.color }}>{predicted} projected</p>
-              <p className="text-[10px] text-white/26">{remaining > 0 ? `${remaining} remaining` : 'target reached'}</p>
+              <p className="text-base font-bold" style={{ color: habit.color }}>{predicted} 件予測</p>
+              <p className="text-[10px] text-white/26">{remaining > 0 ? `あと ${remaining} 件` : '目標達成'}</p>
             </div>
           )
         })}
@@ -798,8 +798,8 @@ const MonthlyView = ({
     {habitDefs.length > 0 && (
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Completion map</p>
-          <span className="text-[10px] text-white/24">green = complete / red = missed</span>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">完了マップ</p>
+          <span className="text-[10px] text-white/24">緑=完了 / 赤=未完</span>
         </div>
         <Heatmap checksByDay={checksByDay} habitDefs={habitDefs} />
       </div>
@@ -807,7 +807,7 @@ const MonthlyView = ({
 
     <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#ddd6fe]">Wanna Be analysis</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#ddd6fe]">理想像との連動</p>
       </div>
       <WannaBeAnalysis monthlyCounts={monthlyCounts} targets={targets} habitDefs={habitDefs} />
     </div>
@@ -818,8 +818,8 @@ const MonthlyView = ({
         onClick={() => setShowReport(v => !v)}
         className="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-white/35"
       >
-        <span>Saved reports</span>
-        <span className="text-white/26">{showReport ? 'Hide' : 'Open'}</span>
+        <span>保存済みレポート</span>
+        <span className="text-white/26">{showReport ? '閉じる' : '開く'}</span>
       </button>
       {showReport && <ReportSection />}
     </div>
@@ -846,29 +846,29 @@ const YearlyView = ({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Active months</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">活動月</p>
           <p className="mt-2 text-2xl font-semibold text-white">{activeMonths}</p>
-          <p className="mt-1 text-xs text-white/35">months with activity</p>
+          <p className="mt-1 text-xs text-white/35">記録のある月</p>
         </div>
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Best month</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{bestMonth?.key ?? '—'}</p>
-          <p className="mt-1 text-xs text-white/35">{bestMonth ? `${bestMonth.total} completions` : 'No data yet'}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">最高月</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{bestMonth ? `${bestMonth.key}月` : '—'}</p>
+          <p className="mt-1 text-xs text-white/35">{bestMonth ? `${bestMonth.total} 完了` : '記録なし'}</p>
         </div>
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Habit density</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">習慣数</p>
           <p className="mt-2 text-2xl font-semibold text-white">{habits.length}</p>
-          <p className="mt-1 text-xs text-white/35">tracked habits</p>
+          <p className="mt-1 text-xs text-white/35">追跡中</p>
         </div>
         <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/72 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Trend lens</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">期間</p>
           <p className="mt-2 text-2xl font-semibold text-white">12m</p>
-          <p className="mt-1 text-xs text-white/35">monthly structure</p>
+          <p className="mt-1 text-xs text-white/35">月次構造</p>
         </div>
       </div>
 
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Annual habit curves</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">年間の習慣推移</p>
         <div className="space-y-4">
           {habits.map(habit => (
             <div key={habit.id}>
@@ -883,7 +883,7 @@ const YearlyView = ({
       </div>
 
       <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Monthly volume</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">月別合計</p>
         <div className="grid grid-cols-3 gap-2 lg:grid-cols-6 xl:grid-cols-12">
           {monthTotals.map(month => (
             <div key={month.key} className="rounded-2xl border border-white/[0.06] bg-[#0b1320] p-3">

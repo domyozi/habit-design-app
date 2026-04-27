@@ -20,10 +20,20 @@ export const PrimaryTargetEditor = ({
 }: PrimaryTargetEditorProps) => {
   const [text, setText] = useState(journal)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<JournalBriefResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
   const existingSet = new Set(existingTaskLabels.map(l => l.toLowerCase()))
+
+  // 当日の最後のジャーナルブリーフをローカルストレージから復元
+  const todayBriefKey = `journal:last-brief:${new Date().toISOString().slice(0, 10)}`
+  const [result, setResult] = useState<JournalBriefResult | null>(() => {
+    try {
+      const raw = localStorage.getItem(todayBriefKey)
+      return raw ? (JSON.parse(raw) as JournalBriefResult) : null
+    } catch {
+      return null
+    }
+  })
 
   // 結果が出たとき、重複でないタスクをデフォルト全選択
   useEffect(() => {
@@ -54,6 +64,7 @@ export const PrimaryTargetEditor = ({
       const brief = await generateJournalBrief(text, { currentGoal, identity, existingTaskLabels })
       if (brief) {
         setResult(brief)
+        try { localStorage.setItem(todayBriefKey, JSON.stringify(brief)) } catch { /* quota */ }
       } else {
         setError('解析に失敗しました。もう一度お試しください。')
       }

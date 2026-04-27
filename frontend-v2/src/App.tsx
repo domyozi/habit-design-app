@@ -71,7 +71,7 @@ const DESKTOP_NAV_ITEMS: { id: TabId; icon: string; label: string; note: string;
   { id: 'morning',  icon: '◎', label: 'Morning',  note: 'core + routine',     color: '#7dd3fc' },
   { id: 'journal',  icon: '✎', label: 'Journal',  note: 'daily journaling',   color: '#86efac' },
   { id: 'evening',  icon: '◑', label: 'Evening',  note: 'review + next day',  color: '#c4b5fd' },
-  { id: 'monthly',  icon: '⊞', label: 'Monthly',  note: 'analysis + reports', color: '#38bdf8' },
+  { id: 'monthly',  icon: '⊞', label: '分析',      note: '習慣分析・レポート',  color: '#38bdf8' },
   { id: 'wanna-be', icon: '◆', label: 'Wanna Be', note: 'identity board',     color: '#f59e0b' },
   { id: 'settings', icon: '⊙', label: 'Settings', note: 'system design',      color: '#a78bfa' },
 ]
@@ -201,7 +201,7 @@ const MoreMenu = ({ onNavigate }: { onNavigate: (tab: TabId, date?: string) => v
       <p className="mt-2 text-sm text-white/72">レビュー、長期目標、設定はここから開きます。</p>
     </div>
     {([
-      { id: 'monthly',  label: '月次レビュー・日報', note: 'reports, monthly analytics', color: '#38bdf8' },
+      { id: 'monthly',  label: '分析・レポート', note: '週次・月次・年次', color: '#38bdf8' },
       { id: 'wanna-be', label: 'Wanna Be', note: 'identity, long-horizon goals', color: '#f59e0b' },
       { id: 'settings', label: '設定・AI支援', note: 'todo definitions, AI setup', color: '#a78bfa' },
     ] as { id: TabId; label: string; note: string; color: string }[]).map(({ id, label, note, color }) => (
