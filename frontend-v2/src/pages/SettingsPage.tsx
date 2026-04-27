@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
-import { TODO_SECTIONS, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
+import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 import { useUserContext } from '@/lib/user-context'
 import type { AppLang } from '@/lib/lang'
 
@@ -384,244 +384,228 @@ const AiSetupChat = () => {
 
 const TodoManager = () => {
   const [todos, setTodos] = useTodoDefinitions()
-  const [drafts, setDrafts] = useState<Record<HabitCategory, { label: string; minutes: string; timing: HabitTiming }>>({
-    'identity': { label: '', minutes: '', timing: 'morning' },
-    'growth': { label: '', minutes: '', timing: 'morning' },
-    'body': { label: '', minutes: '', timing: 'morning' },
-    'mind': { label: '', minutes: '', timing: 'morning' },
-    'system': { label: '', minutes: '', timing: 'morning' },
+  const [drafts, setDrafts] = useState<Record<HabitCategory, { label: string; timing: HabitTiming }>>({
+    identity: { label: '', timing: 'morning' },
+    growth:   { label: '', timing: 'morning' },
+    body:     { label: '', timing: 'morning' },
+    mind:     { label: '', timing: 'morning' },
+    system:   { label: '', timing: 'morning' },
   })
-  const [newFieldType, setNewFieldType] = useState<TaskFieldType>('checkbox')
-  const [newChoices, setNewChoices] = useState('')
-  const [newUnit, setNewUnit] = useState('')
-  const [newPlaceholder, setNewPlaceholder] = useState('')
-  const [expandedSection, setExpandedSection] = useState<HabitCategory | null>(null)
+  const [openSection, setOpenSection] = useState<HabitCategory | null>('identity')
+  const [addingIn, setAddingIn] = useState<HabitCategory | null>(null)
+  const [showHidden, setShowHidden] = useState(false)
 
-  const updateDraft = (section: HabitCategory, key: 'label' | 'minutes' | 'timing', value: string) => {
+  const updateDraft = (section: HabitCategory, key: 'label' | 'timing', value: string) =>
     setDrafts(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }))
-  }
-
-  const buildFieldOptions = (): TaskFieldOptions | undefined => {
-    if (newFieldType === 'select' || newFieldType === 'radio') {
-      const choices = newChoices.split(',').map(s => s.trim()).filter(Boolean)
-      return choices.length > 0 ? { choices } : undefined
-    }
-    if (newFieldType === 'number' || newFieldType === 'percent') {
-      return newUnit ? { unit: newUnit } : undefined
-    }
-    if (['text', 'text-ai', 'url'].includes(newFieldType)) {
-      return newPlaceholder ? { placeholder: newPlaceholder } : undefined
-    }
-    return undefined
-  }
 
   const addTodo = (section: HabitCategory) => {
-    const draft = drafts[section]
-    const label = draft.label.trim()
+    const label = drafts[section].label.trim()
     if (!label) return
-
     const newTodo: TodoDefinition = {
       id: createTodoId(label),
       label,
       section,
-      timing: draft.timing ?? 'morning',
-      minutes: draft.minutes ? Number(draft.minutes) : undefined,
+      timing: drafts[section].timing,
       isMust: false,
       is_active: true,
-      field_type: newFieldType !== 'checkbox' ? newFieldType : undefined,
-      field_options: buildFieldOptions(),
     }
-
     setTodos(prev => [...prev, newTodo])
-    setDrafts(prev => ({ ...prev, [section]: { label: '', minutes: '', timing: 'morning' } }))
-    setNewFieldType('checkbox')
-    setNewChoices('')
-    setNewUnit('')
-    setNewPlaceholder('')
-    setExpandedSection(null)
+    setDrafts(prev => ({ ...prev, [section]: { label: '', timing: 'morning' } }))
+    setAddingIn(null)
   }
 
-  const hideTodo = (id: string) => {
-    setTodos(prev => prev.map(todo => (
-      todo.id === id ? { ...todo, is_active: false } : todo
-    )))
-  }
+  const hideTodo = (id: string) =>
+    setTodos(prev => prev.map(t => t.id === id ? { ...t, is_active: false } : t))
 
-  const restoreTodo = (id: string) => {
-    setTodos(prev => prev.map(todo => (
-      todo.id === id ? { ...todo, is_active: true } : todo
-    )))
-  }
+  const restoreTodo = (id: string) =>
+    setTodos(prev => prev.map(t => t.id === id ? { ...t, is_active: true } : t))
+
+  const allHidden = todos.filter(t => !t.is_active)
+
+  const timingLabel = (timing: HabitTiming) =>
+    timing === 'morning' ? 'AM' : timing === 'evening' ? 'PM' : '∞'
+
+  const timingColor = (timing: HabitTiming) =>
+    timing === 'morning' ? '#7dd3fc' : timing === 'evening' ? '#a78bfa' : '#94a3b8'
 
   return (
-    <div className="px-4 pt-2 pb-2">
-      <div className="mb-3 rounded-[24px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.96),rgba(8,13,22,0.92))] px-4 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[#8da4c3]">Task definitions</p>
-        <p className="mt-2 text-sm text-white/78">朝と夜のチェックリストをここで定義します。</p>
-        <p className="mt-1 text-[11px] text-white/34">
-          ここで追加・削除した項目は、朝と夜のチェックリストにそのまま反映されます。
-        </p>
-      </div>
-      <div className="space-y-3">
-        {TODO_SECTIONS.map(section => {
-          const activeItems = bySectionAll(todos, section.id).filter(todo => todo.is_active)
-          const inactiveItems = bySectionAll(todos, section.id).filter(todo => !todo.is_active)
-          const draft = drafts[section.id]
+    <div className="px-4 py-3 space-y-2">
+      {HABIT_CATEGORIES.map(section => {
+        const activeItems = bySectionAll(todos, section.id).filter(t => t.is_active)
+        const isOpen = openSection === section.id
+        const draft = drafts[section.id]
+        const isAdding = addingIn === section.id
 
-          return (
-            <div key={section.id} className="space-y-3 rounded-2xl border border-white/[0.06] bg-[#111827]/70 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em]" style={{ color: section.accent }}>
-                  {section.label}
-                </p>
-                <span className="text-[10px] text-white/28">{activeItems.length} items</span>
-              </div>
-
-              <div className="space-y-2">
-                {activeItems.map(item => (
-                  <div key={item.id} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-white/80">{item.label}</p>
-                    </div>
-                    <span className={[
-                      'shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
-                      item.timing === 'morning' ? 'bg-[#7dd3fc]/10 text-[#7dd3fc]' :
-                      item.timing === 'evening' ? 'bg-[#a78bfa]/10 text-[#a78bfa]' :
-                      'bg-white/[0.06] text-white/40',
-                    ].join(' ')}>
-                      {item.timing === 'morning' ? '朝' : item.timing === 'evening' ? '夜' : '常時'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => hideTodo(item.id)}
-                      className="rounded-full border border-amber-400/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300 hover:bg-amber-400/10"
-                    >
-                      Hide
-                    </button>
-                  </div>
-                ))}
-                {activeItems.length === 0 && (
-                  <p className="text-[11px] text-white/32">有効な To Do はありません。</p>
+        return (
+          <div
+            key={section.id}
+            className="overflow-hidden rounded-[20px] border transition-colors"
+            style={{ borderColor: isOpen ? `${section.accent}28` : 'rgba(255,255,255,0.05)' }}
+          >
+            {/* ── カテゴリヘッダー ── */}
+            <button
+              type="button"
+              onClick={() => setOpenSection(isOpen ? null : section.id as HabitCategory)}
+              className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02]"
+            >
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: section.accent }}
+              />
+              <span
+                className="text-[11px] font-semibold uppercase tracking-[0.22em]"
+                style={{ color: section.accent }}
+              >
+                {section.label}
+              </span>
+              <span className="text-[10px] text-white/28">{section.desc}</span>
+              <div className="ml-auto flex items-center gap-2">
+                {activeItems.length > 0 && (
+                  <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] font-mono text-white/30">
+                    {activeItems.length}
+                  </span>
                 )}
+                <span className="text-[9px] text-white/20">{isOpen ? '▲' : '▼'}</span>
               </div>
+            </button>
 
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={draft.label}
-                    onChange={e => updateDraft(section.id as HabitCategory, 'label', e.target.value)}
-                    placeholder="新しい To Do 名"
-                    className="flex-1 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
-                  />
-                  <select
-                    value={draft.timing}
-                    onChange={e => updateDraft(section.id as HabitCategory, 'timing', e.target.value)}
-                    className="rounded-2xl border border-white/10 bg-[#0b1320] px-2 py-2 text-sm text-white/80"
-                  >
-                    <option value="morning">朝</option>
-                    <option value="evening">夜</option>
-                    <option value="anytime">いつでも</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedSection(expandedSection === section.id ? null : section.id as HabitCategory)}
-                    className="rounded-full border border-white/10 px-2.5 py-2 text-[11px] text-white/40 hover:text-white/70"
-                  >
-                    {expandedSection === section.id ? '▲' : '▼'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addTodo(section.id as HabitCategory)}
-                    disabled={!draft.label.trim()}
-                    className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-30"
-                  >
-                    Add
-                  </button>
-                </div>
-                {expandedSection === section.id && (
-                  <div className="space-y-2 rounded-xl border border-white/[0.06] bg-black/10 p-3">
-                    <div>
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">フィールドタイプ</p>
-                      <select
-                        value={newFieldType}
-                        onChange={e => setNewFieldType(e.target.value as TaskFieldType)}
-                        className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1 text-sm text-white/85"
+            {/* ── 展開エリア ── */}
+            {isOpen && (
+              <div
+                className="border-t px-3 pb-3 pt-1"
+                style={{ borderColor: `${section.accent}14` }}
+              >
+                {/* アイテム一覧 */}
+                {activeItems.length > 0 ? (
+                  <div className="mb-2 divide-y divide-white/[0.04]">
+                    {activeItems.map(item => (
+                      <div
+                        key={item.id}
+                        className="group flex items-center gap-3 py-2.5 px-1"
                       >
-                        <option value="checkbox">チェックボックス</option>
-                        <option value="number">数値入力</option>
-                        <option value="percent">パーセント（%）</option>
-                        <option value="select">選択リスト</option>
-                        <option value="radio">ラジオボタン</option>
-                        <option value="text">テキスト入力</option>
-                        <option value="text-ai">テキスト（AI分析）</option>
-                        <option value="url">URL</option>
-                      </select>
-                    </div>
-                    {(newFieldType === 'select' || newFieldType === 'radio') && (
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">選択肢</p>
-                        <input
-                          value={newChoices}
-                          onChange={e => setNewChoices(e.target.value)}
-                          placeholder="選択肢をコンマ区切りで入力（例: 最高, 良い, 普通, 悪い）"
-                          className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1.5 text-sm text-white/85 placeholder-white/25"
+                        <span
+                          className="h-3.5 w-0.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: `${timingColor(item.timing)}55` }}
                         />
-                      </div>
-                    )}
-                    {(newFieldType === 'number' || newFieldType === 'percent') && (
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">単位</p>
-                        <input
-                          value={newUnit}
-                          onChange={e => setNewUnit(e.target.value)}
-                          placeholder="単位（例: kg, 回）"
-                          className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1.5 text-sm text-white/85 placeholder-white/25"
-                        />
-                      </div>
-                    )}
-                    {(newFieldType === 'text' || newFieldType === 'text-ai' || newFieldType === 'url') && (
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">プレースホルダー</p>
-                        <input
-                          value={newPlaceholder}
-                          onChange={e => setNewPlaceholder(e.target.value)}
-                          placeholder="プレースホルダーテキスト（任意）"
-                          className="w-full rounded border border-white/10 bg-[#0b1320] px-2 py-1.5 text-sm text-white/85 placeholder-white/25"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {inactiveItems.length > 0 && (
-                <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-                    Hidden items
-                  </p>
-                  <div className="space-y-2">
-                    {inactiveItems.map(item => (
-                      <div key={item.id} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 opacity-75">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm text-white/60">{item.label}</p>
-                        </div>
+                        <p className="flex-1 text-sm text-white/72 leading-snug">{item.label}</p>
+                        <span
+                          className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.14em]"
+                          style={{ color: `${timingColor(item.timing)}80` }}
+                        >
+                          {timingLabel(item.timing)}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => restoreTodo(item.id)}
-                          className="rounded-full border border-sky-400/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-300 hover:bg-sky-400/10"
+                          onClick={() => hideTodo(item.id)}
+                          title="非表示"
+                          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/20 opacity-0 transition-all hover:bg-white/[0.06] hover:text-white/50 group-hover:opacity-100"
                         >
-                          Restore
+                          ×
                         </button>
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <p className="px-1 py-2 text-[11px] text-white/22">まだ習慣がありません</p>
+                )}
+
+                {/* 追加フォーム */}
+                {isAdding ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={draft.label}
+                      onChange={e => updateDraft(section.id as HabitCategory, 'label', e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') addTodo(section.id as HabitCategory)
+                        if (e.key === 'Escape') setAddingIn(null)
+                      }}
+                      placeholder="習慣名を入力…"
+                      autoFocus
+                      className="flex-1 rounded-xl border border-white/[0.08] bg-[#08111c] px-3 py-2 text-sm text-white/88 placeholder-white/20 focus:border-white/16 focus:outline-none"
+                    />
+                    <select
+                      value={draft.timing}
+                      onChange={e => updateDraft(section.id as HabitCategory, 'timing', e.target.value)}
+                      className="rounded-xl border border-white/[0.08] bg-[#08111c] px-2 py-2 text-[11px] text-white/55 focus:outline-none"
+                    >
+                      <option value="morning">朝</option>
+                      <option value="evening">夜</option>
+                      <option value="anytime">常時</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => addTodo(section.id as HabitCategory)}
+                      disabled={!draft.label.trim()}
+                      className="shrink-0 rounded-xl border px-3 py-2 text-[11px] font-semibold disabled:opacity-30"
+                      style={{
+                        borderColor: `${section.accent}35`,
+                        backgroundColor: `${section.accent}10`,
+                        color: section.accent,
+                      }}
+                    >
+                      追加
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddingIn(null)}
+                      className="shrink-0 text-white/22 hover:text-white/50 text-sm leading-none px-1"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddingIn(section.id as HabitCategory)}
+                    className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-white/22 transition-colors hover:bg-white/[0.03] hover:text-white/45"
+                  >
+                    <span className="text-sm leading-none">+</span>
+                    <span className="text-[11px]">習慣を追加</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* ── 非表示アイテム（全カテゴリ一括） ── */}
+      {allHidden.length > 0 && (
+        <div className="overflow-hidden rounded-[20px] border border-white/[0.04]">
+          <button
+            type="button"
+            onClick={() => setShowHidden(p => !p)}
+            className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/22">
+              Hidden
+            </span>
+            <span className="text-[10px] font-mono text-white/18">
+              {allHidden.length} {showHidden ? '▲' : '▼'}
+            </span>
+          </button>
+          {showHidden && (
+            <div className="border-t border-white/[0.04] divide-y divide-white/[0.04]">
+              {allHidden.map(item => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 px-4 py-2.5"
+                >
+                  <p className="flex-1 text-sm text-white/25 line-through leading-snug">{item.label}</p>
+                  <button
+                    type="button"
+                    onClick={() => restoreTodo(item.id)}
+                    className="shrink-0 rounded-full border border-white/[0.07] px-2.5 py-1 text-[10px] text-white/30 transition-colors hover:border-white/14 hover:text-white/55"
+                  >
+                    Restore
+                  </button>
                 </div>
-              )}
+              ))}
             </div>
-          )
-        })}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
