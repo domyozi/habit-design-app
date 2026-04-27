@@ -393,11 +393,15 @@ const ProfileSettings = () => {
 
 // ─── 言語設定 ─────────────────────────────────────────────────
 
+const LANG_KEY = 'settings:lang'
+
 const LangSettings = () => {
   const [ctx, updateCtx] = useUserContext()
-  const lang: AppLang = ctx?.lang ?? 'ja'
+  // API から来た値 → localStorage → 'ja' の優先順で取得
+  const lang: AppLang = (ctx?.lang ?? localStorage.getItem(LANG_KEY) ?? 'ja') as AppLang
 
   const setLang = (next: AppLang) => {
+    localStorage.setItem(LANG_KEY, next)
     void updateCtx({ lang: next })
   }
 

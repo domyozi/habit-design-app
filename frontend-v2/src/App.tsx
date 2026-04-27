@@ -506,7 +506,7 @@ function MainApp() {
           onToggleCollapse={() => setRailCollapsed(p => !p)}
           morningDone={morningDone}
           eveningDone={eveningDone}
-          lang={userContext?.lang ?? 'ja'}
+          lang={(userContext?.lang ?? localStorage.getItem('settings:lang') ?? 'ja') as import('@/lib/lang').AppLang}
         />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
