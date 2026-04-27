@@ -1,4 +1,14 @@
 import { useState, useEffect, useRef, type SetStateAction } from 'react'
+import {
+  fetchDailyLogs,
+  saveDailyLog,
+  fetchOpsTasks,
+  saveOpsTasks,
+  fetchPrimaryTarget,
+  savePrimaryTarget,
+  fetchMonthlyTargets,
+  saveMonthlyTargets,
+} from '@/lib/api'
 
 // 今日の日付キー（YYYY-MM-DD）
 export const todayKey = () => {
@@ -131,6 +141,7 @@ export const yesterdayKey = () => {
 
 // 新スキーマ: daily:{date}:{slot}:{field} で保存するフック
 // 旧スキーマのキーからマイグレーション読み込みも行う
+// API バックグラウンド同期付き（localStorage をキャッシュとして使用）
 export function useDailyStorage<T>(
   slot: 'morning' | 'evening',
   field: string,
@@ -163,6 +174,8 @@ export function useDailyStorage<T>(
       if (isToday) {
         set(newKey, next)
         window.dispatchEvent(new CustomEvent('local-storage', { detail: { key: newKey } }))
+        // API に非同期保存（失敗はサイレントに無視）
+        saveDailyLog([{ log_date: dateKey, slot, field, value: next }]).catch(() => {/* offline fallback */})
       }
 
       return next
@@ -192,6 +205,21 @@ export function useDailyStorage<T>(
     // 今日の場合のみ localStorage に書き戻す（過去日付は読み取り専用）
     if (isToday) set(newKey, state)
   }, [fallback, isToday, newKey, oldKey, state])
+
+  // mount 時に API からバックグラウンドで最新データを取得
+  useEffect(() => {
+    fetchDailyLogs(dateKey, slot)
+      .then(entries => {
+        const entry = entries.find(e => e.field === field)
+        if (entry !== undefined) {
+          const apiValue = entry.value as T
+          set(newKey, apiValue)
+          setState(apiValue)
+        }
+      })
+      .catch(() => {/* offline — localStorage フォールバックのまま */})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newKey])
 
   useEffect(() => {
     const syncIfKeyMatches = (changedKey?: string) => {
@@ -311,9 +339,37 @@ export const countByMonth = (slot: 'morning' | 'evening', field: string, year = 
 }
 
 // 月次目標（monthly:{YYYY-MM}:targets → Record<habitId, number>）
+// API バックグラウンド同期付き
 export function useMonthlyTargets(defaults: Record<string, number> = {}) {
-  const key = `monthly:${thisMonthKey()}:targets`
-  return useLocalStorage<Record<string, number>>(key, defaults)
+  const monthKey = thisMonthKey()
+  const key = `monthly:${monthKey}:targets`
+  const [targets, setTargets] = useLocalStorage<Record<string, number>>(key, defaults)
+
+  const setAndSync = (value: SetStateAction<Record<string, number>>) => {
+    setTargets(prev => {
+      const next = typeof value === 'function'
+        ? (value as (prevState: Record<string, number>) => Record<string, number>)(prev)
+        : value
+      // API に非同期保存（失敗はサイレントに無視）
+      saveMonthlyTargets(monthKey, next).catch(() => {/* offline fallback */})
+      return next
+    })
+  }
+
+  // mount 時に API からバックグラウンドで最新データを取得
+  useEffect(() => {
+    fetchMonthlyTargets(monthKey)
+      .then(remote => {
+        if (Object.keys(remote).length > 0) {
+          try { localStorage.setItem(key, JSON.stringify(remote)) } catch { /* quota */ }
+          setTargets(remote)
+        }
+      })
+      .catch(() => {/* offline — localStorage フォールバックのまま */})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthKey])
+
+  return [targets, setAndSync] as const
 }
 
 // 全期間ベスト月次達成数（履歴ローカルを走査して最高月次を返す）
@@ -397,11 +453,27 @@ export function useOpsStorage(dateOverride?: string): [OpsTask[], (tasks: OpsTas
     if (isToday) {
       try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* quota */ }
       window.dispatchEvent(new CustomEvent('local-storage', { detail: { key } }))
+      // API に非同期保存（失敗はサイレントに無視）
+      saveOpsTasks(next, dateKey).catch(() => {/* offline fallback */})
     }
   }
 
+  // mount 時に API からバックグラウンドで最新データを取得
   useEffect(() => {
-    setTasks(readOps(dateKey))
+    fetchOpsTasks(dateKey)
+      .then(apiTasks => {
+        const normalized: OpsTask[] = apiTasks.map(t => ({
+          id: t.id,
+          title: t.title,
+          done: t.done,
+          createdAt: t.created_at ?? t.createdAt ?? new Date().toISOString(),
+        }))
+        if (normalized.length > 0) {
+          try { localStorage.setItem(key, JSON.stringify(normalized)) } catch { /* quota */ }
+          setTasks(normalized)
+        }
+      })
+      .catch(() => {/* offline — localStorage フォールバックのまま */})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateKey])
 
@@ -421,15 +493,39 @@ export function useBossStorage() {
   const isValid = data && (data.date === todayKey() || data.date === yesterdayKey())
   const boss = isValid ? data : null
 
-  const setBoss = (value: string) =>
-    setData({ value, date: todayKey(), completed: false })
+  const setBoss = (value: string) => {
+    const next: BossData = { value, date: todayKey(), completed: false }
+    setData(next)
+    // API に非同期保存（失敗はサイレントに無視）
+    savePrimaryTarget({ value, set_date: todayKey(), completed: false }).catch(() => {/* offline fallback */})
+  }
 
   const clearBoss = () => setData(null)
 
   const toggleCompleted = () => {
     if (!data) return
-    setData({ ...data, completed: !data.completed })
+    const next = { ...data, completed: !data.completed }
+    setData(next)
+    // API に非同期保存
+    savePrimaryTarget({ value: next.value, set_date: next.date, completed: next.completed }).catch(() => {/* offline fallback */})
   }
+
+  // mount 時に API からバックグラウンドで最新データを取得
+  useEffect(() => {
+    fetchPrimaryTarget()
+      .then(remote => {
+        if (remote) {
+          const bossData: BossData = {
+            value: remote.value,
+            date: remote.set_date,
+            completed: remote.completed,
+          }
+          setData(bossData)
+        }
+      })
+      .catch(() => {/* offline — localStorage フォールバックのまま */})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return { boss, setBoss, clearBoss, toggleCompleted }
 }

@@ -282,3 +282,80 @@ ALTER TABLE public.todo_definitions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "todo_definitions: own rows only" ON public.todo_definitions
     FOR ALL USING (auth.uid() = user_id);
+
+-- ========================================
+-- daily_logs テーブル（日次データ全般）
+-- daily:{date}:{slot}:{field} パターンを Supabase に移行
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.daily_logs (
+  user_id    uuid REFERENCES auth.users NOT NULL,
+  log_date   date NOT NULL,
+  slot       text NOT NULL,
+  field      text NOT NULL,
+  value      jsonb NOT NULL,
+  updated_at timestamptz DEFAULT now(),
+  PRIMARY KEY (user_id, log_date, slot, field)
+);
+ALTER TABLE public.daily_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "daily_logs: own rows only" ON public.daily_logs FOR ALL USING (auth.uid() = user_id);
+
+-- ========================================
+-- ops_tasks テーブル（今日のオペレーション）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.ops_tasks (
+  id          text NOT NULL,
+  user_id     uuid REFERENCES auth.users NOT NULL,
+  task_date   date NOT NULL,
+  title       text NOT NULL,
+  done        boolean DEFAULT false,
+  created_at  timestamptz DEFAULT now(),
+  PRIMARY KEY (user_id, task_date, id)
+);
+ALTER TABLE public.ops_tasks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "ops_tasks: own rows only" ON public.ops_tasks FOR ALL USING (auth.uid() = user_id);
+
+-- ========================================
+-- primary_targets テーブル（Primary Target / boss）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.primary_targets (
+  user_id     uuid PRIMARY KEY REFERENCES auth.users,
+  value       text NOT NULL DEFAULT '',
+  set_date    date NOT NULL,
+  completed   boolean DEFAULT false,
+  updated_at  timestamptz DEFAULT now()
+);
+ALTER TABLE public.primary_targets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "primary_targets: own rows only" ON public.primary_targets FOR ALL USING (auth.uid() = user_id);
+
+-- ========================================
+-- monthly_targets テーブル（月次目標）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.monthly_targets (
+  user_id     uuid REFERENCES auth.users NOT NULL,
+  year_month  text NOT NULL,
+  targets     jsonb NOT NULL DEFAULT '{}',
+  updated_at  timestamptz DEFAULT now(),
+  PRIMARY KEY (user_id, year_month)
+);
+ALTER TABLE public.monthly_targets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "monthly_targets: own rows only" ON public.monthly_targets FOR ALL USING (auth.uid() = user_id);
+
+-- ========================================
+-- user_context テーブル（AI コーチ用メモリ）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.user_context (
+  user_id          uuid PRIMARY KEY REFERENCES auth.users,
+  identity         text,
+  values_keywords  text[],
+  goal_summary     text,
+  patterns         text,
+  insights         jsonb DEFAULT '{}',
+  updated_at       timestamptz DEFAULT now()
+);
+ALTER TABLE public.user_context ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "user_context: own rows only" ON public.user_context FOR ALL USING (auth.uid() = user_id);

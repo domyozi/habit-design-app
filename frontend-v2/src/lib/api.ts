@@ -352,3 +352,138 @@ export const saveTodoDefinitions = (items: TodoDefinitionRecord[]) =>
 /** PATCH /api/todo-definitions/{id} — 個別更新 */
 export const patchTodoDefinition = (id: string, patch: Partial<TodoDefinitionRecord>) =>
   apiPatch<TodoDefinitionRecord>(`/api/todo-definitions/${id}`, patch)
+
+// ============================================================
+// Daily Logs API クライアント
+// ============================================================
+
+export interface DailyLogEntry {
+  slot: string
+  field: string
+  value: unknown
+}
+
+/**
+ * 日次ログを取得する
+ * GET /api/daily-logs?date={YYYY-MM-DD}&slot={morning|evening}
+ */
+export const fetchDailyLogs = (date: string, slot: string): Promise<DailyLogEntry[]> =>
+  apiGet<DailyLogEntry[]>(`/api/daily-logs?date=${date}&slot=${slot}`)
+
+/**
+ * 日次ログをバッチ upsert する
+ * POST /api/daily-logs
+ */
+export const saveDailyLog = (
+  entries: Array<{ log_date: string; slot: string; field: string; value: unknown }>,
+): Promise<void> => apiPost('/api/daily-logs', entries)
+
+// ============================================================
+// Ops Tasks API クライアント
+// ============================================================
+
+export interface OpsTaskRecord {
+  id: string
+  title: string
+  done: boolean
+  createdAt?: string
+  created_at?: string
+}
+
+/**
+ * オペレーションタスクを取得する
+ * GET /api/ops-tasks?date={YYYY-MM-DD}
+ */
+export const fetchOpsTasks = (date: string): Promise<OpsTaskRecord[]> =>
+  apiGet<OpsTaskRecord[]>(`/api/ops-tasks?date=${date}`)
+
+/**
+ * オペレーションタスクを一括保存する
+ * POST /api/ops-tasks
+ */
+export const saveOpsTasks = (
+  tasks: Array<{ id: string; title: string; done: boolean; createdAt?: string }>,
+  taskDate: string,
+): Promise<void> =>
+  apiPost('/api/ops-tasks', tasks.map(t => ({ ...t, task_date: taskDate })))
+
+/**
+ * 単一オペレーションタスクの done 状態を更新する
+ * PATCH /api/ops-tasks/{id}
+ */
+export const patchOpsTask = (id: string, taskDate: string, done: boolean): Promise<void> =>
+  apiPatch(`/api/ops-tasks/${id}`, { done, task_date: taskDate })
+
+// ============================================================
+// Primary Target API クライアント
+// ============================================================
+
+export interface PrimaryTargetRecord {
+  value: string
+  set_date: string
+  completed: boolean
+}
+
+/**
+ * Primary Target を取得する
+ * GET /api/primary-target
+ */
+export const fetchPrimaryTarget = (): Promise<PrimaryTargetRecord | null> =>
+  apiGet<PrimaryTargetRecord | null>('/api/primary-target')
+
+/**
+ * Primary Target を保存する
+ * PUT /api/primary-target
+ */
+export const savePrimaryTarget = (data: PrimaryTargetRecord): Promise<void> =>
+  apiPut('/api/primary-target', data)
+
+// ============================================================
+// Monthly Targets API クライアント
+// ============================================================
+
+/**
+ * 月次目標を取得する
+ * GET /api/monthly-targets?year_month={YYYY-MM}
+ */
+export const fetchMonthlyTargets = async (yearMonth: string): Promise<Record<string, number>> => {
+  const result = await apiGet<{ targets: Record<string, number> }>(
+    `/api/monthly-targets?year_month=${yearMonth}`,
+  )
+  return result.targets ?? {}
+}
+
+/**
+ * 月次目標を保存する
+ * PUT /api/monthly-targets
+ */
+export const saveMonthlyTargets = (
+  yearMonth: string,
+  targets: Record<string, number>,
+): Promise<void> => apiPut('/api/monthly-targets', { year_month: yearMonth, targets })
+
+// ============================================================
+// User Context API クライアント
+// ============================================================
+
+export interface UserContext {
+  identity?: string
+  values_keywords?: string[]
+  goal_summary?: string
+  patterns?: string
+  insights?: Record<string, unknown>
+}
+
+/**
+ * ユーザーコンテキストを取得する
+ * GET /api/user-context
+ */
+export const fetchUserContext = (): Promise<UserContext | null> =>
+  apiGet<UserContext | null>('/api/user-context')
+
+/**
+ * ユーザーコンテキストを部分更新する
+ * PATCH /api/user-context
+ */
+export const patchUserContext = (patch: Partial<UserContext>): Promise<UserContext> =>
+  apiPatch<UserContext>('/api/user-context', patch)
