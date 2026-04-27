@@ -1,4 +1,3 @@
-/** AI機能ボタンに付ける小さなスパークルバッジ */
 export const AiMark = ({ size = 10 }: { size?: number }) => (
   <svg
     width={size}
@@ -14,13 +13,10 @@ export const AiMark = ({ size = 10 }: { size?: number }) => (
         <stop offset="100%" stopColor="#a78bfa" />
       </linearGradient>
     </defs>
-    {/* 縦棒 */}
-    <path d="M5 1 L5 9" stroke="url(#ai-spark)" strokeWidth="1.2" strokeLinecap="round" />
-    {/* 横棒 */}
-    <path d="M1 5 L9 5" stroke="url(#ai-spark)" strokeWidth="1.2" strokeLinecap="round" />
-    {/* 斜め右上 */}
-    <path d="M2.5 2.5 L7.5 7.5" stroke="url(#ai-spark)" strokeWidth="0.9" strokeLinecap="round" />
-    {/* 斜め右下 */}
-    <path d="M7.5 2.5 L2.5 7.5" stroke="url(#ai-spark)" strokeWidth="0.9" strokeLinecap="round" />
+    {/* 4-pointed sparkle ✦ */}
+    <path
+      d="M5 1 L5.55 4.45 L9 5 L5.55 5.55 L5 9 L4.45 5.55 L1 5 L4.45 4.45 Z"
+      fill="url(#ai-spark)"
+    />
   </svg>
 )

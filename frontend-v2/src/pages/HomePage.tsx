@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useTimeContext } from '@/lib/timeContext'
-import { useBossStorage, countMonthlyChecks, useTodayStorage, useMonthlyTargets, getAllTimeBests, yesterdayKey } from '@/lib/storage'
-import { ProgressRing } from '@/components/home/ProgressRing'
+import { useBossStorage, useTodayStorage, thisMonthKeys, yesterdayKey } from '@/lib/storage'
 import { byTiming, useTodoDefinitions } from '@/lib/todos'
 import type { TabId } from '@/types'
 
@@ -14,18 +13,6 @@ const readYesterdayChecked = (slot: 'morning' | 'evening'): string[] => {
   if (!raw) return []
   try { return JSON.parse(raw) as string[] } catch { return [] }
 }
-
-// ─── 定数 ────────────────────────────────────────────────────
-const HABIT_DEFS = [
-  { id: 'early-rise', label: '早起き', color: '#f59e0b', defaultTarget: 14 },
-  { id: 'training',   label: '筋トレ', color: '#ff6b35', defaultTarget: 24 },
-  { id: 'english',    label: '英語',   color: '#22c55e', defaultTarget: 10 },
-  { id: 'cardio',     label: '有酸素', color: '#38bdf8', defaultTarget: 15 },
-]
-
-const DEFAULT_TARGETS: Record<string, number> = Object.fromEntries(
-  HABIT_DEFS.map(h => [h.id, h.defaultTarget])
-)
 
 // ─── FocusCard ───────────────────────────────────────────────
 const FocusCard = ({
@@ -158,38 +145,42 @@ const CoachInsightCard = ({
 )
 
 // ─── MonthlyMiniCard ─────────────────────────────────────────
-const MonthlyMiniCard = ({
-  monthlyCounts,
-  targets,
-  allTimeBests,
-  onNavigate,
-}: {
-  monthlyCounts: Record<string, number>
-  targets: Record<string, number>
-  allTimeBests: Record<string, number>
-  onNavigate: (tab: TabId) => void
-}) => (
-  <button
-    type="button"
-    onClick={() => onNavigate('monthly')}
-    className="w-full rounded-[28px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(12,18,29,0.97),rgba(9,14,22,0.93))] px-5 py-5 text-left"
-  >
-    <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/35">Monthly</p>
-    <div className="mt-4 grid grid-cols-4 gap-2">
-      {HABIT_DEFS.map(h => (
-        <ProgressRing
-          key={h.id}
-          label={h.label}
-          color={h.color}
-          target={targets[h.id] ?? h.defaultTarget}
-          actual={monthlyCounts[h.id] ?? 0}
-          best={allTimeBests[h.id]}
-          size={60}
+const MonthlyMiniCard = ({ onNavigate }: { onNavigate: (tab: TabId) => void }) => {
+  const daysCompleted = useMemo(() => {
+    let count = 0
+    for (const dk of thisMonthKeys()) {
+      const raw = localStorage.getItem(`daily:${dk}:morning:checked`) ?? localStorage.getItem(`morning:checked:${dk}`)
+      if (raw) {
+        try { if ((JSON.parse(raw) as string[]).length > 0) count++ } catch { /* noop */ }
+      }
+    }
+    return count
+  }, [])
+
+  const dayOfMonth = new Date().getDate()
+  const pct = dayOfMonth > 0 ? Math.min(100, Math.round((daysCompleted / dayOfMonth) * 100)) : 0
+
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate('monthly')}
+      className="w-full rounded-[28px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(12,18,29,0.97),rgba(9,14,22,0.93))] px-5 py-5 text-left"
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/35">Monthly</p>
+      <div className="mt-3">
+        <span className="text-3xl font-bold text-white">{daysCompleted}</span>
+        <span className="ml-1 text-[11px] text-white/36">/ {dayOfMonth} 日</span>
+      </div>
+      <p className="mt-0.5 text-[11px] text-white/30">朝ルーティン完了</p>
+      <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, backgroundColor: pct >= 80 ? '#22c55e' : '#7dd3fc' }}
         />
-      ))}
-    </div>
-  </button>
-)
+      </div>
+    </button>
+  )
+}
 
 // ─── YesterdayCard ──────────────────────────────────────────
 const YesterdayCard = ({
@@ -293,11 +284,6 @@ export const HomePage = ({
   const morningItems = byTiming(todoDefinitions, 'morning')
   const [checkedArr] = useTodayStorage<string[]>('morning:checked', [])
   const [eveningCheckedArr] = useTodayStorage<string[]>('evening:checked', [])
-  const [targets] = useMonthlyTargets(DEFAULT_TARGETS)
-
-  const monthlyCounts = useMemo(() => countMonthlyChecks('morning:checked'), [])
-  const allTimeBests = useMemo(() => getAllTimeBests(), [])
-
   const bossValue = boss?.value ?? null
   const bossCompleted = boss?.completed ?? false
 
@@ -308,19 +294,8 @@ export const HomePage = ({
   const morningDone = todayTotal > 0 && todayDone >= todayTotal
   const eveningDone = eveningCheckedArr.length > 0
 
-  const underTarget = HABIT_DEFS
-    .map(h => ({
-      ...h,
-      actual: monthlyCounts[h.id] ?? 0,
-      target: targets[h.id] ?? h.defaultTarget,
-      rate: (monthlyCounts[h.id] ?? 0) / Math.max(targets[h.id] ?? h.defaultTarget, 1),
-    }))
-    .sort((a, b) => a.rate - b.rate)[0]
-
   const coachLines = [
-    underTarget && underTarget.actual < underTarget.target
-      ? `${underTarget.label} が今月 ${underTarget.actual}/${underTarget.target} で遅れています。今日意識的に1回入れると巻き返せます。`
-      : '今月のペースは安定しています。',
+    '今月のペースは安定しています。',
     morningDone
       ? '朝のシーケンスは完了しています。夕方の振り返りで今日を閉じましょう。'
       : `朝のタスクが残り ${todayTotal - todayDone} 件あります。`,
@@ -352,12 +327,7 @@ export const HomePage = ({
       {/* ② 2カラム: Coach + Monthly */}
       <div className="grid grid-cols-2 gap-3">
         <CoachInsightCard lines={coachLines} />
-        <MonthlyMiniCard
-          monthlyCounts={monthlyCounts}
-          targets={targets}
-          allTimeBests={allTimeBests}
-          onNavigate={onNavigate}
-        />
+        <MonthlyMiniCard onNavigate={onNavigate} />
       </div>
 
       {/* ③ 昨日の実績（データがあれば） */}
