@@ -697,13 +697,12 @@ const GRANULARITY_OPTIONS = [
 ] as const
 
 const ProfileSettings = () => {
-  // F-17: TODO: migrate to API when /api/user-context supports granularity field
-  const [granularity, setGranularity] = useState<string>(
-    () => localStorage.getItem('settings:profile:granularity') ?? 'adult'
-  )
+  const [ctx, updateCtx] = useUserContext()
+  // F-17: use API; fall back to localStorage for backward compat
+  const granularity = ctx?.granularity ?? localStorage.getItem('settings:profile:granularity') ?? 'adult'
   const handleChange = (v: string) => {
-    setGranularity(v)
     localStorage.setItem('settings:profile:granularity', v)
+    void updateCtx({ granularity: v })
   }
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
@@ -725,6 +724,50 @@ const ProfileSettings = () => {
             {opt.label}
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── 体重目標設定 ──────────────────────────────────────────────
+
+const WeightTargetSettings = () => {
+  const [value, setValue] = useState<string>(
+    () => localStorage.getItem('settings:weight-target') ?? '72.9'
+  )
+  const [saved, setSaved] = useState(false)
+
+  const handleSave = () => {
+    const num = parseFloat(value)
+    if (!isNaN(num) && num > 0) {
+      localStorage.setItem('settings:weight-target', String(num))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    }
+  }
+
+  return (
+    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">体重目標</p>
+      <p className="mt-1 text-[11px] text-white/38">Morning Tab の記録タブに表示される目標体重を設定します</p>
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          type="number"
+          step="0.1"
+          min="30"
+          max="200"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          className="w-24 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-[#7dd3fc]/40"
+        />
+        <span className="text-sm text-white/50">kg</span>
+        <button
+          type="button"
+          onClick={handleSave}
+          className="ml-auto rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-white/70 transition-all hover:border-white/25 hover:text-white"
+        >
+          {saved ? '保存済み ✓' : '保存'}
+        </button>
       </div>
     </div>
   )
@@ -1147,6 +1190,7 @@ export const SettingsPage = () => {
         <div className="px-4 pt-4 pb-2 space-y-3">
           <LangSettings />
           <ProfileSettings />
+          <WeightTargetSettings />
           <IntegrationsSettings />
           <JwtTokenSection />
           <ApiKeySettings />

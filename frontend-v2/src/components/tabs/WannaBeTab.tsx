@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useContext } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { UserContextCtx } from '@/lib/user-context'
 import {
   streamMandalaChart,
   streamCellSuggestions,
@@ -45,6 +46,7 @@ type GenerateStep = 'input' | 'clarifying' | 'generating'
 
 export const WannaBeTab = () => {
   const { session, loading: authLoading } = useAuth()
+  const [userCtx] = useContext(UserContextCtx)
 
   // ─── Data state ───────────────────────────────────────────────
   const [mandala, setMandala] = useState<MandalaData | null>(null)
@@ -116,7 +118,7 @@ export const WannaBeTab = () => {
     const el = mandala.elements[eIdx]
     if (!el) return
 
-    const granularity = (localStorage.getItem('settings:profile:granularity') ?? 'adult') as Granularity
+    const granularity = (userCtx?.granularity ?? localStorage.getItem('settings:profile:granularity') ?? 'adult') as Granularity
     setSuggestLoading(true)
     setSuggestions([])
     setSuggestStreamText('')
@@ -234,7 +236,7 @@ export const WannaBeTab = () => {
     setMandala(null)
     setError(null)
 
-    const granularity = (localStorage.getItem('settings:profile:granularity') ?? 'adult') as Granularity
+    const granularity = (userCtx?.granularity ?? localStorage.getItem('settings:profile:granularity') ?? 'adult') as Granularity
 
     try {
       saveWannaBe(baseInput).catch(e => console.error('wanna_be 保存に失敗しました', e))

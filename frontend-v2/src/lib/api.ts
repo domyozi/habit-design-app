@@ -485,6 +485,7 @@ export interface UserContext {
   patterns?: string
   insights?: Record<string, unknown>
   lang?: 'ja' | 'en'
+  granularity?: string
 }
 
 /**
