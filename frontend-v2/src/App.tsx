@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react'
 import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, useTodayStorage, todayKey, useOpsStorage, type OpsTask } from '@/lib/storage'
 import { useTodoDefinitions } from '@/lib/todos'
 import { useAuth } from '@/hooks/useAuth'
@@ -9,10 +9,10 @@ import { BrandMark } from '@/components/ui/BrandMark'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { MorningTab } from '@/components/tabs/MorningTab'
 import { EveningTab } from '@/components/tabs/EveningTab'
-import { MonthlyTab } from '@/components/tabs/MonthlyTab'
-import { WannaBeTab } from '@/components/tabs/WannaBeTab'
 import { HomePage } from '@/pages/HomePage'
-import { SettingsPage } from '@/pages/SettingsPage'
+const MonthlyTab  = lazy(() => import('@/components/tabs/MonthlyTab').then(m => ({ default: m.MonthlyTab })))
+const WannaBeTab  = lazy(() => import('@/components/tabs/WannaBeTab').then(m => ({ default: m.WannaBeTab })))
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 import { DateNav } from '@/components/ui/DateNav'
 import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
@@ -434,7 +434,8 @@ function MainApp() {
   }
 
   const renderTabContent = () => (
-    <>
+    <Suspense fallback={<div className="flex justify-center py-16"><div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-[#7dd3fc]/60" /></div>}>
+      <>
       {tab === 'home'     && (
         <HomePage
           onNavigate={handleHomeNavigate}
@@ -472,7 +473,8 @@ function MainApp() {
       {tab === 'report'   && <MonthlyTab />}
       {tab === 'settings' && <SettingsPage />}
       {tab === 'more'     && <MoreMenu onNavigate={setTab} />}
-    </>
+      </>
+    </Suspense>
   )
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)

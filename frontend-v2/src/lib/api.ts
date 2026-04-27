@@ -1,4 +1,3 @@
-import axios from 'axios'
 import type {
   CreateKpiRequest,
   GoalWithKgi,
@@ -13,15 +12,12 @@ import type {
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
-export const api = axios.create({ baseURL: API_BASE_URL })
-
 export const getStoredAccessToken = (): string | null => {
   const authKeys: string[] = []
   for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i)
     if (key?.startsWith('sb-') && key.endsWith('-auth-token')) authKeys.push(key)
   }
-
   for (const key of authKeys) {
     const raw = localStorage.getItem(key)
     if (!raw) continue
@@ -31,24 +27,43 @@ export const getStoredAccessToken = (): string | null => {
       if (typeof token === 'string' && token.length > 0) return token
     } catch { /* ignore */ }
   }
-
   return null
 }
 
-// Supabase JWT を Authorization ヘッダーに自動付与
-api.interceptors.request.use(config => {
+const apiFetch = async <T>(
+  method: string,
+  path: string,
+  data?: unknown,
+): Promise<T> => {
   const token = getStoredAccessToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+  const headers: Record<string, string> = {}
+  if (data !== undefined) headers['Content-Type'] = 'application/json'
+  if (token) headers['Authorization'] = `Bearer ${token}`
 
-export const apiGet = <T>(url: string) => api.get<T>(url).then(r => r.data)
-export const apiPost = <T>(url: string, data?: unknown) => api.post<T>(url, data).then(r => r.data)
-export const apiPut = <T>(url: string, data?: unknown) => api.put<T>(url, data).then(r => r.data)
-export const apiPatch = <T>(url: string, data?: unknown) => api.patch<T>(url, data).then(r => r.data)
-export const apiDelete = <T>(url: string) => api.delete<T>(url).then(r => r.data)
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers,
+    body: data !== undefined ? JSON.stringify(data) : undefined,
+  })
+
+  if (!res.ok) {
+    const err = new Error(`${method} ${path} → ${res.status}`)
+    ;(err as { status?: number }).status = res.status
+    throw err
+  }
+
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T
+  }
+
+  return res.json() as Promise<T>
+}
+
+export const apiGet    = <T>(url: string)                  => apiFetch<T>('GET',    url)
+export const apiPost   = <T>(url: string, data?: unknown)  => apiFetch<T>('POST',   url, data)
+export const apiPut    = <T>(url: string, data?: unknown)  => apiFetch<T>('PUT',    url, data)
+export const apiPatch  = <T>(url: string, data?: unknown)  => apiFetch<T>('PATCH',  url, data)
+export const apiDelete = <T>(url: string)                  => apiFetch<T>('DELETE', url)
 
 // ============================================================
 // KGI/KPI API クライアント (TASK-0034)
@@ -154,14 +169,11 @@ export const deleteKpi = (kpiId: string) =>
  */
 export const getWannaBe = async (): Promise<{ text: string } | null> => {
   try {
-    const response = await api.get<{ success: boolean; data: { text: string } }>('/api/wanna-be')
-    if (response.status === 204) return null
-    return response.data?.data ?? null
+    const result = await apiGet<{ success: boolean; data: { text: string } } | undefined>('/api/wanna-be')
+    return result?.data ?? null
   } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'response' in err) {
-      const axiosErr = err as { response?: { status?: number } }
-      if (axiosErr.response?.status === 204) return null
-    }
+    const status = (err as { status?: number })?.status
+    if (status === 204 || status === 404) return null
     throw err
   }
 }
@@ -218,14 +230,11 @@ export const saveGoals = async (goals: Array<{ title: string }>): Promise<void> 
  */
 export const getMandala = async (): Promise<{ cells: unknown } | null> => {
   try {
-    const response = await api.get<{ success: boolean; data: { cells: unknown } }>('/api/mandala')
-    if (response.status === 204) return null
-    return response.data?.data ?? null
+    const result = await apiGet<{ success: boolean; data: { cells: unknown } } | undefined>('/api/mandala')
+    return result?.data ?? null
   } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'response' in err) {
-      const axiosErr = err as { response?: { status?: number } }
-      if (axiosErr.response?.status === 204) return null
-    }
+    const status = (err as { status?: number })?.status
+    if (status === 204 || status === 404) return null
     throw err
   }
 }
