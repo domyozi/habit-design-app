@@ -4,7 +4,7 @@ import { useBossStorage, countMonthlyChecks, useLocalStorage, useTodayStorage, u
 import { callClaude, buildMorningCommentPrompt, buildEveningCommentPrompt, generateMorningCheckinParse, type MorningCheckinParse } from '@/lib/ai'
 import { ProgressRing } from '@/components/home/ProgressRing'
 import { MorningCheckinDiffPanel } from '@/components/home/MorningCheckinDiffPanel'
-import { bySection, createTodoId, useTodoDefinitions } from '@/lib/todos'
+import { byTiming, createTodoId, useTodoDefinitions } from '@/lib/todos'
 import type { TabId } from '@/types'
 
 interface GoalRecord {
@@ -73,8 +73,8 @@ const YesterdayCard = ({
   onNavigate: (tab: TabId, date?: string) => void
 }) => {
   const [todoDefinitions] = useTodoDefinitions()
-  const MORNING_TOTAL = bySection(todoDefinitions, 'morning-must').length + bySection(todoDefinitions, 'morning-routine').length
-  const EVENING_TOTAL = bySection(todoDefinitions, 'evening-reflection').length + bySection(todoDefinitions, 'evening-prep').length
+  const MORNING_TOTAL = byTiming(todoDefinitions, 'morning').length
+  const EVENING_TOTAL = byTiming(todoDefinitions, 'evening').length
   const yk = yesterdayKey()
   const morningChecked = readYesterdayChecked('morning')
   const eveningChecked = readYesterdayChecked('evening')
@@ -596,13 +596,12 @@ export const HomePage = ({
   const { boss, setBoss } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
   const [goals] = useLocalStorage<GoalRecord[]>('wannabe:goals', [])
-  const morningMustCount = bySection(todoDefinitions, 'morning-must').length
-  const morningRoutineCount = bySection(todoDefinitions, 'morning-routine').length
-  const morningMustItems = bySection(todoDefinitions, 'morning-must')
-  const morningRoutineItems = bySection(todoDefinitions, 'morning-routine')
-  const visibleMorningIds = new Set(
-    [...morningMustItems, ...morningRoutineItems].map(item => item.id)
-  )
+  const morningItems = byTiming(todoDefinitions, 'morning')
+  const morningMustCount = morningItems.filter(i => i.isMust).length
+  const morningRoutineCount = morningItems.filter(i => !i.isMust).length
+  const morningMustItems = morningItems.filter(i => i.isMust)
+  const morningRoutineItems = morningItems.filter(i => !i.isMust)
+  const visibleMorningIds = new Set(morningItems.map(item => item.id))
   const [checkedArr] = useTodayStorage<string[]>('morning:checked', [])
   const [targets] = useMonthlyTargets(DEFAULT_TARGETS)
   const [checkinTranscript, setCheckinTranscript] = useTodayStorage<string>('morning:checkin:transcript', '')
@@ -727,7 +726,9 @@ export const HomePage = ({
         .map(task => ({
           id: createTodoId(task.label),
           label: task.label.trim(),
-          section: 'morning-routine' as const,
+          section: 'system' as import('@/lib/todos').HabitCategory,
+          timing: 'morning' as import('@/lib/todos').HabitTiming,
+          isMust: false,
           is_active: true,
         }))
       return [...prev, ...additions]

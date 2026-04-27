@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import type { TodoDefinition, TodoSection } from '@/lib/todos'
-import { TODO_SECTIONS } from '@/lib/todos'
+import type { TodoDefinition, HabitCategory } from '@/lib/todos'
+import { HABIT_CATEGORIES } from '@/lib/todos'
 
 interface TaskListPanelProps {
   todoDefinitions: TodoDefinition[]
   morningChecked: string[]
   eveningChecked: string[]
-  onToggle?: (id: string, section: TodoSection) => void
+  onToggle?: (id: string, section: HabitCategory) => void
   className?: string
 }
 
@@ -67,11 +67,12 @@ const TaskRow = ({
   )
 }
 
-const SECTION_ACCENT: Record<TodoSection, string> = {
-  'morning-must': '#ff6b35',
-  'morning-routine': '#f59e0b',
-  'evening-reflection': '#a78bfa',
-  'evening-prep': '#38bdf8',
+const SECTION_ACCENT: Record<HabitCategory, string> = {
+  'identity': '#ff6b35',
+  'growth': '#22c55e',
+  'body': '#38bdf8',
+  'mind': '#a78bfa',
+  'system': '#f59e0b',
 }
 
 export const TaskListPanel = ({
@@ -95,21 +96,21 @@ export const TaskListPanel = ({
       </div>
 
       <div className="mt-4 space-y-4">
-        {TODO_SECTIONS.map(section => {
-          const items = activeTodos.filter(t => t.section === section.id)
+        {HABIT_CATEGORIES.map(cat => {
+          const items = activeTodos.filter(t => t.section === cat.id)
           if (items.length === 0) return null
-          const accent = SECTION_ACCENT[section.id]
+          const accent = SECTION_ACCENT[cat.id]
           const sectionDone = items.filter(t => checkedSet.has(t.id)).length
 
           return (
-            <div key={section.id}>
+            <div key={cat.id}>
               <div className="mb-2 flex items-center gap-2">
                 <span
                   className="h-1.5 w-1.5 rounded-full"
                   style={{ backgroundColor: accent }}
                 />
                 <p className="text-[10px] font-semibold tracking-[0.12em] text-white/35">
-                  {section.label}
+                  {cat.label} — {cat.desc}
                 </p>
                 <span className="ml-auto text-[10px] text-white/28">
                   {sectionDone}/{items.length}
@@ -122,7 +123,7 @@ export const TaskListPanel = ({
                     task={task}
                     done={checkedSet.has(task.id)}
                     accent={accent}
-                    onToggle={() => onToggle?.(task.id, task.section)}
+                    onToggle={() => onToggle?.(task.id, task.section as HabitCategory)}
                   />
                 ))}
               </div>

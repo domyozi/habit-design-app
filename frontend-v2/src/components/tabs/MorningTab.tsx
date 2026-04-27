@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type OpsTask } from '@/lib/storage'
-import { bySection, useTodoDefinitions, createTodoId } from '@/lib/todos'
+import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } from '@/lib/todos'
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult } from '@/lib/ai'
 import { getHabits, logHabit, type HabitItem } from '@/lib/api'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
@@ -246,21 +246,21 @@ export const MorningTab = ({
   const [briefError, setBriefError] = useState<string | null>(null)
   const [editingBoss, setEditingBoss] = useState(false)
   const [editBossText, setEditBossText] = useState('')
-  const MUST_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'morning-must').map(item => ({
-    id: item.id,
-    label: item.label,
-    isMust: item.isMust,
-    minutes: item.minutes,
-    field_type: item.field_type,
-    field_options: item.field_options,
-  }))
-  const ROUTINE_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'morning-routine').map(item => ({
-    id: item.id,
-    label: item.label,
-    minutes: item.minutes,
-    field_type: item.field_type,
-    field_options: item.field_options,
-  }))
+  const morningGrouped = byTimingGrouped(todoDefinitions, 'morning')
+  // カテゴリ別タスクアイテム（空でないカテゴリのみ利用）
+  const ALL_MORNING_ITEMS: TaskFieldItem[] = HABIT_CATEGORIES.flatMap(cat =>
+    morningGrouped[cat.id].map(item => ({
+      id: item.id,
+      label: item.label,
+      isMust: item.isMust,
+      minutes: item.minutes,
+      field_type: item.field_type,
+      field_options: item.field_options,
+    }))
+  )
+  // 後方互換: MUST/ROUTINE の区別を isMust で再現
+  const MUST_ITEMS: TaskFieldItem[] = ALL_MORNING_ITEMS.filter(i => i.isMust)
+  const ROUTINE_ITEMS: TaskFieldItem[] = ALL_MORNING_ITEMS.filter(i => !i.isMust)
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('morning', 'checked', [], dateKey)
   const [fieldValues, setFieldValues] = useDailyStorage<Record<string, string>>('morning', 'field_values', {}, dateKey)
   const [aiFeedbacks, setAiFeedbacks] = useDailyStorage<Record<string, string>>('morning', 'ai_feedback', {}, dateKey)
@@ -350,7 +350,15 @@ export const MorningTab = ({
     setTodoDefinitions(prev => {
       const newTasks = tasks
         .filter(t => !existingSet.has(t.label.toLowerCase()))
-        .map(t => ({ id: createTodoId(t.label), label: t.label, section: t.section, is_active: true }))
+        .map(t => ({
+          id: createTodoId(t.label),
+          label: t.label,
+          // 旧セクション値をカテゴリにマッピング
+          section: (t.section === 'morning-must' ? 'identity' : 'system') as import('@/lib/todos').HabitCategory,
+          timing: 'morning' as import('@/lib/todos').HabitTiming,
+          isMust: t.section === 'morning-must',
+          is_active: true,
+        }))
       return [...prev, ...newTasks]
     })
   }
@@ -638,63 +646,83 @@ export const MorningTab = ({
 
         <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
           {activeTaskTab === 'core' && (
-            <Section
-              title="Core tasks"
-              time="05:00–06:30"
-              color="must"
-              done={MUST_ITEMS.filter(isItemDone).length}
-              total={MUST_ITEMS.length}
-            >
-              {MUST_ITEMS.map(item => (
-                <TaskFieldRow
-                  key={item.id}
-                  item={item}
-                  checked={checkedArr.includes(item.id)}
-                  onToggle={() => {
-                    if (isReadOnly) return
-                    const s = new Set(checkedArr)
-                    s.has(item.id) ? s.delete(item.id) : s.add(item.id)
-                    setCheckedArr([...s])
-                  }}
-                  value={fieldValues[item.id] ?? ''}
-                  onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
-                  aiFeedback={aiFeedbacks[item.id]}
-                  onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
-                  isReadOnly={isReadOnly}
-                  dotColor="#7dd3fc"
-                />
-              ))}
-            </Section>
+            HABIT_CATEGORIES.map(cat => {
+              const catItems: TaskFieldItem[] = morningGrouped[cat.id].filter(i => i.isMust).map(item => ({
+                id: item.id, label: item.label, isMust: item.isMust,
+                minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
+              }))
+              if (catItems.length === 0) return null
+              return (
+                <Section
+                  key={cat.id}
+                  title={`${cat.label} — ${cat.desc}`}
+                  time=""
+                  accentColor={cat.accent}
+                  done={catItems.filter(isItemDone).length}
+                  total={catItems.length}
+                >
+                  {catItems.map(item => (
+                    <TaskFieldRow
+                      key={item.id}
+                      item={item}
+                      checked={checkedArr.includes(item.id)}
+                      onToggle={() => {
+                        if (isReadOnly) return
+                        const s = new Set(checkedArr)
+                        s.has(item.id) ? s.delete(item.id) : s.add(item.id)
+                        setCheckedArr([...s])
+                      }}
+                      value={fieldValues[item.id] ?? ''}
+                      onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+                      aiFeedback={aiFeedbacks[item.id]}
+                      onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+                      isReadOnly={isReadOnly}
+                      dotColor={cat.accent}
+                    />
+                  ))}
+                </Section>
+              )
+            })
           )}
 
           {activeTaskTab === 'routine' && (
-            <Section
-              title="Preparation sequence"
-              time="06:30–07:30"
-              color="routine"
-              done={ROUTINE_ITEMS.filter(isItemDone).length}
-              total={ROUTINE_ITEMS.length}
-            >
-              {ROUTINE_ITEMS.map(item => (
-                <TaskFieldRow
-                  key={item.id}
-                  item={item}
-                  checked={checkedArr.includes(item.id)}
-                  onToggle={() => {
-                    if (isReadOnly) return
-                    const s = new Set(checkedArr)
-                    s.has(item.id) ? s.delete(item.id) : s.add(item.id)
-                    setCheckedArr([...s])
-                  }}
-                  value={fieldValues[item.id] ?? ''}
-                  onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
-                  aiFeedback={aiFeedbacks[item.id]}
-                  onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
-                  isReadOnly={isReadOnly}
-                  dotColor="#c4b5fd"
-                />
-              ))}
-            </Section>
+            HABIT_CATEGORIES.map(cat => {
+              const catItems: TaskFieldItem[] = morningGrouped[cat.id].filter(i => !i.isMust).map(item => ({
+                id: item.id, label: item.label, isMust: item.isMust,
+                minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
+              }))
+              if (catItems.length === 0) return null
+              return (
+                <Section
+                  key={cat.id}
+                  title={`${cat.label} — ${cat.desc}`}
+                  time=""
+                  accentColor={cat.accent}
+                  done={catItems.filter(isItemDone).length}
+                  total={catItems.length}
+                >
+                  {catItems.map(item => (
+                    <TaskFieldRow
+                      key={item.id}
+                      item={item}
+                      checked={checkedArr.includes(item.id)}
+                      onToggle={() => {
+                        if (isReadOnly) return
+                        const s = new Set(checkedArr)
+                        s.has(item.id) ? s.delete(item.id) : s.add(item.id)
+                        setCheckedArr([...s])
+                      }}
+                      value={fieldValues[item.id] ?? ''}
+                      onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+                      aiFeedback={aiFeedbacks[item.id]}
+                      onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+                      isReadOnly={isReadOnly}
+                      dotColor={cat.accent}
+                    />
+                  ))}
+                </Section>
+              )
+            })
           )}
 
           {activeTaskTab === 'state' && (
@@ -919,39 +947,36 @@ const Section = ({
   title,
   time,
   color,
+  accentColor,
   done,
   total,
   children,
 }: {
   title: string
   time: string
-  color: 'must' | 'routine'
+  color?: 'must' | 'routine'
+  accentColor?: string
   done: number
   total: number
   children: React.ReactNode
 }) => {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  const accent = accentColor ?? (color === 'must' ? '#7dd3fc' : '#c4b5fd')
   return (
     <div className="mt-4">
-      <div className={[
-        'flex items-center justify-between px-4 py-2',
-        color === 'must' ? 'border-l-2 border-[#7dd3fc]' : 'border-l-2 border-[#c4b5fd]',
-      ].join(' ')}>
-        <span className={[
-          'text-xs font-semibold uppercase tracking-[0.22em]',
-          color === 'must' ? 'text-[#aee5ff]' : 'text-[#ddd6fe]',
-        ].join(' ')}>
+      <div className="flex items-center justify-between px-4 py-2" style={{ borderLeft: `2px solid ${accent}` }}>
+        <span className="text-xs font-semibold uppercase tracking-[0.22em]" style={{ color: accent }}>
           {title}
         </span>
-        <span className="text-[11px] text-white/24">{time}</span>
+        {time && <span className="text-[11px] text-white/24">{time}</span>}
       </div>
 
       {/* セクション進捗バー */}
       <div className="mx-4 mb-1 flex items-center gap-2">
         <div className="relative flex-1 h-[2px] rounded-full bg-white/[0.06] overflow-hidden">
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#34d399] to-[#7dd3fc] transition-all duration-500"
-            style={{ width: `${pct}%` }}
+            className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+            style={{ width: `${pct}%`, backgroundColor: accent }}
           />
         </div>
         <span className="text-[10px] text-white/40 tabular-nums">{done} / {total}</span>

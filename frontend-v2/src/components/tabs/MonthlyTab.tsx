@@ -14,7 +14,7 @@ import {
 } from '@/lib/storage'
 import { streamClaude, buildWannaBeAnalysisPrompt } from '@/lib/ai'
 import { ProgressRing } from '@/components/home/ProgressRing'
-import { useTodoDefinitions, bySection } from '@/lib/todos'
+import { useTodoDefinitions, byTiming } from '@/lib/todos'
 
 interface HabitDef {
   id: string
@@ -904,7 +904,7 @@ export const MonthlyTab = () => {
 
   const [todoDefinitions] = useTodoDefinitions()
   const habitDefs: HabitDef[] = useMemo(() =>
-    bySection(todoDefinitions, 'morning-must').map((t, i) => ({
+    byTiming(todoDefinitions, 'morning').filter(t => t.isMust).map((t, i) => ({
       id: t.id,
       label: t.label,
       defaultTarget: 20,

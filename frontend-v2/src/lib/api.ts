@@ -334,7 +334,8 @@ export const fetchJournalByDate = (date: string) =>
 export interface TodoDefinitionRecord {
   id: string
   label: string
-  section: string
+  section: string   // HabitCategory 値
+  timing?: string   // HabitTiming 値（新）
   minutes?: number | null
   is_must?: boolean
   is_active: boolean
@@ -490,3 +491,24 @@ export const fetchUserContext = (): Promise<UserContext | null> =>
  */
 export const patchUserContext = (patch: Partial<UserContext>): Promise<UserContext> =>
   apiPatch<UserContext>('/api/user-context', patch)
+
+// ============================================================
+// Integrations API クライアント（iOS Shortcuts Webhook）
+// ============================================================
+
+export interface HealthLog {
+  id: string
+  metric: string
+  value: number
+  unit?: string
+  recorded_at: string
+}
+
+/**
+ * 健康データログ一覧を取得する
+ * GET /api/integrations/logs
+ */
+export const fetchHealthLogs = (date?: string): Promise<HealthLog[]> => {
+  const params = date ? `?date=${date}` : ''
+  return apiGet<HealthLog[]>(`/api/integrations/logs${params}`)
+}

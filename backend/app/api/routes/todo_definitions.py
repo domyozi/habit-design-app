@@ -50,7 +50,8 @@ async def upsert_todo_definitions(
             "id": item.get("id") or str(uuid.uuid4()),
             "user_id": user_id,
             "label": item.get("label", ""),
-            "section": item.get("section", "morning-routine"),
+            "section": item.get("section", "system"),
+            "timing": item.get("timing", "morning"),
             "minutes": item.get("minutes"),
             "is_must": bool(item.get("is_must", False)),
             "is_active": bool(item.get("is_active", True)),
@@ -76,7 +77,7 @@ async def patch_todo_definition(
 ):
     supabase = get_supabase()
 
-    allowed_fields = {"label", "section", "minutes", "is_must", "is_active", "display_order", "field_type", "field_options"}
+    allowed_fields = {"label", "section", "timing", "minutes", "is_must", "is_active", "display_order", "field_type", "field_options"}
     update_data = {k: v for k, v in payload.items() if k in allowed_fields}
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")

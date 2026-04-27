@@ -364,3 +364,46 @@ CREATE POLICY "user_context: own rows only" ON public.user_context FOR ALL USING
 ALTER TABLE public.todo_definitions
   ADD COLUMN IF NOT EXISTS field_type text DEFAULT 'checkbox',
   ADD COLUMN IF NOT EXISTS field_options jsonb DEFAULT '{}';
+
+-- ========================================
+-- 習慣カテゴリ再設計マイグレーション（2026-04-27）
+-- ========================================
+
+-- todo_definitions に timing カラム追加
+ALTER TABLE public.todo_definitions
+  ADD COLUMN IF NOT EXISTS timing text DEFAULT 'morning';
+
+-- 既存データのマイグレーション（旧セクション値 → 新カテゴリ + timing）
+UPDATE public.todo_definitions SET
+  timing = CASE section
+    WHEN 'morning-must' THEN 'morning'
+    WHEN 'morning-routine' THEN 'morning'
+    WHEN 'evening-reflection' THEN 'evening'
+    WHEN 'evening-prep' THEN 'evening'
+    ELSE 'morning'
+  END,
+  section = CASE section
+    WHEN 'morning-must' THEN 'identity'
+    WHEN 'morning-routine' THEN 'system'
+    WHEN 'evening-reflection' THEN 'system'
+    WHEN 'evening-prep' THEN 'system'
+    ELSE section
+  END
+WHERE section IN ('morning-must', 'morning-routine', 'evening-reflection', 'evening-prep');
+
+-- ========================================
+-- health_logs テーブル（iOS Shortcuts Webhook）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.health_logs (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid REFERENCES auth.users NOT NULL,
+  metric      text NOT NULL,
+  value       numeric NOT NULL,
+  unit        text,
+  recorded_at timestamptz NOT NULL,
+  created_at  timestamptz DEFAULT now()
+);
+ALTER TABLE public.health_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "user own health_logs" ON public.health_logs
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);

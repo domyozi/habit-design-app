@@ -284,7 +284,7 @@ function MainApp() {
   const inactiveTodoCount = todoDefinitions.filter(todo => !todo.is_active).length
   const activeGoalCount = goals.filter(goal => goal.priority !== 'done').length
   const criticalGoalCount = goals.filter(goal => goal.priority === 'critical').length
-  const todayTotal = todoDefinitions.filter(todo => todo.is_active && (todo.section === 'morning-must' || todo.section === 'morning-routine')).length
+  const todayTotal = todoDefinitions.filter(todo => todo.is_active && todo.timing === 'morning').length
   const completionRate = todayTotal > 0 ? Math.round((morningChecked.length / todayTotal) * 100) : 0
   const monthlyHabitData = WORKSPACE_HABITS.map(habit => ({
     ...habit,
@@ -374,7 +374,9 @@ function MainApp() {
           .map(t => ({
             id: createTodoId(t.label),
             label: t.label,
-            section: t.section,
+            section: (t.section === 'morning-must' ? 'identity' : 'system') as import('@/lib/todos').HabitCategory,
+            timing: 'morning' as import('@/lib/todos').HabitTiming,
+            isMust: t.section === 'morning-must',
             is_active: true,
           }))
         return [...prev, ...newTasks]
@@ -593,7 +595,9 @@ function MainApp() {
                 morningChecked={morningChecked}
                 eveningChecked={eveningChecked}
                 onToggle={(id, section) => {
-                  const isMorning = section === 'morning-must' || section === 'morning-routine'
+                  // timing が morning か evening かでトグル先を決める
+                  const todo = todoDefinitions.find(t => t.id === id)
+                  const isMorning = todo ? (todo.timing === 'morning' || todo.timing === 'anytime') : (section !== 'body' && section !== 'system')
                   if (isMorning) {
                     setMorningChecked(prev =>
                       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]

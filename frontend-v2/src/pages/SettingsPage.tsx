@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { callClaude } from '@/lib/ai'
-import { TODO_SECTIONS, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type TodoSection, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
+import { TODO_SECTIONS, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 import { useUserContext } from '@/lib/user-context'
 import type { AppLang } from '@/lib/lang'
 
@@ -81,7 +81,8 @@ const mergeAiSuggestionIntoTodos = (
 
   const appendTodo = (
     item: AiHabitItem,
-    section: TodoSection,
+    section: HabitCategory,
+    timing: HabitTiming,
     isMust = false
   ) => {
     const dedupeKey = `${section}:${normalizeLabel(item.label)}`
@@ -92,6 +93,7 @@ const mergeAiSuggestionIntoTodos = (
       id: createTodoId(item.label),
       label: item.label.trim(),
       section,
+      timing,
       minutes: item.minutes,
       isMust,
       is_active: true,
@@ -99,13 +101,13 @@ const mergeAiSuggestionIntoTodos = (
   }
 
   suggestion.morning.forEach(item => {
-    appendTodo(item, item.isMust ? 'morning-must' : 'morning-routine', Boolean(item.isMust))
+    appendTodo(item, item.isMust ? 'identity' : 'system', 'morning', Boolean(item.isMust))
   })
   getEveningReflectionItems(suggestion).forEach(item => {
-    appendTodo(item, 'evening-reflection')
+    appendTodo(item, 'system', 'evening')
   })
   getEveningPrepItems(suggestion).forEach(item => {
-    appendTodo(item, 'evening-prep')
+    appendTodo(item, 'system', 'evening')
   })
 
   return nextTodos
@@ -115,9 +117,9 @@ const replaceSectionsFromAiSuggestion = (
   currentTodos: TodoDefinition[],
   suggestion: AiHabitSuggestion
 ): TodoDefinition[] => {
-  const replaceTargets: TodoSection[] = ['morning-must', 'morning-routine', 'evening-reflection', 'evening-prep']
+  const replaceTargets: HabitCategory[] = ['identity', 'growth', 'body', 'mind', 'system']
   const preserved = currentTodos.map(todo =>
-    replaceTargets.includes(todo.section) ? { ...todo, is_active: false } : todo
+    replaceTargets.includes(todo.section as HabitCategory) ? { ...todo, is_active: false } : todo
   )
   return mergeAiSuggestionIntoTodos(preserved, suggestion)
 }
@@ -382,19 +384,20 @@ const AiSetupChat = () => {
 
 const TodoManager = () => {
   const [todos, setTodos] = useTodoDefinitions()
-  const [drafts, setDrafts] = useState<Record<TodoSection, { label: string; minutes: string }>>({
-    'morning-must': { label: '', minutes: '' },
-    'morning-routine': { label: '', minutes: '' },
-    'evening-reflection': { label: '', minutes: '' },
-    'evening-prep': { label: '', minutes: '' },
+  const [drafts, setDrafts] = useState<Record<HabitCategory, { label: string; minutes: string; timing: HabitTiming }>>({
+    'identity': { label: '', minutes: '', timing: 'morning' },
+    'growth': { label: '', minutes: '', timing: 'morning' },
+    'body': { label: '', minutes: '', timing: 'morning' },
+    'mind': { label: '', minutes: '', timing: 'morning' },
+    'system': { label: '', minutes: '', timing: 'morning' },
   })
   const [newFieldType, setNewFieldType] = useState<TaskFieldType>('checkbox')
   const [newChoices, setNewChoices] = useState('')
   const [newUnit, setNewUnit] = useState('')
   const [newPlaceholder, setNewPlaceholder] = useState('')
-  const [expandedSection, setExpandedSection] = useState<TodoSection | null>(null)
+  const [expandedSection, setExpandedSection] = useState<HabitCategory | null>(null)
 
-  const updateDraft = (section: TodoSection, key: 'label' | 'minutes', value: string) => {
+  const updateDraft = (section: HabitCategory, key: 'label' | 'minutes' | 'timing', value: string) => {
     setDrafts(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }))
   }
 
@@ -412,7 +415,7 @@ const TodoManager = () => {
     return undefined
   }
 
-  const addTodo = (section: TodoSection) => {
+  const addTodo = (section: HabitCategory) => {
     const draft = drafts[section]
     const label = draft.label.trim()
     if (!label) return
@@ -421,15 +424,16 @@ const TodoManager = () => {
       id: createTodoId(label),
       label,
       section,
+      timing: draft.timing ?? 'morning',
       minutes: draft.minutes ? Number(draft.minutes) : undefined,
-      isMust: section === 'morning-must',
+      isMust: false,
       is_active: true,
       field_type: newFieldType !== 'checkbox' ? newFieldType : undefined,
       field_options: buildFieldOptions(),
     }
 
     setTodos(prev => [...prev, newTodo])
-    setDrafts(prev => ({ ...prev, [section]: { label: '', minutes: '' } }))
+    setDrafts(prev => ({ ...prev, [section]: { label: '', minutes: '', timing: 'morning' } }))
     setNewFieldType('checkbox')
     setNewChoices('')
     setNewUnit('')
@@ -482,6 +486,14 @@ const TodoManager = () => {
                         {item.minutes ? `${item.minutes}分` : '所要時間なし'}
                       </p>
                     </div>
+                    <span className={[
+                      'shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
+                      item.timing === 'morning' ? 'bg-[#7dd3fc]/10 text-[#7dd3fc]' :
+                      item.timing === 'evening' ? 'bg-[#a78bfa]/10 text-[#a78bfa]' :
+                      'bg-white/[0.06] text-white/40',
+                    ].join(' ')}>
+                      {item.timing === 'morning' ? '朝' : item.timing === 'evening' ? '夜' : '常時'}
+                    </span>
                     <button
                       type="button"
                       onClick={() => hideTodo(item.id)}
@@ -501,7 +513,7 @@ const TodoManager = () => {
                   <input
                     type="text"
                     value={draft.label}
-                    onChange={e => updateDraft(section.id, 'label', e.target.value)}
+                    onChange={e => updateDraft(section.id as HabitCategory, 'label', e.target.value)}
                     placeholder="新しい To Do 名"
                     className="flex-1 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
                   />
@@ -509,20 +521,29 @@ const TodoManager = () => {
                     type="number"
                     min="0"
                     value={draft.minutes}
-                    onChange={e => updateDraft(section.id, 'minutes', e.target.value)}
+                    onChange={e => updateDraft(section.id as HabitCategory, 'minutes', e.target.value)}
                     placeholder="分"
                     className="w-20 rounded-2xl border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white placeholder-white/20"
                   />
+                  <select
+                    value={draft.timing}
+                    onChange={e => updateDraft(section.id as HabitCategory, 'timing', e.target.value)}
+                    className="rounded-2xl border border-white/10 bg-[#0b1320] px-2 py-2 text-sm text-white/80"
+                  >
+                    <option value="morning">朝</option>
+                    <option value="evening">夜</option>
+                    <option value="anytime">いつでも</option>
+                  </select>
                   <button
                     type="button"
-                    onClick={() => setExpandedSection(expandedSection === section.id ? null : section.id)}
+                    onClick={() => setExpandedSection(expandedSection === section.id ? null : section.id as HabitCategory)}
                     className="rounded-full border border-white/10 px-2.5 py-2 text-[11px] text-white/40 hover:text-white/70"
                   >
                     {expandedSection === section.id ? '▲' : '▼'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => addTodo(section.id)}
+                    onClick={() => addTodo(section.id as HabitCategory)}
                     disabled={!draft.label.trim()}
                     className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-30"
                   >
@@ -711,7 +732,8 @@ const LangSettings = () => {
 
 interface AiParsedTask {
   label: string
-  section: TodoSection
+  section: HabitCategory
+  timing?: HabitTiming
   field_type: TaskFieldType
   minutes: number | null
   field_options: TaskFieldOptions | null
@@ -724,7 +746,8 @@ const AI_TASK_PARSE_SYSTEM = `あなたは習慣管理アプリの入力パー�
 \`\`\`json
 {
   "label": "タスク名（簡潔に）",
-  "section": "morning-must",
+  "section": "system",
+  "timing": "morning",
   "field_type": "checkbox",
   "minutes": null,
   "field_options": null,
@@ -732,11 +755,17 @@ const AI_TASK_PARSE_SYSTEM = `あなたは習慣管理アプリの入力パー�
 }
 \`\`\`
 
-section の判断基準:
-- 朝の核心習慣（毎日必須） → "morning-must"
-- 朝のルーティン（補助的） → "morning-routine"
-- 夜の振り返り・記録 → "evening-reflection"
-- 翌日の準備 → "evening-prep"
+section の判断基準（HabitCategory）:
+- アイデンティティに直結する核心習慣 → "identity"
+- 成長・学習・副業など → "growth"
+- 身体管理（運動・体重・睡眠など） → "body"
+- 精神・集中・瞑想など → "mind"
+- システム・計画・記録・確認など → "system"
+
+timing の判断基準:
+- 朝に行う習慣 → "morning"
+- 夜に行う習慣 → "evening"
+- いつでもよい → "anytime"
 
 field_type の判断基準:
 - 数値を記録（体重・歩数・時間など） → "number"
@@ -791,8 +820,9 @@ const AiTaskCreator = () => {
       id: createTodoId(parsed.label),
       label: parsed.label,
       section: parsed.section,
+      timing: parsed.timing ?? 'morning',
       minutes: parsed.minutes ?? undefined,
-      isMust: parsed.section === 'morning-must',
+      isMust: false,
       is_active: true,
       field_type: parsed.field_type !== 'checkbox' ? parsed.field_type : undefined,
       field_options: parsed.field_options ?? undefined,
@@ -803,11 +833,12 @@ const AiTaskCreator = () => {
     setInput('')
   }
 
-  const sectionLabel: Record<TodoSection, string> = {
-    'morning-must':      '朝のMUST',
-    'morning-routine':   '朝のルーティン',
-    'evening-reflection':'夜の振り返り',
-    'evening-prep':      '夜の準備',
+  const sectionLabel: Record<HabitCategory, string> = {
+    'identity': 'Identity（核心）',
+    'growth':   'Growth（成長）',
+    'body':     'Body（身体）',
+    'mind':     'Mind（精神）',
+    'system':   'System（運用）',
   }
 
   const fieldTypeLabel: Record<TaskFieldType, string> = {
@@ -905,6 +936,91 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   </div>
 )
 
+// ─── iOS Shortcuts 連携設定 ──────────────────────────────────
+
+const IntegrationsSettings = () => {
+  const [copied, setCopied] = useState(false)
+  const [showSteps, setShowSteps] = useState(false)
+
+  const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+  const webhookUrl = `${apiBase}/api/integrations/log`
+
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // クリップボードアクセス失敗時は無視
+    }
+  }
+
+  return (
+    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">外部連携 — iOS Shortcuts</p>
+      <p className="text-[11px] text-white/42">
+        iOSのショートカットからApple Healthのデータをこのアプリへ自動送信できます。
+      </p>
+
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">Webhook URL</p>
+        <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2">
+          <span className="flex-1 truncate text-[11px] font-mono text-white/60">{webhookUrl}</span>
+          <button
+            type="button"
+            onClick={() => void copyUrl()}
+            className={[
+              'shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors',
+              copied
+                ? 'border-[#22c55e]/30 bg-[#22c55e]/10 text-[#4ade80]'
+                : 'border-white/10 text-white/42 hover:border-white/25 hover:text-white/70',
+            ].join(' ')}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">対応メトリクス</p>
+        <div className="flex flex-wrap gap-1.5">
+          {['weight', 'steps', 'sleep_hours', 'heart_rate', 'workout_minutes'].map(m => (
+            <span key={m} className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-mono text-white/50">
+              {m}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowSteps(v => !v)}
+        className="text-[10px] uppercase tracking-[0.16em] text-white/30 hover:text-white/55"
+      >
+        {showSteps ? 'セットアップ手順を閉じる ▲' : 'セットアップ手順を見る ▼'}
+      </button>
+
+      {showSteps && (
+        <div className="rounded-xl border border-white/[0.06] bg-black/10 p-3 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/36">セットアップ手順</p>
+          {[
+            '1. iOSの「ショートカット」アプリを開く',
+            '2. 新しいショートカットを作成',
+            '3.「URLの内容を取得」アクションを追加',
+            '4. URL に上記 Webhook URL を設定',
+            '5. メソッドを POST に変更',
+            '6. ヘッダーに Authorization: Bearer {JWTトークン} を追加',
+            '7. 本文に {"metric": "weight", "value": 70.5, "unit": "kg"} を設定',
+            '8. Apple Health オートメーションからショートカットを呼び出す',
+          ].map((step, i) => (
+            <p key={i} className="text-[11px] text-white/52">{step}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState<'tasks' | 'ai'>('tasks')
 
@@ -935,6 +1051,7 @@ export const SettingsPage = () => {
         <div className="px-4 pt-4 pb-2 space-y-3">
           <LangSettings />
           <ProfileSettings />
+          <IntegrationsSettings />
           <AiTaskCreator />
           <ApiKeySettings />
           <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">

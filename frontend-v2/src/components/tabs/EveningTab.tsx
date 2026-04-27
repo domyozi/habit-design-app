@@ -1,5 +1,5 @@
 import { useDailyStorage, todayKey } from '@/lib/storage'
-import { bySection, useTodoDefinitions } from '@/lib/todos'
+import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 
 interface CheckItem { id: string; label: string; minutes?: number }
@@ -80,20 +80,20 @@ export const EveningTab = ({
   const dateKey = viewDate ?? todayKey()
   const isReadOnly = dateKey !== todayKey()
   const [todoDefinitions] = useTodoDefinitions()
-  const REFLECTION_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'evening-reflection').map(item => ({
-    id: item.id,
-    label: item.label,
-    minutes: item.minutes,
-    field_type: item.field_type,
-    field_options: item.field_options,
-  }))
-  const PREP_ITEMS: TaskFieldItem[] = bySection(todoDefinitions, 'evening-prep').map(item => ({
-    id: item.id,
-    label: item.label,
-    minutes: item.minutes,
-    field_type: item.field_type,
-    field_options: item.field_options,
-  }))
+  const eveningGrouped = byTimingGrouped(todoDefinitions, 'evening')
+  // 夜の全タスクをカテゴリ順にフラット化
+  const ALL_EVENING_ITEMS: TaskFieldItem[] = HABIT_CATEGORIES.flatMap(cat =>
+    eveningGrouped[cat.id].map(item => ({
+      id: item.id,
+      label: item.label,
+      minutes: item.minutes,
+      field_type: item.field_type,
+      field_options: item.field_options,
+    }))
+  )
+  // 後方互換: REFLECTION_ITEMS / PREP_ITEMS は全夜タスクとして扱う
+  const REFLECTION_ITEMS = ALL_EVENING_ITEMS
+  const PREP_ITEMS: TaskFieldItem[] = []
 
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('evening', 'checked', [], dateKey)
   const [fieldValues, setFieldValues] = useDailyStorage<Record<string, string>>('evening', 'field_values', {}, dateKey)
@@ -186,25 +186,39 @@ export const EveningTab = ({
       )}
 
       <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
-        <div className="flex items-center justify-between border-l-2 border-[#c4b5fd] px-4 py-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ddd6fe]">Reflection tasks</span>
-          <span className="text-[11px] text-white/24">18:00–18:30</span>
-        </div>
-        <div className="border-y border-white/[0.05] bg-[#111827]/70">
-          {REFLECTION_ITEMS.map(item => (
-            <TaskFieldRow
-              key={item.id}
-              item={item}
-              checked={checkedArr.includes(item.id)}
-              onToggle={() => toggle(item.id)}
-              value={fieldValues[item.id] ?? ''}
-              onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
-              aiFeedback={aiFeedbacks[item.id]}
-              onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
-              isReadOnly={isReadOnly}
-              dotColor="#c4b5fd"
-            />
-          ))}
+        {HABIT_CATEGORIES.map(cat => {
+          const catItems: TaskFieldItem[] = eveningGrouped[cat.id].map(item => ({
+            id: item.id, label: item.label, minutes: item.minutes,
+            field_type: item.field_type, field_options: item.field_options,
+          }))
+          if (catItems.length === 0) return null
+          return (
+            <div key={cat.id}>
+              <div className="flex items-center justify-between px-4 py-2" style={{ borderLeft: `2px solid ${cat.accent}` }}>
+                <span className="text-xs font-semibold uppercase tracking-[0.22em]" style={{ color: cat.accent }}>
+                  {cat.label} — {cat.desc}
+                </span>
+              </div>
+              <div className="border-y border-white/[0.05] bg-[#111827]/70">
+                {catItems.map(item => (
+                  <TaskFieldRow
+                    key={item.id}
+                    item={item}
+                    checked={checkedArr.includes(item.id)}
+                    onToggle={() => toggle(item.id)}
+                    value={fieldValues[item.id] ?? ''}
+                    onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+                    aiFeedback={aiFeedbacks[item.id]}
+                    onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+                    isReadOnly={isReadOnly}
+                    dotColor={cat.accent}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        <div className="border-y border-white/[0.05] bg-[#111827]/70 mt-4">
           <div className="flex items-center gap-3 border-t border-white/[0.05] px-4 py-2.5">
             <span className="w-16 text-xs text-white/40">体重（夜）</span>
             <input type="number" value={weight} onChange={e => setWeight(e.target.value)} step="0.1"
@@ -253,23 +267,9 @@ export const EveningTab = ({
 
       <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
         <div className="flex items-center border-l-2 border-[#7dd3fc] px-4 py-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#aee5ff]">Preparation tasks</span>
+          <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#aee5ff]">Tomorrow</span>
         </div>
         <div className="border-y border-white/[0.05] bg-[#111827]/70">
-          {PREP_ITEMS.map(item => (
-            <TaskFieldRow
-              key={item.id}
-              item={item}
-              checked={checkedArr.includes(item.id)}
-              onToggle={() => toggle(item.id)}
-              value={fieldValues[item.id] ?? ''}
-              onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
-              aiFeedback={aiFeedbacks[item.id]}
-              onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
-              isReadOnly={isReadOnly}
-              dotColor="#38bdf8"
-            />
-          ))}
           {!isReadOnly && (
             <div className="border-t border-white/[0.05] px-4 py-3">
               <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#aee5ff]">

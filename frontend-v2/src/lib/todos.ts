@@ -3,7 +3,11 @@ import { useEffect, useRef } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { fetchTodoDefinitions, saveTodoDefinitions } from '@/lib/api'
 
-export type TodoSection = 'morning-must' | 'morning-routine' | 'evening-reflection' | 'evening-prep'
+export type HabitCategory = 'identity' | 'growth' | 'body' | 'mind' | 'system'
+export type HabitTiming   = 'morning' | 'evening' | 'anytime'
+
+// TodoSection は後方互換のために型エイリアスとして残す
+export type TodoSection = HabitCategory
 
 export type TaskFieldType =
   | 'checkbox'
@@ -26,7 +30,8 @@ export interface TaskFieldOptions {
 export interface TodoDefinition {
   id: string
   label: string
-  section: TodoSection
+  section: HabitCategory   // 旧フィールド名は維持。値が新カテゴリ値になる
+  timing: HabitTiming      // 新フィールド（旧 section から分離）
   minutes?: number
   isMust?: boolean
   is_active: boolean
@@ -35,40 +40,59 @@ export interface TodoDefinition {
 }
 
 export const DEFAULT_TODO_DEFINITIONS: TodoDefinition[] = [
-  { id: 'early-rise', label: '早起き（5時台起床）', section: 'morning-must', isMust: true, is_active: true },
-  { id: 'training', label: '筋トレ', section: 'morning-must', isMust: true, is_active: true },
-  { id: 'english', label: '英語学習', section: 'morning-must', isMust: true, is_active: true },
-  { id: 'side-proj', label: '副業推進', section: 'morning-must', isMust: true, is_active: true },
-  { id: 'cardio', label: '有酸素運動', section: 'morning-must', isMust: true, is_active: true },
-  { id: 'water', label: '白湯を飲む', section: 'morning-routine', minutes: 5, is_active: true },
-  { id: 'review', label: '前日の振り返り（やったこと・学び・Next）', section: 'morning-routine', minutes: 10, is_active: true },
-  { id: 'weight', label: '体重測定', section: 'morning-routine', minutes: 3, is_active: true },
-  { id: 'calendar', label: 'カレンダーを埋める', section: 'morning-routine', minutes: 10, is_active: true },
-  { id: 'shower', label: 'シャワー', section: 'morning-routine', minutes: 15, is_active: true },
-  { id: 'meditation', label: '瞑想', section: 'morning-routine', minutes: 10, is_active: true },
-  { id: 'motto', label: '心得を暗唱する', section: 'morning-routine', minutes: 5, is_active: true },
-  { id: 'tongue', label: '舌を回す', section: 'morning-routine', minutes: 2, is_active: true },
-  { id: 'weight-eve', label: '体重測定（夜）', section: 'evening-reflection', minutes: 3, is_active: true },
-  { id: 'gap', label: 'ダッシュボードのGap確認', section: 'evening-reflection', minutes: 3, is_active: true },
-  { id: 'update-goal', label: '目標実績を更新する', section: 'evening-reflection', minutes: 2, is_active: true },
-  { id: 'insight', label: '気づきを更新する', section: 'evening-reflection', minutes: 10, is_active: true },
-  { id: 'motto-eve', label: '心得・意識すべきことを見る', section: 'evening-reflection', minutes: 2, is_active: true },
-  { id: 'schedule', label: '翌日の予定をスケジューリング（★余裕30m）', section: 'evening-reflection', minutes: 10, is_active: true },
-  { id: 'water-prep', label: '水とコップをデスクにセット', section: 'evening-prep', is_active: true },
-  { id: 'alarm', label: 'アラームをセットして机の上に置く', section: 'evening-prep', is_active: true },
-  { id: 'outer', label: 'アウターを部屋に持ってくる', section: 'evening-prep', is_active: true },
+  // Identity + morning
+  { id: 'early-rise', label: '早起き（5時台起床）', section: 'identity', timing: 'morning', isMust: true, is_active: true },
+  { id: 'training',   label: '筋トレ',               section: 'identity', timing: 'morning', isMust: true, is_active: true },
+  // Growth + morning
+  { id: 'english',    label: '英語学習',              section: 'growth', timing: 'morning', isMust: true, is_active: true },
+  { id: 'side-proj',  label: '副業推進',              section: 'growth', timing: 'morning', isMust: true, is_active: true },
+  // Body + morning
+  { id: 'cardio',     label: '有酸素運動',            section: 'body', timing: 'morning', isMust: true, is_active: true },
+  { id: 'weight',     label: '体重測定',              section: 'body', timing: 'morning', minutes: 3, is_active: true },
+  { id: 'shower',     label: 'シャワー',              section: 'body', timing: 'morning', minutes: 15, is_active: true },
+  // Mind + morning
+  { id: 'meditation', label: '瞑想',                  section: 'mind', timing: 'morning', minutes: 10, is_active: true },
+  { id: 'motto',      label: '心得を暗唱する',        section: 'mind', timing: 'morning', minutes: 5, is_active: true },
+  { id: 'tongue',     label: '舌を回す',              section: 'mind', timing: 'morning', minutes: 2, is_active: true },
+  // System + morning
+  { id: 'water',      label: '白湯を飲む',            section: 'system', timing: 'morning', minutes: 5, is_active: true },
+  { id: 'review',     label: '前日の振り返り（やったこと・学び・Next）', section: 'system', timing: 'morning', minutes: 10, is_active: true },
+  { id: 'calendar',   label: 'カレンダーを埋める',    section: 'system', timing: 'morning', minutes: 10, is_active: true },
+  // Body + evening
+  { id: 'weight-eve', label: '体重測定（夜）',        section: 'body', timing: 'evening', minutes: 3, is_active: true },
+  // System + evening (reflection)
+  { id: 'gap',        label: 'ダッシュボードのGap確認',section: 'system', timing: 'evening', minutes: 3, is_active: true },
+  { id: 'update-goal',label: '目標実績を更新する',    section: 'system', timing: 'evening', minutes: 2, is_active: true },
+  { id: 'insight',    label: '気づきを更新する',      section: 'system', timing: 'evening', minutes: 10, is_active: true },
+  { id: 'motto-eve',  label: '心得・意識すべきことを見る', section: 'system', timing: 'evening', minutes: 2, is_active: true },
+  { id: 'schedule',   label: '翌日の予定をスケジューリング（★余裕30m）', section: 'system', timing: 'evening', minutes: 10, is_active: true },
+  // System + evening (prep)
+  { id: 'water-prep', label: '水とコップをデスクにセット', section: 'system', timing: 'evening', is_active: true },
+  { id: 'alarm',      label: 'アラームをセットして机の上に置く', section: 'system', timing: 'evening', is_active: true },
+  { id: 'outer',      label: 'アウターを部屋に持ってくる', section: 'system', timing: 'evening', is_active: true },
 ]
 
-export const TODO_SECTIONS: Array<{ id: TodoSection; label: string; accent: string }> = [
-  { id: 'morning-must', label: '朝の MUST', accent: '#ff6b35' },
-  { id: 'morning-routine', label: '朝のルーティン', accent: '#f59e0b' },
-  { id: 'evening-reflection', label: '夜の振り返り', accent: '#a78bfa' },
-  { id: 'evening-prep', label: '夜の準備', accent: '#38bdf8' },
+export const HABIT_CATEGORIES: Array<{ id: HabitCategory; label: string; accent: string; desc: string }> = [
+  { id: 'identity', label: 'Identity', accent: '#ff6b35', desc: 'アイデンティティ核' },
+  { id: 'growth',   label: 'Growth',   accent: '#22c55e', desc: '成長エンジン' },
+  { id: 'body',     label: 'Body',     accent: '#38bdf8', desc: '身体メンテ' },
+  { id: 'mind',     label: 'Mind',     accent: '#a78bfa', desc: '精神儀式' },
+  { id: 'system',   label: 'System',   accent: '#f59e0b', desc: 'システム運用' },
 ]
+
+export const HABIT_TIMINGS: Array<{ id: HabitTiming; label: string }> = [
+  { id: 'morning', label: '朝' },
+  { id: 'evening', label: '夜' },
+  { id: 'anytime', label: 'いつでも' },
+]
+
+// 後方互換のために TODO_SECTIONS も残す（SettingsPage が参照するかもしれないため）
+export const TODO_SECTIONS = HABIT_CATEGORIES.map(c => ({ id: c.id as HabitCategory, label: `${c.label} — ${c.desc}`, accent: c.accent }))
 
 export const normalizeTodoDefinitions = (todos: TodoDefinition[]) =>
   todos.map(todo => ({
     ...todo,
+    timing: todo.timing ?? 'morning',
     is_active: todo.is_active ?? true,
   }))
 
@@ -93,6 +117,7 @@ export const useTodoDefinitions = (): readonly [
                 id: t.id,
                 label: t.label,
                 section: t.section,
+                timing: t.timing ?? 'morning',
                 minutes: t.minutes ?? null,
                 is_must: t.isMust ?? false,
                 is_active: t.is_active,
@@ -108,7 +133,8 @@ export const useTodoDefinitions = (): readonly [
         const merged: TodoDefinition[] = records.map(r => ({
           id: r.id,
           label: r.label,
-          section: r.section as TodoSection,
+          section: (r.section as HabitCategory) ?? 'system',
+          timing: ((r as { timing?: string }).timing as HabitTiming) ?? 'morning',
           minutes: r.minutes ?? undefined,
           isMust: r.is_must ?? false,
           is_active: r.is_active,
@@ -134,6 +160,7 @@ export const useTodoDefinitions = (): readonly [
         id: t.id,
         label: t.label,
         section: t.section,
+        timing: t.timing ?? 'morning',
         minutes: t.minutes ?? null,
         is_must: t.isMust ?? false,
         is_active: t.is_active,
@@ -147,11 +174,25 @@ export const useTodoDefinitions = (): readonly [
   return [normalizeTodoDefinitions(todos), setNormalized] as const
 }
 
-export const bySection = (todos: TodoDefinition[], section: TodoSection) =>
+export const bySection = (todos: TodoDefinition[], section: HabitCategory) =>
   todos.filter(todo => todo.section === section && todo.is_active)
 
-export const bySectionAll = (todos: TodoDefinition[], section: TodoSection) =>
+export const bySectionAll = (todos: TodoDefinition[], section: HabitCategory) =>
   todos.filter(todo => todo.section === section)
+
+// 新: timing でフィルタ（anytime は常に含まれる）
+export const byTiming = (todos: TodoDefinition[], timing: HabitTiming) =>
+  todos.filter(todo => (todo.timing === timing || todo.timing === 'anytime') && todo.is_active)
+
+// byTiming をカテゴリでグループ化
+export const byTimingGrouped = (todos: TodoDefinition[], timing: HabitTiming): Record<HabitCategory, TodoDefinition[]> => {
+  const filtered = byTiming(todos, timing)
+  const result: Record<HabitCategory, TodoDefinition[]> = { identity: [], growth: [], body: [], mind: [], system: [] }
+  for (const todo of filtered) {
+    result[todo.section as HabitCategory].push(todo)
+  }
+  return result
+}
 
 export const createTodoId = (label: string) =>
   `${label
