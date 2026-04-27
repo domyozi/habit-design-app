@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { generateJournalBrief, type JournalBriefResult } from '@/lib/ai'
 
 interface PrimaryTargetEditorProps {
@@ -22,7 +22,29 @@ export const PrimaryTargetEditor = ({
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<JournalBriefResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
   const existingSet = new Set(existingTaskLabels.map(l => l.toLowerCase()))
+
+  // 結果が出たとき、重複でないタスクをデフォルト全選択
+  useEffect(() => {
+    if (!result) return
+    const indices = new Set(
+      result.tasks
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => !existingSet.has(t.label.toLowerCase()))
+        .map(({ i }) => i)
+    )
+    setSelectedIndices(indices)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
+
+  const toggleTaskSelect = (i: number) => {
+    setSelectedIndices(prev => {
+      const next = new Set(prev)
+      if (next.has(i)) { next.delete(i) } else { next.add(i) }
+      return next
+    })
+  }
 
   const handleGenerate = async () => {
     if (!text.trim() || loading) return
@@ -42,9 +64,10 @@ export const PrimaryTargetEditor = ({
     }
   }
 
-  const handleApplyAll = () => {
+  const handleApplySelected = () => {
     if (!result) return
-    onApply({ target: result.primary_target, tasks: result.tasks })
+    const selected = result.tasks.filter((_, i) => selectedIndices.has(i))
+    onApply({ target: result.primary_target, tasks: selected })
   }
 
   const handleApplyTargetOnly = () => {
@@ -141,13 +164,13 @@ export const PrimaryTargetEditor = ({
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
                   Tasks ({result.tasks.length})
                 </p>
-                {result.tasks.length > 0 && (
+                {result.tasks.length > 0 && selectedIndices.size > 0 && (
                   <button
                     type="button"
-                    onClick={handleApplyAll}
+                    onClick={handleApplySelected}
                     className="shrink-0 rounded-full border border-[#34d399]/25 bg-[#34d399]/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7ef0be]"
                   >
-                    Apply all
+                    Apply ({selectedIndices.size})
                   </button>
                 )}
               </div>
@@ -157,12 +180,32 @@ export const PrimaryTargetEditor = ({
                 )}
                 {result.tasks.map((task, i) => {
                   const isDupe = existingSet.has(task.label.toLowerCase())
+                  const isSelected = selectedIndices.has(i)
                   return (
-                    <div
+                    <button
                       key={`${task.label}-${i}`}
-                      className={['rounded-xl border px-2.5 py-2', isDupe ? 'border-white/[0.04] bg-white/[0.01] opacity-40' : 'border-white/[0.06] bg-[#09111c]'].join(' ')}
+                      type="button"
+                      disabled={isDupe}
+                      onClick={() => !isDupe && toggleTaskSelect(i)}
+                      className={[
+                        'w-full rounded-xl border px-2.5 py-2 text-left transition-all',
+                        isDupe ? 'border-white/[0.04] bg-white/[0.01] opacity-40 cursor-default' :
+                          isSelected ? 'border-[#34d399]/30 bg-[#34d399]/8' : 'border-white/[0.06] bg-[#09111c] hover:border-white/[0.12]',
+                      ].join(' ')}
                     >
                       <div className="flex items-center gap-1.5">
+                        {!isDupe && (
+                          <span className={[
+                            'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors',
+                            isSelected ? 'border-[#34d399]/60 bg-[#34d399]/20' : 'border-white/20',
+                          ].join(' ')}>
+                            {isSelected && (
+                              <svg viewBox="0 0 10 10" className="h-2 w-2" fill="none">
+                                <path d="M2 5l2.5 2.5L8 3" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </span>
+                        )}
                         <span className={['text-[10px] rounded px-1 py-0.5 font-semibold uppercase', task.section === 'morning-must' ? 'bg-[#ff6b35]/12 text-[#ff9966]' : 'bg-[#f59e0b]/10 text-[#fbd38d]'].join(' ')}>
                           {task.section === 'morning-must' ? 'must' : 'routine'}
                         </span>
@@ -170,7 +213,7 @@ export const PrimaryTargetEditor = ({
                         {isDupe && <span className="ml-auto text-[10px] text-white/30">既存</span>}
                       </div>
                       <p className="mt-1 text-[11px] text-white/36">{task.reason}</p>
-                    </div>
+                    </button>
                   )
                 })}
               </div>
