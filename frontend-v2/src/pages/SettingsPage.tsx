@@ -550,16 +550,16 @@ const TodoManager = () => {
                                 type="button"
                                 onClick={() => startEdit(item)}
                                 title="編集"
-                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-0 transition-all hover:bg-white/[0.06] hover:text-white/50 group-hover:opacity-100"
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-30 transition-all hover:bg-white/[0.06] hover:opacity-100 hover:text-white/50"
                               >
                                 ✎
                               </button>
-                              {/* 非表示ボタン（ホバー時） */}
+                              {/* 非表示ボタン（常時表示） */}
                               <button
                                 type="button"
                                 onClick={() => hideTodo(item.id)}
                                 title="非表示"
-                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-0 transition-all hover:bg-white/[0.06] hover:text-white/50 group-hover:opacity-100"
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-white/18 opacity-30 transition-all hover:bg-white/[0.06] hover:opacity-100 hover:text-white/50"
                               >
                                 —
                               </button>

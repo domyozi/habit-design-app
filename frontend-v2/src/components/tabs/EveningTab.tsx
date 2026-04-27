@@ -48,13 +48,13 @@ const TextArea = ({
         </span>
       )}
     </div>
-    <input
-      type="text"
+    <textarea
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       maxLength={maxLength}
-      className="w-full rounded border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white/80 placeholder-white/20"
+      rows={3}
+      className="w-full resize-none rounded border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white/80 placeholder-white/20"
     />
   </div>
 )

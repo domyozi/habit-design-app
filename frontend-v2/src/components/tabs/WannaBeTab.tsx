@@ -488,16 +488,20 @@ export const WannaBeTab = () => {
                 </button>
               </div>
             </div>
-            <MandalaGrid
-              data={mandala}
-              onUpdate={handleMandalaUpdate}
-              checkedActions={checkedActions}
-              onToggleAction={toggleAction}
-              onSelectAction={handleSelectAction}
-              selectedAction={selectedAction}
-              trackedActions={trackedActions}
-              onToggleTracked={toggleTracked}
-            />
+            <div className="overflow-x-auto">
+              <div className="min-w-max">
+                <MandalaGrid
+                  data={mandala}
+                  onUpdate={handleMandalaUpdate}
+                  checkedActions={checkedActions}
+                  onToggleAction={toggleAction}
+                  onSelectAction={handleSelectAction}
+                  selectedAction={selectedAction}
+                  trackedActions={trackedActions}
+                  onToggleTracked={toggleTracked}
+                />
+              </div>
+            </div>
           </div>
         )}
 
