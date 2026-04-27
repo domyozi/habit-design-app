@@ -30,6 +30,28 @@ interface StarRatingProps {
 
 // ─── サブコンポーネント ─────────────────────────────────────────
 
+const CONFETTI_COLORS = ['#34d399', '#7dd3fc', '#f59e0b', '#c4b5fd', '#fb923c']
+
+const Confetti = () => {
+  const pieces = Array.from({ length: 12 }, (_, i) => i)
+  return (
+    <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
+      {pieces.map(i => (
+        <div
+          key={i}
+          className="absolute h-2 w-2 rounded-full"
+          style={{
+            backgroundColor: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+            left: `${20 + i * 6}%`,
+            top: '30%',
+            animation: `confetti-${i % 4} 0.8s ease-out forwards`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 const WeightInput = ({ value, target, onChange }: WeightInputProps) => (
   <div className="flex items-center gap-3 border-t border-white/[0.05] px-4 py-2.5">
     <span className="w-8 text-xs text-white/40">体重</span>
@@ -68,20 +90,20 @@ const CheckRow = ({
   item,
   checked,
   onToggle,
+  dotColor = '#7dd3fc',
 }: {
   item: CheckItem
   checked: boolean
   onToggle: () => void
+  dotColor?: string
 }) => {
   const prevChecked = useRef(checked)
-  const [justChecked, setJustChecked] = useState(false)
+  const [bouncing, setBouncing] = useState(false)
 
   useEffect(() => {
     if (!prevChecked.current && checked) {
-      const t = setTimeout(() => {
-        setJustChecked(true)
-        setTimeout(() => setJustChecked(false), 700)
-      }, 0)
+      setBouncing(true)
+      const t = setTimeout(() => setBouncing(false), 300)
       prevChecked.current = checked
       return () => clearTimeout(t)
     }
@@ -89,33 +111,57 @@ const CheckRow = ({
   }, [checked])
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onToggle}
+      data-testid={`morning-check-${item.id}`}
       className={[
-        'flex items-center gap-3 border-t border-white/[0.05] px-4 py-3 transition-all duration-300',
+        'flex w-full items-center gap-3 border-t border-white/[0.05] px-4 py-3 text-left transition-all duration-300',
         checked ? 'opacity-50' : '',
       ].join(' ')}
-      style={justChecked ? { animation: 'row-glow 0.7s ease-out forwards' } : undefined}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        data-testid={`morning-check-${item.id}`}
+      {/* パルスドット（未チェック時のみ） */}
+      <div className="relative flex-shrink-0 flex items-center justify-center w-6 h-6">
+        {!checked && (
+          <span
+            className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2.5 h-1 w-1 rounded-full"
+            style={{
+              backgroundColor: dotColor,
+              animation: 'pulse-dot 1.8s ease-in-out infinite',
+            }}
+          />
+        )}
+        {/* チェックボックス本体 */}
+        <span
+          className={[
+            'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border transition-all duration-200',
+            checked
+              ? 'border-[#34d399]/50 bg-[#34d399]/15'
+              : 'border-white/20 bg-white/[0.03]',
+          ].join(' ')}
+          style={bouncing ? { animation: 'check-bounce 0.3s ease-out' } : undefined}
+        >
+          {checked && (
+            <svg
+              className="w-3.5 h-3.5 text-[#34d399]"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+              style={{ animation: 'check-pop 0.25s ease-out' }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </span>
+      </div>
+
+      <span
         className={[
-          'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border transition-all duration-200 active:scale-90',
-          checked
-            ? 'border-[#7dd3fc] bg-[#7dd3fc]'
-            : 'border-white/20 hover:border-white/40',
+          'flex-1 text-sm transition-all duration-300',
+          checked ? 'text-white/28 line-through' : 'text-white/82',
         ].join(' ')}
       >
-        {checked && (
-          <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}
-            style={{ animation: 'check-pop 0.25s ease-out' }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        )}
-      </button>
-
-      <span className={['flex-1 text-sm transition-all duration-300', checked ? 'text-white/28 line-through' : 'text-white/82'].join(' ')}>
         {item.label}
       </span>
 
@@ -135,7 +181,7 @@ const CheckRow = ({
           <span className="text-[11px] text-white/24">{item.minutes}m</span>
         )}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -365,8 +411,21 @@ export const MorningTab = ({
     onGenerateReport?.(text)
   }
 
+  const [showConfetti, setShowConfetti] = useState(false)
+  const prevDone = useRef(done)
+  useEffect(() => {
+    if (prevDone.current < total && done === total && total > 0) {
+      setShowConfetti(true)
+      const t = setTimeout(() => setShowConfetti(false), 900)
+      prevDone.current = done
+      return () => clearTimeout(t)
+    }
+    prevDone.current = done
+  }, [done, total])
+
   return (
     <div className={['pb-6', isReadOnly ? 'select-none' : ''].join(' ')}>
+      {showConfetti && <Confetti />}
       {isReadOnly && (
         <div className="mx-4 mb-1 mt-3 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
           <span className="text-[11px] uppercase tracking-[0.18em] text-white/38">Read only record</span>
@@ -580,17 +639,29 @@ export const MorningTab = ({
 
         <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
           {activeTaskTab === 'core' && (
-            <Section title="Core tasks" time="05:00–06:30" color="must">
+            <Section
+              title="Core tasks"
+              time="05:00–06:30"
+              color="must"
+              done={MUST_ITEMS.filter(i => checked.has(i.id)).length}
+              total={MUST_ITEMS.length}
+            >
               {MUST_ITEMS.map(item => (
-                <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} />
+                <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} dotColor="#7dd3fc" />
               ))}
             </Section>
           )}
 
           {activeTaskTab === 'routine' && (
-            <Section title="Preparation sequence" time="06:30–07:30" color="routine">
+            <Section
+              title="Preparation sequence"
+              time="06:30–07:30"
+              color="routine"
+              done={ROUTINE_ITEMS.filter(i => checked.has(i.id)).length}
+              total={ROUTINE_ITEMS.length}
+            >
               {ROUTINE_ITEMS.map(item => (
-                <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} />
+                <CheckRow key={item.id} item={item} checked={checked.has(item.id)} onToggle={() => toggle(item.id)} dotColor="#f59e0b" />
               ))}
             </Section>
           )}
@@ -694,28 +765,47 @@ const Section = ({
   title,
   time,
   color,
+  done,
+  total,
   children,
 }: {
   title: string
   time: string
   color: 'must' | 'routine'
+  done: number
+  total: number
   children: React.ReactNode
-}) => (
-  <div className="mt-4">
-    <div className={[
-      'flex items-center justify-between px-4 py-2',
-      color === 'must' ? 'border-l-2 border-[#7dd3fc]' : 'border-l-2 border-[#c4b5fd]',
-    ].join(' ')}>
-      <span className={[
-        'text-xs font-semibold uppercase tracking-[0.22em]',
-        color === 'must' ? 'text-[#aee5ff]' : 'text-[#ddd6fe]',
+}) => {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  return (
+    <div className="mt-4">
+      <div className={[
+        'flex items-center justify-between px-4 py-2',
+        color === 'must' ? 'border-l-2 border-[#7dd3fc]' : 'border-l-2 border-[#c4b5fd]',
       ].join(' ')}>
-        {title}
-      </span>
-      <span className="text-[11px] text-white/24">{time}</span>
+        <span className={[
+          'text-xs font-semibold uppercase tracking-[0.22em]',
+          color === 'must' ? 'text-[#aee5ff]' : 'text-[#ddd6fe]',
+        ].join(' ')}>
+          {title}
+        </span>
+        <span className="text-[11px] text-white/24">{time}</span>
+      </div>
+
+      {/* セクション進捗バー */}
+      <div className="mx-4 mb-1 flex items-center gap-2">
+        <div className="relative flex-1 h-[2px] rounded-full bg-white/[0.06] overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#34d399] to-[#7dd3fc] transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="text-[10px] text-white/40 tabular-nums">{done} / {total}</span>
+      </div>
+
+      <div className="border-y border-white/[0.05] bg-[#111827]/70">
+        {children}
+      </div>
     </div>
-    <div className="border-y border-white/[0.05] bg-[#111827]/70">
-      {children}
-    </div>
-  </div>
-)
+  )
+}
