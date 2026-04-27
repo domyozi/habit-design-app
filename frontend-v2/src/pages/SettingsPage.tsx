@@ -1045,14 +1045,20 @@ export const SettingsPage = () => {
         ))}
       </div>
 
-      {activeTab === 'tasks' && <TodoManager />}
+      {activeTab === 'tasks' && (
+        <>
+          <TodoManager />
+          <div className="px-4 pb-4 space-y-3">
+            <AiTaskCreator />
+          </div>
+        </>
+      )}
 
       {activeTab === 'ai' && (
         <div className="px-4 pt-4 pb-2 space-y-3">
           <LangSettings />
           <ProfileSettings />
           <IntegrationsSettings />
-          <AiTaskCreator />
           <ApiKeySettings />
           <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4">
             <p className="mb-3 text-[11px] text-white/34">

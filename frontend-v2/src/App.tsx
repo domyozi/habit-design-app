@@ -18,7 +18,7 @@ import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
 import { PrimaryTargetEditor, type TaskApplyMode } from '@/components/ui/PrimaryTargetEditor'
 import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSnapshot, buildSettingsCoachSnapshot, type CoachAction } from '@/lib/coach'
-import { useUserContext } from '@/lib/user-context'
+import { useUserContextRoot, UserContextCtx } from '@/lib/user-context'
 import { saveJournalEntry } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
 import { getNavItems } from '@/lib/lang'
@@ -224,7 +224,7 @@ function MainApp() {
   const { boss, setBoss, toggleCompleted } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
   const [currentOps, setOps] = useOpsStorage()
-  const [userContext, updateUserContext] = useUserContext()
+  const [userContext, updateUserContext] = useUserContextRoot()
   const [savedAiHabits] = useLocalStorage<unknown>('settings:ai:habits', null)
   const [goals] = useLocalStorage<Array<{ priority?: string; title?: string }>>('wannabe:goals', [])
   const [morningChecked, setMorningChecked] = useDailyStorage<string[]>('morning', 'checked', [])
@@ -484,6 +484,7 @@ function MainApp() {
   const morningDone = todayTotal > 0 && morningChecked.length >= todayTotal
 
   return (
+    <UserContextCtx.Provider value={[userContext, updateUserContext]}>
     <div className="min-h-screen bg-[#05080d]">
       <div
         className="mx-auto min-h-screen w-full max-w-[1680px] lg:grid"
@@ -628,6 +629,7 @@ function MainApp() {
         }}
       />
     </div>
+    </UserContextCtx.Provider>
   )
 }
 
