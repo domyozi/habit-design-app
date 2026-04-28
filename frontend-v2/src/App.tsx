@@ -13,6 +13,7 @@ import { HomePage } from '@/pages/HomePage'
 const MonthlyTab  = lazy(() => import('@/components/tabs/MonthlyTab').then(m => ({ default: m.MonthlyTab })))
 const WannaBeTab  = lazy(() => import('@/components/tabs/WannaBeTab').then(m => ({ default: m.WannaBeTab })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const NotesPage    = lazy(() => import('@/pages/NotesPage').then(m => ({ default: m.NotesPage })))
 import { DateNav } from '@/components/ui/DateNav'
 import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
@@ -472,6 +473,7 @@ function MainApp() {
       {tab === 'wanna-be' && <WannaBeTab />}
       {tab === 'report'   && <MonthlyTab />}
       {tab === 'settings' && <SettingsPage />}
+      {tab === 'notes'    && <NotesPage />}
       {tab === 'more'     && <MoreMenu onNavigate={setTab} />}
       </>
     </Suspense>
