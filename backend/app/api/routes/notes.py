@@ -51,7 +51,7 @@ async def create_note(payload: dict, user_id: str = Depends(get_current_user)):
 @router.patch("/{note_id}")
 async def patch_note(note_id: str, payload: dict, user_id: str = Depends(get_current_user)):
     supabase = get_supabase()
-    allowed = {"title", "body", "order_index"}
+    allowed = {"title", "body", "order_index", "pinned"}
     update_data = {k: v for k, v in payload.items() if k in allowed}
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { TiptapEditor } from '@/components/editor/TiptapEditor'
 import { useNotes } from '@/hooks/useNotes'
+import { exportToMarkdown } from '@/lib/note-export'
 
 const DEBOUNCE_MS = 400
 
@@ -17,9 +18,11 @@ const formatRelative = (iso: string): string => {
 export function NotesPage() {
   const { notes, selected, selectedId, setSelectedId, createNote, updateNote, deleteNote } = useNotes()
   const [localTitle, setLocalTitle] = useState('')
-  const [localBody, setLocalBody] = useState('')   // JSON string
+  const [localBody, setLocalBody] = useState('')
   const [showEditor, setShowEditor] = useState(false)
   const [query, setQuery] = useState('')
+  const [charCount, setCharCount] = useState(0)
+  const [wordCount, setWordCount] = useState(0)
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bodyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -28,6 +31,8 @@ export function NotesPage() {
       setLocalTitle(selected.title)
       setLocalBody(selected.body)
       setShowEditor(true)
+      setCharCount(0)
+      setWordCount(0)
     }
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -59,6 +64,15 @@ export function NotesPage() {
     setShowEditor(false)
   }
 
+  const handlePinToggle = (id: string, pinned: boolean) => {
+    updateNote(id, { pinned: !pinned })
+  }
+
+  const handleExport = () => {
+    if (!selected) return
+    exportToMarkdown(localTitle || '無題のノート', localBody)
+  }
+
   const displayTitle = (note: { title: string }) =>
     note.title.trim() || '無題のノート'
 
@@ -73,9 +87,10 @@ export function NotesPage() {
 
   return (
     <div className="flex h-full min-h-[calc(100svh-64px)] flex-col lg:flex-row">
-      {/* Sidebar */}
+      {/* ── Sidebar ─────────────────────────────────────────── */}
       {(!showEditor || !isMobile) && (
         <div className="flex w-full flex-col border-b border-white/[0.06] lg:w-64 lg:min-w-[240px] lg:border-b-0 lg:border-r">
+          {/* Header */}
           <div className="flex items-center justify-between px-4 py-4 border-b border-white/[0.06]">
             <h1 className="text-sm font-semibold text-white/88">ノート</h1>
             <button
@@ -126,45 +141,70 @@ export function NotesPage() {
               </div>
             ) : (
               filteredNotes.map(note => (
-                <button
+                <div
                   key={note.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(note.id)
-                    setShowEditor(true)
-                  }}
                   className={[
-                    'w-full px-4 py-3 text-left border-b border-white/[0.04] transition-colors',
+                    'group relative border-b border-white/[0.04] transition-colors',
                     selectedId === note.id
                       ? 'bg-[#86efac]/[0.06] border-l-2 border-l-[#86efac]/40'
                       : 'hover:bg-white/[0.03]',
                   ].join(' ')}
                 >
-                  <p className="truncate text-sm font-medium text-white/80">{displayTitle(note)}</p>
-                  <p className="mt-0.5 text-[10px] text-white/36">{formatRelative(note.updated_at)}</p>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedId(note.id); setShowEditor(true) }}
+                    className="w-full px-4 py-3 text-left"
+                  >
+                    <div className="flex items-start gap-1.5">
+                      {note.pinned && <span className="mt-0.5 text-[10px]">📌</span>}
+                      <p className="flex-1 truncate text-sm font-medium text-white/80">{displayTitle(note)}</p>
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-white/36">{formatRelative(note.updated_at)}</p>
+                  </button>
+
+                  {/* Pin button — visible on hover */}
+                  <button
+                    type="button"
+                    title={note.pinned ? 'ピン解除' : 'ピン留め'}
+                    onClick={e => { e.stopPropagation(); handlePinToggle(note.id, note.pinned) }}
+                    className="absolute right-2 top-2.5 hidden rounded-md p-1 text-[11px] text-white/25 hover:text-white/70 group-hover:flex"
+                  >
+                    {note.pinned ? '📌' : '🔧'}
+                  </button>
+                </div>
               ))
             )}
           </div>
         </div>
       )}
 
-      {/* Editor */}
+      {/* ── Editor ──────────────────────────────────────────── */}
       {showEditor && selected ? (
         <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
           {/* Editor header */}
-          <div className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-3">
+          <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
             {isMobile && (
-              <button
-                type="button"
-                onClick={() => setShowEditor(false)}
-                className="text-xs text-white/40 hover:text-white/70"
-              >
+              <button type="button" onClick={() => setShowEditor(false)} className="text-xs text-white/40 hover:text-white/70 mr-1">
                 ← 一覧
               </button>
             )}
-            <p className="text-[10px] text-white/30">テキスト選択でフォーマットメニューが表示されます</p>
-            <div className="flex-1" />
+            <p className="text-[10px] text-white/25 flex-1">テキスト選択でフォーマット　/でブロック挿入　画像はペースト or ドロップ</p>
+            <button
+              type="button"
+              onClick={() => handlePinToggle(selected.id, selected.pinned)}
+              title={selected.pinned ? 'ピン解除' : 'ピン留め'}
+              className="rounded-lg px-2 py-1 text-[11px] text-white/30 hover:text-white/70 transition-colors"
+            >
+              {selected.pinned ? '📌' : '🔧'}
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] text-white/40 hover:border-white/[0.16] hover:text-white/70 transition-colors"
+              title="Markdownとしてエクスポート"
+            >
+              ↓ .md
+            </button>
             <button
               type="button"
               onClick={() => handleDelete(selected.id)}
@@ -188,20 +228,23 @@ export function NotesPage() {
             <TiptapEditor
               content={localBody}
               onChange={handleBodyChange}
+              onCharCount={(c, w) => { setCharCount(c); setWordCount(w) }}
             />
           </div>
 
           {/* Footer */}
-          <div className="border-t border-white/[0.04] px-6 py-2">
+          <div className="flex items-center justify-between border-t border-white/[0.04] px-6 py-2">
             <p className="text-[10px] text-white/20">{formatRelative(selected.updated_at)} に更新</p>
+            <p className="text-[10px] text-white/20">{charCount} 文字　{wordCount} 語</p>
           </div>
         </div>
       ) : (
         !showEditor && notes.length > 0 && (
           <div className="hidden flex-1 items-center justify-center lg:flex">
-            <div className="text-center">
+            <div className="text-center space-y-2">
               <p className="text-2xl text-white/10">✎</p>
-              <p className="mt-2 text-sm text-white/28">ノートを選択してください</p>
+              <p className="text-sm text-white/28">ノートを選択してください</p>
+              <p className="text-[10px] text-white/18">または新規作成</p>
             </div>
           </div>
         )

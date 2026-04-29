@@ -222,6 +222,40 @@ input:focus, textarea:focus, select:focus {
   text-decoration: line-through;
 }
 
+/* Image in editor */
+.tiptap img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.tiptap img.ProseMirror-selectednode {
+  outline: 2px solid #86efac;
+}
+
+/* Code block with lowlight */
+.tiptap pre {
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 14px 18px;
+  overflow-x: auto;
+  font-size: 13px;
+  margin: 8px 0;
+}
+.tiptap pre code {
+  background: none;
+  color: #e2e8f0;
+  padding: 0;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+.hljs-comment, .hljs-quote { color: #6b7280; }
+.hljs-keyword, .hljs-selector-tag { color: #c084fc; }
+.hljs-string, .hljs-attr { color: #86efac; }
+.hljs-number, .hljs-literal { color: #fb923c; }
+.hljs-title, .hljs-section { color: #60a5fa; }
+.hljs-type, .hljs-built_in { color: #f9a8d4; }
+
 /* Focus state */
 .tiptap:focus-visible {
   outline: none;
