@@ -1,6 +1,5 @@
 interface BrandMarkProps {
   compact?: boolean
-  subtitle?: string
   className?: string
 }
 
@@ -34,7 +33,6 @@ const Glyph = () => (
 
 export const BrandMark = ({
   compact = false,
-  subtitle = 'AI habit operations',
   className = '',
 }: BrandMarkProps) => {
   if (compact) {
@@ -50,7 +48,6 @@ export const BrandMark = ({
       <Glyph />
       <div>
         <p className="text-sm font-semibold tracking-[0.02em] text-white/90">Daily OS</p>
-        <p className="mt-0.5 text-[11px] text-white/52">{subtitle}</p>
       </div>
     </div>
   )

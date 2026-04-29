@@ -244,7 +244,6 @@ export const MorningTab = ({
   const [streamingText, setStreamingText] = useState('')
   const [brief, setBrief] = useDailyStorage<JournalBriefResult | null>('morning', 'brief', null, dateKey)
   const [briefError, setBriefError] = useState<string | null>(null)
-  const [editingTarget, setEditingTarget] = useState(false)
   const [editTargetText, setEditTargetText] = useState('')
   const [editingBoss, setEditingBoss] = useState(false)
   const [editBossText, setEditBossText] = useState('')
@@ -284,6 +283,10 @@ export const MorningTab = ({
       return v !== null ? String(JSON.parse(v) as number) : '72.9'
     } catch { return '72.9' }
   })
+
+  useEffect(() => {
+    if (brief) setEditTargetText(brief.primary_target)
+  }, [brief])
 
   const isItemDone = (item: TaskFieldItem) => {
     const ft = item.field_type ?? 'checkbox'
@@ -641,53 +644,21 @@ export const MorningTab = ({
             <div className="rounded-2xl border border-[#7dd3fc]/18 bg-[#7dd3fc]/5 px-3 py-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8ed8ff]">Primary target</p>
-                <div className="flex gap-1.5">
-                  {!editingTarget && (
-                    <button
-                      type="button"
-                      onClick={() => { setEditingTarget(true); setEditTargetText(brief.primary_target) }}
-                      className="shrink-0 rounded-full border border-white/[0.12] px-2 py-0.5 text-[10px] text-white/40 hover:text-white/70 transition-colors"
-                    >
-                      編集
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = editingTarget ? editTargetText : brief.primary_target
-                      if (editingTarget && brief) setBrief({ ...brief, primary_target: editTargetText })
-                      setEditingTarget(false)
-                      onBossSet?.(target)
-                    }}
-                    className="shrink-0 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#aee5ff]"
-                  >
-                    Apply
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (brief) setBrief({ ...brief, primary_target: editTargetText }); onBossSet?.(editTargetText) }}
+                  className="shrink-0 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#aee5ff]"
+                >
+                  Apply
+                </button>
               </div>
-              {editingTarget ? (
-                <div className="mt-2 flex flex-col gap-2">
-                  <textarea
-                    value={editTargetText}
-                    onChange={e => setEditTargetText(e.target.value)}
-                    rows={3}
-                    autoFocus
-                    className="w-full resize-none rounded-xl border border-[#7dd3fc]/30 bg-[#07111d] px-3 py-2 text-sm font-semibold text-white placeholder-white/20 focus:border-[#7dd3fc]/60 focus:outline-none"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => setEditingTarget(false)} className="text-[10px] text-white/36 hover:text-white/60">キャンセル</button>
-                    <button
-                      type="button"
-                      onClick={() => { if (brief) setBrief({ ...brief, primary_target: editTargetText }); setEditingTarget(false) }}
-                      className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-0.5 text-[10px] font-semibold text-[#aee5ff]"
-                    >
-                      保存
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-2 text-sm font-semibold text-white">{brief.primary_target}</p>
-              )}
+              <textarea
+                value={editTargetText}
+                onChange={e => setEditTargetText(e.target.value)}
+                onBlur={() => { if (brief) setBrief({ ...brief, primary_target: editTargetText }) }}
+                rows={3}
+                className="mt-2 w-full resize-none bg-transparent text-sm font-semibold text-white focus:outline-none rounded-lg focus:ring-1 focus:ring-[#7dd3fc]/30 focus:px-2 focus:py-1 transition-all"
+              />
               {boss && <p className="mt-2 text-[11px] text-white/32">現在: {boss}</p>}
             </div>
 
