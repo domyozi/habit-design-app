@@ -40,13 +40,15 @@ interface Props {
 }
 
 export function CalendarPanel({ todoDefinitions, onClose }: Props) {
-  const { isConnected, connect, disconnect, fetchEvents, createEvent, events, loading } = useGoogleCalendar()
+  const { isConnected, connect, disconnect, fetchEvents, createEvent, updateEvent, events, loading } = useGoogleCalendar()
   const [viewRange, setViewRange] = useState<ViewRange>(7)
   const [rangeStart, setRangeStart] = useState<Date>(() =>
     viewRange === 7 ? getMondayOfWeek(new Date()) : getTodayStart()
   )
   const [draggedTask, setDraggedTask] = useState<{ id: string; label: string; minutes?: number } | null>(null)
-  const [creatingSlot, setCreatingSlot] = useState<string | null>(null) // ISO string of slot being created
+  const [draggedEvent, setDraggedEvent] = useState<import('@/hooks/useGoogleCalendar').CalEvent | null>(null)
+  const [creatingSlot, setCreatingSlot] = useState<string | null>(null)
+  const [updatingEventId, setUpdatingEventId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [durationInput, setDurationInput] = useState(60)
 
@@ -83,23 +85,37 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
   })()
 
   const handleDrop = useCallback(async ({ dayIndex, slotIndex }: { dayIndex: number; slotIndex: number }) => {
-    if (!draggedTask) return
     const startDateTime = slotToDateTime(rangeStart, dayIndex, slotIndex)
-    const duration = draggedTask.minutes ?? durationInput
 
-    setCreatingSlot(startDateTime)
-    setDraggedTask(null)
-    try {
-      await createEvent(draggedTask.label, startDateTime, duration)
-      showToast('success', `「${draggedTask.label}」を登録しました`)
-      void fetchEvents(rangeStart)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '不明なエラー'
-      showToast('error', `登録失敗: ${msg}`)
-    } finally {
-      setCreatingSlot(null)
+    if (draggedTask) {
+      const task = draggedTask
+      const duration = task.minutes ?? durationInput
+      setCreatingSlot(startDateTime)
+      setDraggedTask(null)
+      try {
+        await createEvent(task.label, startDateTime, duration)
+        showToast('success', `「${task.label}」を登録しました`)
+        void fetchEvents(rangeStart)
+      } catch (e) {
+        showToast('error', `登録失敗: ${e instanceof Error ? e.message : '不明なエラー'}`)
+      } finally {
+        setCreatingSlot(null)
+      }
+    } else if (draggedEvent) {
+      const ev = draggedEvent
+      setUpdatingEventId(ev.id)
+      setDraggedEvent(null)
+      try {
+        await updateEvent(ev.id, startDateTime)
+        showToast('success', `「${ev.summary}」を移動しました`)
+        void fetchEvents(rangeStart)
+      } catch (e) {
+        showToast('error', `移動失敗: ${e instanceof Error ? e.message : '不明なエラー'}`)
+      } finally {
+        setUpdatingEventId(null)
+      }
     }
-  }, [draggedTask, rangeStart, durationInput, createEvent, fetchEvents])
+  }, [draggedTask, draggedEvent, rangeStart, durationInput, createEvent, updateEvent, fetchEvents])
 
   return (
     <div
@@ -272,6 +288,10 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
                   onDrop={handleDrop}
                   draggedTask={draggedTask}
                   creatingSlot={creatingSlot}
+                  onEventDragStart={setDraggedEvent}
+                  onEventDragEnd={() => setDraggedEvent(null)}
+                  draggedEvent={draggedEvent}
+                  updatingEventId={updatingEventId}
                 />
               </div>
             </div>

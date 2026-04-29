@@ -137,6 +137,40 @@ export function useGoogleCalendar() {
     return created
   }, [token])
 
+  const updateEvent = useCallback(async (
+    eventId: string,
+    startDateTime: string,
+  ): Promise<CalEvent | null> => {
+    if (!token) return null
+    const existing = events.find(e => e.id === eventId)
+    if (!existing) return null
+
+    const origDurationMs = new Date(existing.end.dateTime).getTime() - new Date(existing.start.dateTime).getTime()
+    const start = new Date(startDateTime)
+    const end = new Date(start.getTime() + origDurationMs)
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start: { dateTime: start.toISOString(), timeZone: tz },
+          end: { dateTime: end.toISOString(), timeZone: tz },
+        }),
+      }
+    )
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      if (res.status === 401) disconnect()
+      throw new Error(errData?.error?.message ?? `HTTP ${res.status}`)
+    }
+    const updated: CalEvent = await res.json()
+    setEvents(prev => prev.map(e => e.id === eventId ? updated : e))
+    return updated
+  }, [token, events, disconnect])
+
   // Re-check token on focus (may have come back from OAuth)
   useEffect(() => {
     const onFocus = () => {
@@ -147,5 +181,5 @@ export function useGoogleCalendar() {
     return () => window.removeEventListener('focus', onFocus)
   }, [token])
 
-  return { isConnected, connect, disconnect, fetchEvents, createEvent, events, loading, error }
+  return { isConnected, connect, disconnect, fetchEvents, createEvent, updateEvent, events, loading, error }
 }
