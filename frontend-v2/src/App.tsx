@@ -97,7 +97,8 @@ const DesktopRail = ({
   onSignOut?: () => void
 }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const navItems = getNavItems(lang ?? 'ja')
+  const healthConnected = localStorage.getItem('health:connected') === 'true'
+  const navItems = getNavItems(lang ?? 'ja').filter(i => i.id !== 'health' || healthConnected)
   const initial = userEmail?.[0]?.toUpperCase() ?? '?'
 
   // 収納時は 0px 幅の placeholder のみ（フローティングタブは App 側で管理）

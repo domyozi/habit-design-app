@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { fetchHealthToken, regenerateHealthToken } from '@/lib/api'
 import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 import { AiMark } from '@/components/ui/AiMark'
@@ -702,62 +703,82 @@ const JwtTokenSection = () => {
   )
 }
 
-// ─── iOS Shortcuts 連携設定 ──────────────────────────────────
+// ─── Apple Health 連携設定 ──────────────────────────────────
 
 const IntegrationsSettings = () => {
+  const [token, setToken] = useState<string | null>(null)
+  const [tokenLoading, setTokenLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showSteps, setShowSteps] = useState(false)
 
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
-  const webhookUrl = `${apiBase}/api/integrations/log`
+  const batchUrl = `${apiBase}/api/integrations/batch`
 
-  const copyUrl = async () => {
+  const loadToken = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(webhookUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // クリップボードアクセス失敗時は無視
+      const t = await fetchHealthToken()
+      setToken(t.token)
+    } catch { /* 未ログイン時は無視 */ }
+  }, [])
+
+  useEffect(() => { void loadToken() }, [loadToken])
+
+  const handleCopy = async () => {
+    if (!token) return
+    await navigator.clipboard.writeText(token).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleRegenerate = async () => {
+    if (!confirm('トークンを再生成すると、既存のショートカットが使えなくなります。続けますか？')) return
+    setTokenLoading(true)
+    try {
+      const t = await regenerateHealthToken()
+      setToken(t.token)
+    } finally {
+      setTokenLoading(false)
     }
   }
 
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">外部連携 — iOS Shortcuts</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#34d399]/80">Apple Health 連携</p>
+        {token && <span className="rounded-full bg-[#34d399]/15 px-2 py-0.5 text-[9px] text-[#34d399]">設定済み</span>}
+      </div>
       <p className="text-[11px] text-white/42">
-        iOSのショートカットからApple Healthのデータをこのアプリへ自動送信できます。
+        iOSショートカットからApple Healthのデータを自動送信できます。トークンをコピーしてショートカットに設定してください。
       </p>
 
+      {/* Token */}
       <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">Webhook URL</p>
-        <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2">
-          <span className="flex-1 truncate text-[11px] font-mono text-white/60">{webhookUrl}</span>
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">あなたのトークン</p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2 text-[11px] font-mono text-white/60 truncate">
+            {token ?? '読込中...'}
+          </code>
           <button
             type="button"
-            onClick={() => void copyUrl()}
-            className={[
-              'shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors',
-              copied
-                ? 'border-[#22c55e]/30 bg-[#22c55e]/10 text-[#4ade80]'
-                : 'border-white/10 text-white/42 hover:border-white/25 hover:text-white/70',
-            ].join(' ')}
+            onClick={() => void handleCopy()}
+            disabled={!token}
+            className={['shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors',
+              copied ? 'border-[#22c55e]/30 bg-[#22c55e]/10 text-[#4ade80]' : 'border-[#34d399]/30 bg-[#34d399]/10 text-[#34d399] hover:bg-[#34d399]/20'].join(' ')}
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? 'Copied ✓' : 'コピー'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRegenerate()}
+            disabled={tokenLoading}
+            className="shrink-0 rounded-full border border-white/[0.08] px-2.5 py-1 text-[10px] text-white/30 hover:text-white/60 transition-colors"
+          >
+            {tokenLoading ? '...' : '再生成'}
           </button>
         </div>
       </div>
 
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">対応メトリクス</p>
-        <div className="flex flex-wrap gap-1.5">
-          {['weight', 'steps', 'sleep_hours', 'heart_rate', 'workout_minutes'].map(m => (
-            <span key={m} className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-mono text-white/50">
-              {m}
-            </span>
-          ))}
-        </div>
-      </div>
-
+      {/* Setup steps toggle */}
       <button
         type="button"
         onClick={() => setShowSteps(v => !v)}
@@ -767,20 +788,32 @@ const IntegrationsSettings = () => {
       </button>
 
       {showSteps && (
-        <div className="rounded-xl border border-white/[0.06] bg-black/10 p-3 space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/36">セットアップ手順</p>
+        <div className="rounded-xl border border-white/[0.06] bg-black/10 p-3 space-y-2">
           {[
-            '1. iOSの「ショートカット」アプリを開く',
-            '2. 新しいショートカットを作成',
-            '3.「URLの内容を取得」アクションを追加',
-            '4. URL に上記 Webhook URL を設定',
-            '5. メソッドを POST に変更',
-            '6. ヘッダーに Authorization: Bearer {JWTトークン} を追加',
-            '7. 本文に {"metric": "weight", "value": 70.5, "unit": "kg"} を設定',
-            '8. Apple Health オートメーションからショートカットを呼び出す',
+            'iPhoneの「ショートカット」アプリを開く',
+            '「オートメーション」→「新規オートメーション」→「毎日（例: AM 7:00）」',
+            '「URLの内容を取得」アクションを追加',
+            `URL: ${batchUrl}`,
+            'メソッド: POST',
+            `ヘッダー: X-Shortcuts-Token = ${token ?? '{トークン}'}`,
+            '本文(JSON): {"metrics":[{"metric":"steps","value":歩数,"unit":"count"},{"metric":"weight","value":体重,"unit":"kg"},…]}',
+            'Apple Health から各値を変数で読み取り JSON に組み込む',
           ].map((step, i) => (
-            <p key={i} className="text-[11px] text-white/52">{step}</p>
+            <div key={i} className="flex gap-2.5">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[9px] font-bold text-white/40">{i + 1}</span>
+              <p className="text-[11px] leading-relaxed text-white/52">{step}</p>
+            </div>
           ))}
+          <div className="pt-1">
+            <p className="mb-1 text-[9px] text-white/30">送信できる metric 一覧</p>
+            <div className="flex flex-wrap gap-1">
+              {['steps','distance_walked','active_calories','resting_calories','workout_minutes',
+                'heart_rate','resting_heart_rate','hrv','sleep_hours',
+                'weight','bmi','body_fat','blood_oxygen','respiratory_rate','mindful_minutes'].map(m => (
+                <code key={m} className="rounded border border-white/[0.06] bg-white/[0.03] px-1.5 py-0.5 text-[9px] text-white/36">{m}</code>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
