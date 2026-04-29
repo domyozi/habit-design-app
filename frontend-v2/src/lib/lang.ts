@@ -18,6 +18,7 @@ const NAV_JA: NavItem[] = [
   { id: 'wanna-be', icon: '◆', label: '理想像',     note: 'アイデンティティ',  color: '#f59e0b' },
   { id: 'notes',    icon: '✎', label: 'ノート',    note: 'らくがき帳',         color: '#86efac' },
   { id: 'calendar', icon: '⊟', label: 'カレンダー', note: 'Google Calendar',   color: '#fb923c' },
+  { id: 'health',   icon: '⊕', label: 'ヘルス',     note: 'Apple Health',      color: '#34d399' },
 ]
 
 const NAV_EN: NavItem[] = [
@@ -28,6 +29,7 @@ const NAV_EN: NavItem[] = [
   { id: 'wanna-be', icon: '◆', label: 'Wanna Be', note: 'identity board',    color: '#f59e0b' },
   { id: 'notes',    icon: '✎', label: 'Notes',    note: 'scratch pad',       color: '#86efac' },
   { id: 'calendar', icon: '⊟', label: 'Calendar', note: 'Google Calendar',   color: '#fb923c' },
+  { id: 'health',   icon: '⊕', label: 'Health',   note: 'Apple Health',      color: '#34d399' },
 ]
 
 export const getNavItems = (lang: AppLang): NavItem[] =>

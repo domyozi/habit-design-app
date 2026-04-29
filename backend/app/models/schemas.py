@@ -647,3 +647,20 @@ class KpiChartResponse(BaseModel):
     granularity: Literal["daily", "weekly", "monthly"]
     data_points: list[KpiChartDataPoint]
     summary: KpiChartSummary
+
+
+# =============================================
+# Apple Health 連携スキーマ
+# =============================================
+
+class HealthMetricItem(BaseModel):
+    """バッチ送信の各指標アイテム。"""
+    metric: str
+    value: float
+    unit: Optional[str] = None
+    recorded_at: Optional[str] = None
+
+
+class HealthBatchRequest(BaseModel):
+    """iOS Shortcuts からの一括送信リクエスト。"""
+    metrics: list[HealthMetricItem]

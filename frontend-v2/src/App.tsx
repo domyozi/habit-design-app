@@ -16,6 +16,7 @@ const WannaBeTab  = lazy(() => import('@/components/tabs/WannaBeTab').then(m => 
 const SettingsPage  = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const NotesPage     = lazy(() => import('@/pages/NotesPage').then(m => ({ default: m.NotesPage })))
 const NotesFullPage = lazy(() => import('@/pages/NotesFullPage').then(m => ({ default: m.NotesFullPage })))
+const HealthTab     = lazy(() => import('@/components/tabs/HealthTab').then(m => ({ default: m.HealthTab })))
 import { DateNav } from '@/components/ui/DateNav'
 import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
@@ -498,6 +499,7 @@ function MainApp() {
           <CalendarPanel todoDefinitions={todoDefinitions} onClose={() => setTab('home')} mode="tab" />
         </div>
       )}
+      {tab === 'health'   && <HealthTab />}
       {tab === 'more'     && <MoreMenu onNavigate={setTab} />}
       </>
     </Suspense>

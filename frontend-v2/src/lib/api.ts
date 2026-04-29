@@ -538,3 +538,40 @@ export const fetchHealthLogs = (date?: string): Promise<HealthLog[]> => {
   const params = date ? `?date=${date}` : ''
   return apiGet<HealthLog[]>(`/api/integrations/logs${params}`)
 }
+
+export interface HealthMetricLatest {
+  value: number
+  unit: string | null
+  recorded_at: string
+}
+
+export interface HealthWeeklyPoint {
+  date: string
+  value: number | null
+}
+
+export interface HealthSummary {
+  latest: Record<string, HealthMetricLatest>
+  weekly: Record<string, HealthWeeklyPoint[]>
+}
+
+/**
+ * 各指標の最新値 + 過去7日分の集計を取得する
+ * GET /api/integrations/summary
+ */
+export const fetchHealthSummary = (): Promise<HealthSummary> =>
+  apiGet<HealthSummary>('/api/integrations/summary')
+
+/**
+ * Shortcuts 用トークンを取得する
+ * GET /api/integrations/token
+ */
+export const fetchHealthToken = (): Promise<{ token: string }> =>
+  apiGet<{ token: string }>('/api/integrations/token')
+
+/**
+ * Shortcuts 用トークンを再生成する
+ * POST /api/integrations/token/regenerate
+ */
+export const regenerateHealthToken = (): Promise<{ token: string }> =>
+  apiPost<{ token: string }>('/api/integrations/token/regenerate', {})

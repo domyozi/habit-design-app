@@ -3,7 +3,7 @@
 // ============================================================
 
 export type HabitCategory = 'must' | 'routine'
-export type TabId = 'home' | 'morning' | 'evening' | 'monthly' | 'wanna-be' | 'report' | 'more' | 'settings' | 'journal' | 'notes' | 'calendar'
+export type TabId = 'home' | 'morning' | 'evening' | 'monthly' | 'wanna-be' | 'report' | 'more' | 'settings' | 'journal' | 'notes' | 'calendar' | 'health'
 
 export interface Habit {
   id: string
