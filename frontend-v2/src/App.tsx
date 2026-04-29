@@ -80,6 +80,8 @@ const DesktopRail = ({
   morningDone,
   eveningDone,
   lang,
+  userEmail,
+  onSignOut,
 }: {
   active: TabId
   onChange: (id: TabId) => void
@@ -89,43 +91,16 @@ const DesktopRail = ({
   morningDone?: boolean
   eveningDone?: boolean
   lang?: import('@/lib/lang').AppLang
+  userEmail?: string
+  onSignOut?: () => void
 }) => {
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const navItems = getNavItems(lang ?? 'ja')
+  const initial = userEmail?.[0]?.toUpperCase() ?? '?'
 
+  // 収納時は 0px 幅の placeholder のみ（フローティングタブは App 側で管理）
   if (collapsed) {
-    return (
-      <aside className="hidden lg:flex lg:flex-col lg:items-center lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl lg:py-4 lg:gap-2 lg:w-[48px] lg:min-w-[48px] lg:overflow-hidden">
-        {navItems.map(item => {
-          const isActive = active === item.id || (item.id === 'monthly' && active === 'report')
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onChange(item.id)}
-              title={item.label}
-              className={[
-                'flex h-9 w-9 items-center justify-center rounded-xl border transition-colors text-base',
-                isActive
-                  ? 'border-white/[0.16] bg-white/[0.08] text-white/90'
-                  : 'border-transparent text-white/40 hover:border-white/[0.08] hover:text-white/70',
-              ].join(' ')}
-              style={isActive ? { color: item.color } : undefined}
-            >
-              {item.icon}
-            </button>
-          )
-        })}
-        <div className="flex-1" />
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="flex h-8 w-8 items-center justify-center rounded-xl border border-transparent text-white/30 hover:border-white/[0.08] hover:text-white/60 text-xs"
-          title="展開"
-        >
-          ›
-        </button>
-      </aside>
-    )
+    return <aside className="hidden lg:block overflow-hidden" style={{ width: 0, minWidth: 0 }} />
   }
 
   return (
@@ -178,14 +153,56 @@ const DesktopRail = ({
           )
         })}
       </div>
-      <div className="border-t border-white/[0.06] px-3 py-3 flex justify-end">
+
+      {/* ── フッター: ユーザーメニュー + 収納ボタン ─── */}
+      <div className="border-t border-white/[0.06] px-3 py-3 space-y-2">
+        {/* ユーザーメニュー */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setUserMenuOpen(p => !p)}
+            className="flex w-full items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:border-white/[0.12] hover:bg-white/[0.06]"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#7dd3fc]/20 text-xs font-bold text-[#7dd3fc]">
+              {initial}
+            </span>
+            <span className="flex-1 truncate text-xs text-white/50">{userEmail ?? 'アカウント'}</span>
+            <span className="text-[10px] text-white/30">⋯</span>
+          </button>
+
+          {userMenuOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden rounded-xl border border-white/[0.12] bg-[#0d1825]/98 shadow-2xl backdrop-blur-xl">
+              <div className="border-b border-white/[0.06] px-4 py-3">
+                <p className="text-[10px] text-white/36 truncate">{userEmail}</p>
+              </div>
+              <div className="p-1.5 space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { onChange('settings'); setUserMenuOpen(false) }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/[0.06] transition-colors"
+                >
+                  <span className="text-base">⚙</span> 設定
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { onSignOut?.(); setUserMenuOpen(false) }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-red-400/70 hover:bg-red-500/[0.06] transition-colors"
+                >
+                  <span className="text-base">↩</span> ログアウト
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 収納ボタン */}
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="flex h-8 w-8 items-center justify-center rounded-xl border border-transparent text-white/30 hover:border-white/[0.08] hover:text-white/60 text-xs"
-          title="収納"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] py-2.5 text-xs text-white/36 transition-colors hover:border-white/[0.14] hover:text-white/70"
         >
-          ‹
+          <span>‹</span>
+          <span>サイドバーを収納</span>
         </button>
       </div>
     </aside>
@@ -222,6 +239,7 @@ const MoreMenu = ({ onNavigate }: { onNavigate: (tab: TabId, date?: string) => v
 function MainApp() {
   const isDesktop = useIsDesktop()
   const currentPeriod = useCurrentPeriod()
+  const { session, signOut } = useAuth()
   const [tab, setTab] = useState<TabId>('home')
   const { boss, setBoss, toggleCompleted } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
@@ -495,9 +513,9 @@ function MainApp() {
         className="mx-auto min-h-screen w-full max-w-[1680px] lg:grid"
         style={{
           gridTemplateColumns: [
-            railCollapsed ? '48px' : '248px',
+            railCollapsed ? '0px' : '248px',
             'minmax(0,1fr)',
-            sidebarCollapsed ? '44px' : '360px',
+            sidebarCollapsed ? '0px' : '360px',
           ].join(' '),
         }}
       >
@@ -510,6 +528,8 @@ function MainApp() {
           morningDone={morningDone}
           eveningDone={eveningDone}
           lang={(userContext?.lang ?? localStorage.getItem('settings:lang') ?? 'ja') as import('@/lib/lang').AppLang}
+          userEmail={session?.user?.email}
+          onSignOut={signOut}
         />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
@@ -571,28 +591,21 @@ function MainApp() {
           </div>
         </div>
 
-        <div className="hidden lg:flex lg:flex-col lg:bg-[#05080d]">
-          {sidebarCollapsed ? (
-            <div className="sticky top-0 flex h-screen items-start justify-center pt-4 px-1">
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(false)}
-                className="flex flex-col items-center justify-center gap-2 rounded-[18px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-2 py-5 text-white/40 transition-colors hover:text-white/70"
-                style={{ minHeight: 120, width: 36 }}
-              >
-                <span className="text-[9px]">◀</span>
-                <span className="text-[10px] tracking-[0.15em] text-white/40" style={{ writingMode: 'vertical-rl' }}>Panel</span>
-              </button>
-            </div>
-          ) : (
-            <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-4">
+        {/* 右パネル: 収納時は 0px プレースホルダー */}
+        <div
+          className={sidebarCollapsed ? '' : 'hidden lg:flex lg:flex-col lg:bg-[#05080d]'}
+          style={sidebarCollapsed ? { width: 0, minWidth: 0, overflow: 'hidden', display: 'none' } : undefined}
+        >
+          {!sidebarCollapsed && (
+            <div className="hidden lg:flex lg:flex-col sticky top-0 h-screen overflow-y-auto p-4 space-y-4">
               <div className="flex items-center justify-end mb-1">
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed(true)}
-                  className="text-white/30 hover:text-white/60 text-[11px] px-2 py-1 rounded-full border border-transparent hover:border-white/[0.08]"
+                  className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs text-white/36 transition-colors hover:border-white/[0.14] hover:text-white/70"
                 >
-                  ▶ 収納
+                  <span>パネルを収納</span>
+                  <span>›</span>
                 </button>
               </div>
               <CoachPanel snapshot={coachSnapshot} onAction={handleCoachAction} />
@@ -601,7 +614,6 @@ function MainApp() {
                 morningChecked={morningChecked}
                 eveningChecked={eveningChecked}
                 onToggle={(id, section) => {
-                  // timing が morning か evening かでトグル先を決める
                   const todo = todoDefinitions.find(t => t.id === id)
                   const isMorning = todo ? (todo.timing === 'morning' || todo.timing === 'anytime') : (section !== 'body' && section !== 'system')
                   if (isMorning) {
@@ -619,6 +631,32 @@ function MainApp() {
           )}
         </div>
       </div>
+
+      {/* ── フローティング展開タブ（収納時のみ表示） ─── */}
+      {railCollapsed && (
+        <button
+          type="button"
+          onClick={() => setRailCollapsed(false)}
+          className="fixed left-0 top-1/2 z-40 hidden -translate-y-1/2 lg:flex flex-col items-center justify-center gap-1 rounded-r-xl border-y border-r border-white/[0.12] bg-[#0d1825]/92 px-2 py-5 text-white/40 backdrop-blur-xl transition-colors hover:border-white/[0.22] hover:text-white/80"
+          style={{ minHeight: 80 }}
+          title="メニューを展開"
+        >
+          <span className="text-sm">›</span>
+          <span className="text-[8px] font-semibold uppercase tracking-[0.2em] text-white/28" style={{ writingMode: 'vertical-rl' }}>MENU</span>
+        </button>
+      )}
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          className="fixed right-0 top-1/2 z-40 hidden -translate-y-1/2 lg:flex flex-col items-center justify-center gap-1 rounded-l-xl border-y border-l border-white/[0.12] bg-[#0d1825]/92 px-2 py-5 text-white/40 backdrop-blur-xl transition-colors hover:border-white/[0.22] hover:text-white/80"
+          style={{ minHeight: 80 }}
+          title="パネルを展開"
+        >
+          <span className="text-[8px] font-semibold uppercase tracking-[0.2em] text-white/28" style={{ writingMode: 'vertical-rl' }}>PANEL</span>
+          <span className="text-sm">‹</span>
+        </button>
+      )}
 
       <BottomNav
         active={navActive}
