@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchHealthSummary, type HealthSummary } from '@/lib/api'
 
-export const HEALTH_CONNECTED_KEY = 'health:connected'
-
 // ─── スパークライン ──────────────────────────────────────────
 function Sparkline({ points, color = '#34d399' }: { points: (number | null)[]; color?: string }) {
   const valid = points.filter((v): v is number => v !== null)
@@ -79,9 +77,6 @@ export function HealthTab() {
     try {
       const s = await fetchHealthSummary()
       setSummary(s)
-      if (Object.keys(s.latest).length > 0) {
-        localStorage.setItem(HEALTH_CONNECTED_KEY, 'true')
-      }
     } catch {
       setError('データの取得に失敗しました。再度お試しください。')
     } finally {

@@ -23,7 +23,7 @@ import { TaskListPanel } from '@/components/ai/TaskListPanel'
 import { PrimaryTargetEditor, type TaskApplyMode } from '@/components/ui/PrimaryTargetEditor'
 import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSnapshot, buildSettingsCoachSnapshot, type CoachAction } from '@/lib/coach'
 import { useUserContextRoot, UserContextCtx } from '@/lib/user-context'
-import { saveJournalEntry } from '@/lib/api'
+import { saveJournalEntry, fetchHealthSummary } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
 import { getNavItems } from '@/lib/lang'
 import type { JournalBriefResult } from '@/lib/ai'
@@ -83,6 +83,7 @@ const DesktopRail = ({
   eveningDone,
   lang,
   userEmail,
+  healthConnected,
   onSignOut,
 }: {
   active: TabId
@@ -95,9 +96,9 @@ const DesktopRail = ({
   lang?: import('@/lib/lang').AppLang
   userEmail?: string
   onSignOut?: () => void
+  healthConnected?: boolean
 }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const healthConnected = localStorage.getItem('health:connected') === 'true'
   const navItems = getNavItems(lang ?? 'ja').filter(i => i.id !== 'health' || healthConnected)
   const initial = userEmail?.[0]?.toUpperCase() ?? '?'
 
@@ -243,6 +244,7 @@ function MainApp() {
   const currentPeriod = useCurrentPeriod()
   const { session, signOut } = useAuth()
   const [tab, setTab] = useState<TabId>('home')
+  const [healthConnected, setHealthConnected] = useState(false)
   const { boss, setBoss, toggleCompleted } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
   const [currentOps, setOps] = useOpsStorage()
@@ -259,6 +261,14 @@ function MainApp() {
   const [morningDoneBanner, setMorningDoneBanner] = useState(false)
   const [eveningDoneBanner, setEveningDoneBanner] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // ── Apple Health 接続確認（ログイン後1回だけ取得）──────────
+  useEffect(() => {
+    if (!session) return
+    fetchHealthSummary()
+      .then(s => { if (Object.keys(s.latest).length > 0) setHealthConnected(true) })
+      .catch(() => {})
+  }, [session])
 
   // ── 日付管理 ────────────────────────────────────────────────
   // currentDate: 実際の今日の日付（日またぎ検知・key リセット用）
@@ -538,6 +548,7 @@ function MainApp() {
           lang={(userContext?.lang ?? localStorage.getItem('settings:lang') ?? 'ja') as import('@/lib/lang').AppLang}
           userEmail={session?.user?.email}
           onSignOut={signOut}
+          healthConnected={healthConnected}
         />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
