@@ -42,6 +42,7 @@ interface Props {
 
 export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Props) {
   const { isConnected, connect, disconnect, fetchEvents, createEvent, updateEvent, events, loading } = useGoogleCalendar()
+  const [resizingEventId, setResizingEventId] = useState<string | null>(null)
   const [viewRange, setViewRange] = useState<ViewRange>(7)
   const [rangeStart, setRangeStart] = useState<Date>(() =>
     viewRange === 7 ? getMondayOfWeek(new Date()) : getTodayStart()
@@ -94,12 +95,14 @@ export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Pr
       const duration = task.minutes ?? durationInput
       setCreatingSlot(startDateTime)
       setDraggedTask(null)
+      // Hide immediately; restore on error
+      setScheduledTaskIds(prev => new Set([...prev, task.id]))
       try {
         await createEvent(task.label, startDateTime, duration)
-        setScheduledTaskIds(prev => new Set([...prev, task.id]))
         showToast('success', `「${task.label}」を登録しました`)
         void fetchEvents(rangeStart)
       } catch (e) {
+        setScheduledTaskIds(prev => { const next = new Set(prev); next.delete(task.id); return next })
         showToast('error', `登録失敗: ${e instanceof Error ? e.message : '不明なエラー'}`)
       } finally {
         setCreatingSlot(null)
@@ -119,6 +122,21 @@ export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Pr
       }
     }
   }, [draggedTask, draggedEvent, rangeStart, durationInput, createEvent, updateEvent, fetchEvents])
+
+  const handleEventResize = useCallback(async (eventId: string, newDurationMinutes: number) => {
+    const ev = events.find(e => e.id === eventId)
+    if (!ev) return
+    setResizingEventId(eventId)
+    try {
+      await updateEvent(eventId, ev.start.dateTime, newDurationMinutes)
+      showToast('success', `「${ev.summary}」の時間を変更しました`)
+      void fetchEvents(rangeStart)
+    } catch (e) {
+      showToast('error', `変更失敗: ${e instanceof Error ? e.message : '不明なエラー'}`)
+    } finally {
+      setResizingEventId(null)
+    }
+  }, [events, updateEvent, fetchEvents, rangeStart])
 
   const inner = (
     <div className={mode === 'tab' ? 'flex h-full flex-col bg-[#07111d]' : 'relative flex w-full max-w-5xl flex-col bg-[#07111d]/98 shadow-2xl ring-1 ring-white/[0.08]'}>
@@ -289,6 +307,8 @@ export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Pr
                   onEventDragEnd={() => setDraggedEvent(null)}
                   draggedEvent={draggedEvent}
                   updatingEventId={updatingEventId}
+                  onEventResize={handleEventResize}
+                  resizingEventId={resizingEventId}
                 />
               </div>
             </div>

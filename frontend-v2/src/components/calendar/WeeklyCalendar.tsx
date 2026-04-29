@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import type { CalEvent } from '@/hooks/useGoogleCalendar'
 
 const START_HOUR = 6
@@ -69,16 +69,20 @@ interface Props {
   onEventDragEnd: () => void
   draggedEvent: CalEvent | null
   updatingEventId: string | null
+  onEventResize: (eventId: string, newDurationMinutes: number) => void
+  resizingEventId: string | null
 }
 
 export function WeeklyCalendar({
   rangeStart, numDays, events, onDrop,
   draggedTask, creatingSlot,
   onEventDragStart, onEventDragEnd, draggedEvent, updatingEventId,
+  onEventResize, resizingEventId,
 }: Props) {
   const [hover, setHover] = useState<DropTarget | null>(null)
   const [nowPx, setNowPx] = useState<number | null>(getNowPx)
   const gridRef = useRef<HTMLDivElement>(null)
+  const resizeRef = useRef<{ eventId: string; startY: number; origSlots: number } | null>(null)
 
   // Update current time line every minute
   useEffect(() => {
@@ -86,6 +90,31 @@ export function WeeklyCalendar({
     const timer = setInterval(() => setNowPx(getNowPx()), 60_000)
     return () => clearInterval(timer)
   }, [])
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent, ev: CalEvent, origSlots: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    resizeRef.current = { eventId: ev.id, startY: e.clientY, origSlots }
+    const onMouseMove = (me: MouseEvent) => {
+      if (!resizeRef.current) return
+      const deltaSlots = Math.round((me.clientY - resizeRef.current.startY) / SLOT_H)
+      const newSlots = Math.max(1, resizeRef.current.origSlots + deltaSlots)
+      // Visual preview via CSS var on the event element
+      const el = document.getElementById(`cal-ev-${resizeRef.current.eventId}`)
+      if (el) el.style.height = `${newSlots * SLOT_H - 2}px`
+    }
+    const onMouseUp = (me: MouseEvent) => {
+      if (!resizeRef.current) return
+      const deltaSlots = Math.round((me.clientY - resizeRef.current.startY) / SLOT_H)
+      const newSlots = Math.max(1, resizeRef.current.origSlots + deltaSlots)
+      onEventResize(resizeRef.current.eventId, newSlots * SLOT_MINUTES)
+      resizeRef.current = null
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [onEventResize])
 
   const days = getDays(rangeStart, numDays)
   const today = new Date()
@@ -179,12 +208,13 @@ export function WeeklyCalendar({
                     >
                       {placed && (
                         <div
+                          id={`cal-ev-${placed.ev.id}`}
                           draggable
                           onDragStart={(e) => { e.stopPropagation(); onEventDragStart(placed.ev) }}
                           onDragEnd={onEventDragEnd}
                           className={[
                             'absolute inset-x-0.5 z-10 overflow-hidden rounded px-1 py-px text-[9px] font-medium leading-tight cursor-grab active:cursor-grabbing active:opacity-60 transition-opacity',
-                            updatingEventId === placed.ev.id ? 'opacity-40' : '',
+                            (updatingEventId === placed.ev.id || resizingEventId === placed.ev.id) ? 'opacity-40' : '',
                           ].join(' ')}
                           style={{
                             height: Math.max(placed.spanSlots, 1) * SLOT_H - 2,
@@ -199,7 +229,22 @@ export function WeeklyCalendar({
                               <div className="h-2 w-2 animate-spin rounded-full border border-white/20 border-t-white/70" />
                               <span className="text-[8px] text-white/50">移動中…</span>
                             </div>
+                          ) : resizingEventId === placed.ev.id ? (
+                            <div className="flex items-center gap-1 mt-1">
+                              <div className="h-2 w-2 animate-spin rounded-full border border-white/20 border-t-white/70" />
+                              <span className="text-[8px] text-white/50">変更中…</span>
+                            </div>
                           ) : placed.ev.summary}
+                          {/* Resize handle */}
+                          {resizingEventId !== placed.ev.id && updatingEventId !== placed.ev.id && (
+                            <div
+                              className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize flex items-center justify-center group"
+                              onMouseDown={(e) => handleResizeMouseDown(e, placed.ev, placed.spanSlots)}
+                              onDragStart={(e) => e.preventDefault()}
+                            >
+                              <div className="w-6 h-0.5 rounded-full bg-white/20 group-hover:bg-white/50 transition-colors" />
+                            </div>
+                          )}
                         </div>
                       )}
 

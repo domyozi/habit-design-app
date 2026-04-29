@@ -16,7 +16,6 @@ const NAV_JA: NavItem[] = [
   { id: 'evening',  icon: '◑', label: 'イブニング', note: '振り返り + 翌日',   color: '#c4b5fd' },
   { id: 'monthly',  icon: '⊞', label: '分析',       note: '習慣分析・レポート',color: '#38bdf8' },
   { id: 'wanna-be', icon: '◆', label: '理想像',     note: 'アイデンティティ',  color: '#f59e0b' },
-  { id: 'settings', icon: '⊙', label: '設定',       note: 'システム設計',      color: '#a78bfa' },
   { id: 'notes',    icon: '✎', label: 'ノート',    note: 'らくがき帳',         color: '#86efac' },
   { id: 'calendar', icon: '⊟', label: 'カレンダー', note: 'Google Calendar',   color: '#fb923c' },
 ]
@@ -27,7 +26,6 @@ const NAV_EN: NavItem[] = [
   { id: 'evening',  icon: '◑', label: 'Evening',  note: 'review + next day', color: '#c4b5fd' },
   { id: 'monthly',  icon: '⊞', label: 'Analytics',note: 'habit analysis',    color: '#38bdf8' },
   { id: 'wanna-be', icon: '◆', label: 'Wanna Be', note: 'identity board',    color: '#f59e0b' },
-  { id: 'settings', icon: '⊙', label: 'Settings', note: 'system design',     color: '#a78bfa' },
   { id: 'notes',    icon: '✎', label: 'Notes',    note: 'scratch pad',       color: '#86efac' },
   { id: 'calendar', icon: '📅', label: 'Calendar', note: 'Google Calendar',   color: '#fb923c' },
 ]

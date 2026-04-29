@@ -172,7 +172,7 @@ const DesktopRail = ({
           </button>
 
           {userMenuOpen && (
-            <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden rounded-xl border border-white/[0.12] bg-[#0d1825]/98 shadow-2xl backdrop-blur-xl">
+            <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden rounded-xl border border-white/[0.12] bg-[#07111d] shadow-2xl">
               <div className="border-b border-white/[0.06] px-4 py-3">
                 <p className="text-[10px] text-white/36 truncate">{userEmail}</p>
               </div>

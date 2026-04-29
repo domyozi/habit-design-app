@@ -286,7 +286,7 @@ export async function streamJournalBrief(
       onChunk(accumulated)
     },
     () => onDone(accumulated),
-    1024,
+    2048,
   )
 }
 

@@ -140,14 +140,16 @@ export function useGoogleCalendar() {
   const updateEvent = useCallback(async (
     eventId: string,
     startDateTime: string,
+    durationMinutes?: number,
   ): Promise<CalEvent | null> => {
     if (!token) return null
     const existing = events.find(e => e.id === eventId)
     if (!existing) return null
 
     const origDurationMs = new Date(existing.end.dateTime).getTime() - new Date(existing.start.dateTime).getTime()
+    const durationMs = durationMinutes ? durationMinutes * 60_000 : origDurationMs
     const start = new Date(startDateTime)
-    const end = new Date(start.getTime() + origDurationMs)
+    const end = new Date(start.getTime() + durationMs)
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
     const res = await fetch(
