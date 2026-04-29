@@ -126,7 +126,12 @@ export function useGoogleCalendar() {
         body: JSON.stringify(body),
       }
     )
-    if (!res.ok) throw new Error('Failed to create event')
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      const reason = errData?.error?.message ?? `HTTP ${res.status}`
+      if (res.status === 401) disconnect()
+      throw new Error(reason)
+    }
     const created: CalEvent = await res.json()
     setEvents(prev => [...prev, created])
     return created

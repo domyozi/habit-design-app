@@ -93,8 +93,9 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
       await createEvent(draggedTask.label, startDateTime, duration)
       showToast('success', `「${draggedTask.label}」を登録しました`)
       void fetchEvents(rangeStart)
-    } catch {
-      showToast('error', '登録に失敗しました。もう一度お試しください。')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '不明なエラー'
+      showToast('error', `登録失敗: ${msg}`)
     } finally {
       setCreatingSlot(null)
     }
@@ -280,12 +281,21 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
         {/* Toast */}
         {toast && (
           <div className={[
-            'absolute bottom-4 left-1/2 -translate-x-1/2 rounded-xl border px-5 py-3 text-sm shadow-xl backdrop-blur-xl transition-all',
+            'absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-xl border px-5 py-3 text-sm shadow-xl backdrop-blur-xl transition-all',
             toast.type === 'success'
               ? 'border-[#22c55e]/30 bg-[#0d1f13]/95 text-[#86efac]'
               : 'border-red-500/30 bg-[#1f0d0d]/95 text-red-400',
           ].join(' ')}>
-            {toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}
+            <span>{toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}</span>
+            {toast.type === 'error' && (
+              <button
+                type="button"
+                onClick={() => { disconnect(); connect() }}
+                className="shrink-0 rounded-lg border border-red-400/30 px-2.5 py-1 text-[11px] text-red-300 hover:bg-red-400/10"
+              >
+                再認証
+              </button>
+            )}
           </div>
         )}
       </div>
