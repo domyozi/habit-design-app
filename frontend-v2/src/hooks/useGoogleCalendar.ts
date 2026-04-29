@@ -109,10 +109,11 @@ export function useGoogleCalendar() {
     if (!token) return null
     const start = new Date(startDateTime)
     const end = new Date(start.getTime() + durationMinutes * 60_000)
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const body = {
       summary,
-      start: { dateTime: start.toISOString() },
-      end: { dateTime: end.toISOString() },
+      start: { dateTime: start.toISOString(), timeZone: tz },
+      end: { dateTime: end.toISOString(), timeZone: tz },
     }
     const res = await fetch(
       'https://www.googleapis.com/calendar/v3/calendars/primary/events',

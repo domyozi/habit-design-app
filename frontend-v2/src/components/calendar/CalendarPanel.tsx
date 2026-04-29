@@ -12,6 +12,8 @@ const SECTION_ACCENT: Record<HabitCategory, string> = {
   system: '#f59e0b',
 }
 
+type ViewRange = 1 | 3 | 7
+
 function getMondayOfWeek(d: Date): Date {
   const date = new Date(d)
   const day = date.getDay()
@@ -21,10 +23,15 @@ function getMondayOfWeek(d: Date): Date {
   return date
 }
 
-interface ConfirmState {
-  taskLabel: string
-  startDateTime: string
-  duration: number
+function getTodayStart(): Date {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+interface Toast {
+  type: 'success' | 'error'
+  message: string
 }
 
 interface Props {
@@ -34,66 +41,64 @@ interface Props {
 
 export function CalendarPanel({ todoDefinitions, onClose }: Props) {
   const { isConnected, connect, disconnect, fetchEvents, createEvent, events, loading } = useGoogleCalendar()
-  const [weekStart, setWeekStart] = useState(() => getMondayOfWeek(new Date()))
-  const [draggedTask, setDraggedTask] = useState<{ id: string; label: string } | null>(null)
-  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [viewRange, setViewRange] = useState<ViewRange>(7)
+  const [rangeStart, setRangeStart] = useState<Date>(() =>
+    viewRange === 7 ? getMondayOfWeek(new Date()) : getTodayStart()
+  )
+  const [draggedTask, setDraggedTask] = useState<{ id: string; label: string; minutes?: number } | null>(null)
+  const [creatingSlot, setCreatingSlot] = useState<string | null>(null) // ISO string of slot being created
+  const [toast, setToast] = useState<Toast | null>(null)
   const [durationInput, setDurationInput] = useState(60)
 
+  const showToast = (type: Toast['type'], message: string) => {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 3500)
+  }
+
   useEffect(() => {
-    if (isConnected) {
-      void fetchEvents(weekStart)
-    }
-  }, [isConnected, weekStart, fetchEvents])
+    if (isConnected) void fetchEvents(rangeStart)
+  }, [isConnected, rangeStart, fetchEvents])
+
+  // Adjust rangeStart when viewRange changes
+  const handleViewRange = (r: ViewRange) => {
+    setViewRange(r)
+    setRangeStart(r === 7 ? getMondayOfWeek(new Date()) : getTodayStart())
+  }
 
   const activeTasks = todoDefinitions.filter(t => t.is_active)
 
-  const prevWeek = () => {
-    const d = new Date(weekStart)
-    d.setDate(d.getDate() - 7)
-    setWeekStart(d)
+  const shiftRange = (dir: -1 | 1) => {
+    const d = new Date(rangeStart)
+    d.setDate(d.getDate() + dir * viewRange)
+    setRangeStart(d)
   }
 
-  const nextWeek = () => {
-    const d = new Date(weekStart)
-    d.setDate(d.getDate() + 7)
-    setWeekStart(d)
-  }
-
-  const handleDrop = useCallback(({ dayIndex, slotIndex }: { dayIndex: number; slotIndex: number }) => {
-    if (!draggedTask) return
-    const startDateTime = slotToDateTime(weekStart, dayIndex, slotIndex)
-    setConfirm({ taskLabel: draggedTask.label, startDateTime, duration: durationInput })
-    setDraggedTask(null)
-  }, [draggedTask, weekStart, durationInput])
-
-  const handleConfirm = async () => {
-    if (!confirm) return
-    setCreating(true)
-    try {
-      await createEvent(confirm.taskLabel, confirm.startDateTime, confirm.duration)
-      setSuccessMsg(`「${confirm.taskLabel}」をカレンダーに登録しました`)
-      setConfirm(null)
-      setTimeout(() => setSuccessMsg(null), 3000)
-      void fetchEvents(weekStart)
-    } catch {
-      alert('予定の作成に失敗しました。もう一度試してください。')
-    } finally {
-      setCreating(false)
+  const rangeLabel = (() => {
+    const end = new Date(rangeStart)
+    end.setDate(end.getDate() + viewRange - 1)
+    if (viewRange === 1) {
+      return `${rangeStart.getMonth() + 1}/${rangeStart.getDate()}`
     }
-  }
-
-  const formatDateTime = (iso: string) => {
-    const d = new Date(iso)
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
-
-  const weekLabel = (() => {
-    const end = new Date(weekStart)
-    end.setDate(end.getDate() + 6)
-    return `${weekStart.getMonth() + 1}/${weekStart.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`
+    return `${rangeStart.getMonth() + 1}/${rangeStart.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`
   })()
+
+  const handleDrop = useCallback(async ({ dayIndex, slotIndex }: { dayIndex: number; slotIndex: number }) => {
+    if (!draggedTask) return
+    const startDateTime = slotToDateTime(rangeStart, dayIndex, slotIndex)
+    const duration = draggedTask.minutes ?? durationInput
+
+    setCreatingSlot(startDateTime)
+    setDraggedTask(null)
+    try {
+      await createEvent(draggedTask.label, startDateTime, duration)
+      showToast('success', `「${draggedTask.label}」を登録しました`)
+      void fetchEvents(rangeStart)
+    } catch {
+      showToast('error', '登録に失敗しました。もう一度お試しください。')
+    } finally {
+      setCreatingSlot(null)
+    }
+  }, [draggedTask, rangeStart, durationInput, createEvent, fetchEvents])
 
   return (
     <div
@@ -112,7 +117,7 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
             <span className="text-lg">📅</span>
             <div>
               <p className="text-sm font-semibold text-white/88">Googleカレンダーで計画</p>
-              <p className="text-[10px] text-white/36">タスクをドラッグして予定を登録</p>
+              <p className="text-[10px] text-white/36">タスクをドラッグして予定を即登録</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -165,10 +170,10 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
           <div className="flex flex-1 overflow-hidden">
 
             {/* Left: Task list */}
-            <div className="flex w-56 shrink-0 flex-col border-r border-white/[0.06]">
+            <div className="flex w-52 shrink-0 flex-col border-r border-white/[0.06]">
               <div className="border-b border-white/[0.06] px-4 py-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">タスク一覧</p>
-                <p className="mt-1 text-[9px] text-white/24">ドラッグしてカレンダーへ</p>
+                <p className="mt-1 text-[9px] text-white/24">ドラッグして即登録</p>
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-1">
                 {HABIT_CATEGORIES.map(cat => {
@@ -183,7 +188,7 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
                         <div
                           key={task.id}
                           draggable
-                          onDragStart={() => setDraggedTask({ id: task.id, label: task.label })}
+                          onDragStart={() => setDraggedTask({ id: task.id, label: task.label, minutes: task.minutes })}
                           onDragEnd={() => setDraggedTask(null)}
                           className="flex cursor-grab items-center gap-2 rounded-lg border border-white/[0.04] bg-white/[0.02] px-2.5 py-2 text-xs text-white/72 transition-colors hover:border-white/[0.10] hover:bg-white/[0.05] active:cursor-grabbing"
                         >
@@ -201,7 +206,7 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
 
               {/* Duration selector */}
               <div className="border-t border-white/[0.06] p-3">
-                <p className="mb-1.5 text-[9px] text-white/36">予定の長さ</p>
+                <p className="mb-1.5 text-[9px] text-white/36">デフォルト所要時間</p>
                 <div className="flex flex-wrap gap-1">
                   {[30, 60, 90, 120].map(m => (
                     <button
@@ -224,88 +229,66 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
 
             {/* Right: Calendar */}
             <div className="flex flex-1 flex-col overflow-hidden">
-              {/* Week nav */}
+              {/* Toolbar */}
               <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2">
-                <button type="button" onClick={prevWeek} className="rounded-lg px-2.5 py-1.5 text-xs text-white/40 hover:text-white/80 transition-colors">
-                  ← 前週
-                </button>
-                <p className="text-xs font-semibold text-white/60">{weekLabel}</p>
-                <button type="button" onClick={nextWeek} className="rounded-lg px-2.5 py-1.5 text-xs text-white/40 hover:text-white/80 transition-colors">
-                  次週 →
-                </button>
-              </div>
-
-              {loading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#07111d]/60 z-20">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-[#7dd3fc]/60" />
+                {/* Range selector */}
+                <div className="flex gap-1 rounded-lg border border-white/[0.06] p-0.5">
+                  {([1, 3, 7] as ViewRange[]).map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => handleViewRange(r)}
+                      className={[
+                        'rounded-md px-3 py-1 text-[11px] font-medium transition-colors',
+                        viewRange === r
+                          ? 'bg-white/[0.08] text-white/88'
+                          : 'text-white/36 hover:text-white/60',
+                      ].join(' ')}
+                    >
+                      {r === 1 ? '1日' : r === 3 ? '3日' : '週'}
+                    </button>
+                  ))}
                 </div>
-              )}
+
+                {/* Nav */}
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => shiftRange(-1)} className="rounded-lg px-2 py-1.5 text-xs text-white/40 hover:text-white/80 transition-colors">←</button>
+                  <p className="min-w-[110px] text-center text-xs font-semibold text-white/60">{rangeLabel}</p>
+                  <button type="button" onClick={() => shiftRange(1)} className="rounded-lg px-2 py-1.5 text-xs text-white/40 hover:text-white/80 transition-colors">→</button>
+                </div>
+
+                {/* Loading */}
+                <div className="w-20 flex justify-end">
+                  {loading && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/10 border-t-[#7dd3fc]/60" />}
+                </div>
+              </div>
 
               <div className="relative flex-1 overflow-hidden">
                 <WeeklyCalendar
-                  weekStart={weekStart}
+                  rangeStart={rangeStart}
+                  numDays={viewRange}
                   events={events}
                   onDrop={handleDrop}
                   draggedTask={draggedTask}
+                  creatingSlot={creatingSlot}
                 />
               </div>
             </div>
           </div>
         )}
 
-        {/* Success toast */}
-        {successMsg && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-xl border border-[#22c55e]/30 bg-[#0d1f13]/95 px-5 py-3 text-sm text-[#86efac] shadow-xl backdrop-blur-xl">
-            ✓ {successMsg}
+        {/* Toast */}
+        {toast && (
+          <div className={[
+            'absolute bottom-4 left-1/2 -translate-x-1/2 rounded-xl border px-5 py-3 text-sm shadow-xl backdrop-blur-xl transition-all',
+            toast.type === 'success'
+              ? 'border-[#22c55e]/30 bg-[#0d1f13]/95 text-[#86efac]'
+              : 'border-red-500/30 bg-[#1f0d0d]/95 text-red-400',
+          ].join(' ')}>
+            {toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}
           </div>
         )}
       </div>
-
-      {/* Confirm dialog */}
-      {confirm && (
-        <div className="absolute inset-0 z-60 flex items-center justify-center bg-black/50">
-          <div className="w-80 rounded-2xl border border-white/[0.12] bg-[#0d1825]/98 p-6 shadow-2xl backdrop-blur-xl">
-            <p className="text-sm font-semibold text-white/88">予定を登録しますか？</p>
-            <div className="mt-4 space-y-2 rounded-xl bg-white/[0.04] p-3">
-              <div className="flex items-start gap-2 text-xs">
-                <span className="shrink-0 text-white/36">タイトル</span>
-                <span className="text-white/80">{confirm.taskLabel}</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                <span className="shrink-0 text-white/36">日時</span>
-                <span className="text-white/80">{formatDateTime(confirm.startDateTime)}</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                <span className="shrink-0 text-white/36">所要時間</span>
-                <span className="text-white/80">
-                  {confirm.duration >= 60 ? `${confirm.duration / 60}時間` : `${confirm.duration}分`}
-                </span>
-              </div>
-            </div>
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={creating}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#7dd3fc]/15 py-2.5 text-sm font-semibold text-[#7dd3fc] transition-colors hover:bg-[#7dd3fc]/22 disabled:opacity-50"
-              >
-                {creating ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#7dd3fc]/20 border-t-[#7dd3fc]" />
-                ) : '📅'}
-                登録する
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirm(null)}
-                disabled={creating}
-                className="rounded-xl border border-white/[0.08] px-4 py-2.5 text-sm text-white/40 hover:text-white/70 transition-colors"
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
