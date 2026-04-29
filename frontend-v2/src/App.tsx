@@ -12,8 +12,9 @@ import { EveningTab } from '@/components/tabs/EveningTab'
 import { HomePage } from '@/pages/HomePage'
 const MonthlyTab  = lazy(() => import('@/components/tabs/MonthlyTab').then(m => ({ default: m.MonthlyTab })))
 const WannaBeTab  = lazy(() => import('@/components/tabs/WannaBeTab').then(m => ({ default: m.WannaBeTab })))
-const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
-const NotesPage    = lazy(() => import('@/pages/NotesPage').then(m => ({ default: m.NotesPage })))
+const SettingsPage  = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const NotesPage     = lazy(() => import('@/pages/NotesPage').then(m => ({ default: m.NotesPage })))
+const NotesFullPage = lazy(() => import('@/pages/NotesFullPage').then(m => ({ default: m.NotesFullPage })))
 import { DateNav } from '@/components/ui/DateNav'
 import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
@@ -479,8 +480,8 @@ function MainApp() {
     </Suspense>
   )
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage<boolean>('ui:sidebar-collapsed', false)
+  const [railCollapsed, setRailCollapsed] = useLocalStorage<boolean>('ui:rail-collapsed', false)
   const [pendingTarget, setPendingTarget] = useState<string | null>(null)
   const [pendingTasks, setPendingTasks] = useState<JournalBriefResult['tasks']>([])
 
@@ -641,6 +642,14 @@ export default function App() {
   const { session, loading: authLoading } = useAuth()
 
   if (window.location.pathname === '/privacy') return <PrivacyPage />
+
+  if (window.location.pathname === '/notes') {
+    return (
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#05080d]"><div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-[#7dd3fc]/60" /></div>}>
+        <NotesFullPage />
+      </Suspense>
+    )
+  }
 
   if (authLoading) {
     return (
