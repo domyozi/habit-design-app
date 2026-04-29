@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { TiptapEditor } from '@/components/editor/TiptapEditor'
 import { useNotes } from '@/hooks/useNotes'
 
-const DEBOUNCE_MS = 300
+const DEBOUNCE_MS = 400
 
 const formatRelative = (iso: string): string => {
   const diff = Date.now() - new Date(iso).getTime()
@@ -17,9 +17,8 @@ const formatRelative = (iso: string): string => {
 export function NotesPage() {
   const { notes, selected, selectedId, setSelectedId, createNote, updateNote, deleteNote } = useNotes()
   const [localTitle, setLocalTitle] = useState('')
-  const [localBody, setLocalBody] = useState('')
+  const [localBody, setLocalBody] = useState('')   // JSON string
   const [showEditor, setShowEditor] = useState(false)
-  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const [query, setQuery] = useState('')
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bodyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -29,7 +28,6 @@ export function NotesPage() {
       setLocalTitle(selected.title)
       setLocalBody(selected.body)
       setShowEditor(true)
-      setMode('edit')
     }
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -41,20 +39,19 @@ export function NotesPage() {
     }, DEBOUNCE_MS)
   }
 
-  const handleBodyChange = (value: string) => {
-    setLocalBody(value)
+  const handleBodyChange = useCallback((json: string) => {
+    setLocalBody(json)
     if (bodyTimer.current) clearTimeout(bodyTimer.current)
     bodyTimer.current = setTimeout(() => {
-      if (selectedId) updateNote(selectedId, { body: value })
+      if (selectedId) updateNote(selectedId, { body: json })
     }, DEBOUNCE_MS)
-  }
+  }, [selectedId, updateNote])
 
   const handleCreate = useCallback(() => {
     createNote()
     setLocalTitle('')
     setLocalBody('')
     setShowEditor(true)
-    setMode('edit')
   }, [createNote])
 
   const handleDelete = (id: string) => {
@@ -79,7 +76,6 @@ export function NotesPage() {
       {/* Sidebar */}
       {(!showEditor || !isMobile) && (
         <div className="flex w-full flex-col border-b border-white/[0.06] lg:w-64 lg:min-w-[240px] lg:border-b-0 lg:border-r">
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-4 border-b border-white/[0.06]">
             <h1 className="text-sm font-semibold text-white/88">ノート</h1>
             <button
@@ -145,10 +141,7 @@ export function NotesPage() {
                   ].join(' ')}
                 >
                   <p className="truncate text-sm font-medium text-white/80">{displayTitle(note)}</p>
-                  <p className="mt-0.5 truncate text-[10px] text-white/36">{formatRelative(note.updated_at)}</p>
-                  {note.body && (
-                    <p className="mt-1 truncate text-[11px] text-white/36">{note.body.slice(0, 60)}</p>
-                  )}
+                  <p className="mt-0.5 text-[10px] text-white/36">{formatRelative(note.updated_at)}</p>
                 </button>
               ))
             )}
@@ -158,7 +151,7 @@ export function NotesPage() {
 
       {/* Editor */}
       {showEditor && selected ? (
-        <div className="flex flex-1 flex-col min-w-0">
+        <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
           {/* Editor header */}
           <div className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-3">
             {isMobile && (
@@ -170,22 +163,7 @@ export function NotesPage() {
                 ← 一覧
               </button>
             )}
-            <div className="flex rounded-lg border border-white/[0.08] overflow-hidden text-[11px]">
-              <button
-                type="button"
-                onClick={() => setMode('edit')}
-                className={['px-3 py-1.5 transition-colors', mode === 'edit' ? 'bg-white/[0.08] text-white/80' : 'text-white/36 hover:text-white/60'].join(' ')}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('preview')}
-                className={['px-3 py-1.5 transition-colors', mode === 'preview' ? 'bg-white/[0.08] text-white/80' : 'text-white/36 hover:text-white/60'].join(' ')}
-              >
-                Preview
-              </button>
-            </div>
+            <p className="text-[10px] text-white/30">テキスト選択でフォーマットメニューが表示されます</p>
             <div className="flex-1" />
             <button
               type="button"
@@ -196,7 +174,7 @@ export function NotesPage() {
             </button>
           </div>
 
-          {/* Title input */}
+          {/* Title */}
           <input
             type="text"
             value={localTitle}
@@ -205,25 +183,13 @@ export function NotesPage() {
             className="w-full bg-transparent px-6 py-5 text-xl font-bold text-white/90 placeholder:text-white/20 outline-none border-b border-white/[0.04]"
           />
 
-          {mode === 'edit' ? (
-            <textarea
-              value={localBody}
-              onChange={e => handleBodyChange(e.target.value)}
-              placeholder="ここに書き殴ってください... (Markdown 対応)"
-              className="flex-1 w-full resize-none bg-transparent px-6 py-4 text-sm leading-relaxed text-white/75 placeholder:text-white/20 outline-none"
+          {/* Rich text editor */}
+          <div className="flex-1 overflow-y-auto">
+            <TiptapEditor
+              content={localBody}
+              onChange={handleBodyChange}
             />
-          ) : (
-            <div className="flex-1 overflow-y-auto px-6 py-4 prose prose-invert prose-sm max-w-none
-              prose-headings:text-white/85 prose-p:text-white/70 prose-a:text-[#86efac]
-              prose-strong:text-white/88 prose-code:text-[#86efac] prose-blockquote:border-[#86efac]/30
-              prose-li:text-white/70">
-              {localBody ? (
-                <ReactMarkdown>{localBody}</ReactMarkdown>
-              ) : (
-                <p className="text-white/20 italic">本文がありません</p>
-              )}
-            </div>
-          )}
+          </div>
 
           {/* Footer */}
           <div className="border-t border-white/[0.04] px-6 py-2">

@@ -140,6 +140,93 @@ input:focus, textarea:focus, select:focus {
   100% { transform: scale(1); }
 }
 
+/* ── Tiptap editor styles ───────────────────────────────────── */
+.tiptap {
+  outline: none;
+  min-height: 200px;
+}
+
+.tiptap p { margin: 0 0 0.5em; color: rgba(255,255,255,0.72); font-size: 14px; line-height: 1.7; }
+.tiptap h1 { font-size: 1.6em; font-weight: 700; color: rgba(255,255,255,0.9); margin: 1em 0 0.4em; }
+.tiptap h2 { font-size: 1.3em; font-weight: 700; color: rgba(255,255,255,0.88); margin: 0.9em 0 0.35em; }
+.tiptap h3 { font-size: 1.1em; font-weight: 600; color: rgba(255,255,255,0.85); margin: 0.8em 0 0.3em; }
+.tiptap strong { color: rgba(255,255,255,0.9); }
+.tiptap em { color: rgba(255,255,255,0.72); font-style: italic; }
+.tiptap u { text-decoration: underline; text-underline-offset: 3px; }
+.tiptap s { color: rgba(255,255,255,0.4); }
+.tiptap code { background: rgba(255,255,255,0.08); color: #86efac; border-radius: 4px; padding: 1px 5px; font-size: 0.88em; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.tiptap pre { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 16px; overflow-x: auto; }
+.tiptap pre code { background: none; color: #86efac; padding: 0; }
+.tiptap blockquote { border-left: 3px solid rgba(134,239,172,0.4); padding-left: 1em; margin-left: 0; color: rgba(255,255,255,0.5); }
+.tiptap a { color: #86efac; text-decoration: underline; text-underline-offset: 3px; }
+.tiptap ul { list-style: disc; padding-left: 1.4em; color: rgba(255,255,255,0.72); }
+.tiptap ol { list-style: decimal; padding-left: 1.4em; color: rgba(255,255,255,0.72); }
+.tiptap li { margin: 0.2em 0; }
+.tiptap hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 1.2em 0; }
+
+/* Placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgba(255,255,255,0.2);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* Task list (checklist) */
+.tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+.tiptap ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+}
+.tiptap ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid rgba(134,239,172,0.4);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s;
+}
+.tiptap ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: rgba(134,239,172,0.2);
+  border-color: #86efac;
+}
+.tiptap ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: -1px;
+  left: 1px;
+  font-size: 11px;
+  color: #86efac;
+}
+.tiptap ul[data-type="taskList"] li > div {
+  flex: 1;
+  color: rgba(255,255,255,0.72);
+}
+.tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: rgba(255,255,255,0.35);
+  text-decoration: line-through;
+}
+
+/* Focus state */
+.tiptap:focus-visible {
+  outline: none;
+}
+
 @media print {
   .print-hide,
   nav, header,
