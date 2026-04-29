@@ -49,7 +49,7 @@ export function useGoogleCalendar() {
   const isConnected = Boolean(token)
 
   const connect = useCallback(() => {
-    const redirectUri = window.location.origin + window.location.pathname
+    const redirectUri = window.location.origin
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
     url.searchParams.set('client_id', CLIENT_ID)
     url.searchParams.set('redirect_uri', redirectUri)
