@@ -18,7 +18,7 @@ const NAV_JA: NavItem[] = [
   { id: 'wanna-be', icon: '◆', label: '理想像',     note: 'アイデンティティ',  color: '#f59e0b' },
   { id: 'settings', icon: '⊙', label: '設定',       note: 'システム設計',      color: '#a78bfa' },
   { id: 'notes',    icon: '✎', label: 'ノート',    note: 'らくがき帳',         color: '#86efac' },
-  { id: 'calendar', icon: '📅', label: 'カレンダー', note: 'Google Calendar',   color: '#fb923c' },
+  { id: 'calendar', icon: '⊟', label: 'カレンダー', note: 'Google Calendar',   color: '#fb923c' },
 ]
 
 const NAV_EN: NavItem[] = [

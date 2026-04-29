@@ -126,7 +126,7 @@ export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Pr
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
           <div className="flex items-center gap-3">
-            <span className="text-lg">📅</span>
+            <span className="text-lg">⊟</span>
             <div>
               <p className="text-sm font-semibold text-white/88">Googleカレンダーで計画</p>
               <p className="text-[10px] text-white/36">タスクをドラッグして予定を即登録</p>
@@ -157,7 +157,7 @@ export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Pr
         {!isConnected ? (
           /* Connect screen */
           <div className="flex flex-1 flex-col items-center justify-center gap-6 p-12">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#7dd3fc]/10 text-3xl">📅</div>
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#7dd3fc]/10 text-3xl">⊟</div>
             <div className="text-center">
               <p className="text-base font-semibold text-white/88">Googleカレンダーに接続</p>
               <p className="mt-2 max-w-sm text-sm text-white/50 leading-relaxed">
