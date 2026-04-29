@@ -20,6 +20,22 @@
     <title>Daily OS</title>
   </head>
   <body>
+    <!-- Clean OAuth hash before React loads so the token never appears in the URL -->
+    <script>
+      (function () {
+        var h = location.hash
+        if (h.includes('access_token=')) {
+          var p = new URLSearchParams(h.slice(1))
+          var t = p.get('access_token')
+          var e = p.get('expires_in')
+          if (t) {
+            localStorage.setItem('google:cal:token', t)
+            localStorage.setItem('google:cal:token_exp', String(Date.now() + Number(e || 3600) * 1000))
+            history.replaceState(null, '', location.pathname + location.search)
+          }
+        }
+      })()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
