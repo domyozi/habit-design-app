@@ -27,7 +27,7 @@ const NAV_EN: NavItem[] = [
   { id: 'monthly',  icon: '⊞', label: 'Analytics',note: 'habit analysis',    color: '#38bdf8' },
   { id: 'wanna-be', icon: '◆', label: 'Wanna Be', note: 'identity board',    color: '#f59e0b' },
   { id: 'notes',    icon: '✎', label: 'Notes',    note: 'scratch pad',       color: '#86efac' },
-  { id: 'calendar', icon: '📅', label: 'Calendar', note: 'Google Calendar',   color: '#fb923c' },
+  { id: 'calendar', icon: '⊟', label: 'Calendar', note: 'Google Calendar',   color: '#fb923c' },
 ]
 
 export const getNavItems = (lang: AppLang): NavItem[] =>
