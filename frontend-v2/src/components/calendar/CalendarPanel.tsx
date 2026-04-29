@@ -37,9 +37,10 @@ interface Toast {
 interface Props {
   todoDefinitions: TodoDefinition[]
   onClose: () => void
+  mode?: 'overlay' | 'tab'
 }
 
-export function CalendarPanel({ todoDefinitions, onClose }: Props) {
+export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Props) {
   const { isConnected, connect, disconnect, fetchEvents, createEvent, updateEvent, events, loading } = useGoogleCalendar()
   const [viewRange, setViewRange] = useState<ViewRange>(7)
   const [rangeStart, setRangeStart] = useState<Date>(() =>
@@ -51,6 +52,7 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
   const [updatingEventId, setUpdatingEventId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [durationInput, setDurationInput] = useState(60)
+  const [scheduledTaskIds, setScheduledTaskIds] = useState<Set<string>>(new Set())
 
   const showToast = (type: Toast['type'], message: string) => {
     setToast({ type, message })
@@ -67,7 +69,7 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
     setRangeStart(r === 7 ? getMondayOfWeek(new Date()) : getTodayStart())
   }
 
-  const activeTasks = todoDefinitions.filter(t => t.is_active)
+  const activeTasks = todoDefinitions.filter(t => t.is_active && !scheduledTaskIds.has(t.id))
 
   const shiftRange = (dir: -1 | 1) => {
     const d = new Date(rangeStart)
@@ -94,6 +96,7 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
       setDraggedTask(null)
       try {
         await createEvent(task.label, startDateTime, duration)
+        setScheduledTaskIds(prev => new Set([...prev, task.id]))
         showToast('success', `「${task.label}」を登録しました`)
         void fetchEvents(rangeStart)
       } catch (e) {
@@ -117,16 +120,8 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
     }
   }, [draggedTask, draggedEvent, rangeStart, durationInput, createEvent, updateEvent, fetchEvents])
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-stretch justify-end"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Panel */}
-      <div className="relative flex w-full max-w-5xl flex-col bg-[#07111d]/98 shadow-2xl ring-1 ring-white/[0.08]">
+  const inner = (
+    <div className={mode === 'tab' ? 'flex h-full flex-col bg-[#07111d]' : 'relative flex w-full max-w-5xl flex-col bg-[#07111d]/98 shadow-2xl ring-1 ring-white/[0.08]'}>
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
@@ -147,13 +142,15 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
                 連携解除
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-white/36 hover:text-white/80 transition-colors"
-            >
-              ✕
-            </button>
+            {mode === 'overlay' && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-white/36 hover:text-white/80 transition-colors"
+              >
+                ✕
+              </button>
+            )}
           </div>
         </div>
 
@@ -319,6 +316,17 @@ export function CalendarPanel({ todoDefinitions, onClose }: Props) {
           </div>
         )}
       </div>
+  )
+
+  if (mode === 'tab') return inner
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-end"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      {inner}
     </div>
   )
 }
