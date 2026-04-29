@@ -107,8 +107,7 @@ const DesktopRail = ({
   return (
     <aside className="hidden lg:flex lg:flex-col lg:border-r lg:border-white/[0.06] lg:bg-[#07111d]/88 lg:backdrop-blur-xl">
       <div className="border-b border-white/[0.06] px-5 py-6">
-        <BrandMark subtitle="execution workspace" />
-        <p className="mt-3 text-sm leading-relaxed text-white/42">実行、分析、設定、長期目標を横断して扱う作業面です。</p>
+        <BrandMark />
       </div>
       <div className="flex-1 space-y-2 px-3 py-4">
         {navItems.map(item => {

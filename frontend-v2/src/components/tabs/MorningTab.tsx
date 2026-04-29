@@ -3,7 +3,6 @@ import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type O
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } from '@/lib/todos'
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult } from '@/lib/ai'
-import { getHabits, logHabit, type HabitItem } from '@/lib/api'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 
 // ─── 型 ───────────────────────────────────────────────────────
@@ -245,6 +244,8 @@ export const MorningTab = ({
   const [streamingText, setStreamingText] = useState('')
   const [brief, setBrief] = useDailyStorage<JournalBriefResult | null>('morning', 'brief', null, dateKey)
   const [briefError, setBriefError] = useState<string | null>(null)
+  const [editingTarget, setEditingTarget] = useState(false)
+  const [editTargetText, setEditTargetText] = useState('')
   const [editingBoss, setEditingBoss] = useState(false)
   const [editBossText, setEditBossText] = useState('')
   const morningGrouped = byTimingGrouped(todoDefinitions, 'morning')
@@ -270,8 +271,6 @@ export const MorningTab = ({
   const [, setSavedReport] = useDailyStorage<string>('morning', 'report', '', dateKey)
   const [, setSavedReportAt] = useDailyStorage<string>('morning', 'reportAt', '', dateKey)
   const [activeTaskTab, setActiveTaskTab] = useDailyStorage<'tasks' | 'record'>('morning', 'task-tab', 'tasks', dateKey)
-  const [dbHabits, setDbHabits] = useState<HabitItem[]>([])
-  const [habitChecked, setHabitChecked] = useState<Set<string>>(new Set())
   // F-09: weight target from localStorage with fallback 72.9
   const [weightTarget, setWeightTarget] = useState<number>(() => {
     try {
@@ -285,35 +284,6 @@ export const MorningTab = ({
       return v !== null ? String(JSON.parse(v) as number) : '72.9'
     } catch { return '72.9' }
   })
-
-  useEffect(() => {
-    if (isReadOnly) return
-    getHabits().then(habits => {
-      setDbHabits(habits)
-      const completedIds = habits
-        .filter(h => h.today_log?.completed)
-        .map(h => h.id)
-      setHabitChecked(new Set(completedIds))
-    }).catch(() => { /* silently ignore if not authenticated */ })
-  }, [isReadOnly])
-
-  const toggleHabit = async (habit: HabitItem) => {
-    if (isReadOnly) return
-    const wasChecked = habitChecked.has(habit.id)
-    setHabitChecked(prev => {
-      const next = new Set(prev)
-      if (wasChecked) { next.delete(habit.id) } else { next.add(habit.id) }
-      return next
-    })
-    await logHabit(habit.id, !wasChecked).catch(() => {
-      // revert on error
-      setHabitChecked(prev => {
-        const next = new Set(prev)
-        if (wasChecked) { next.add(habit.id) } else { next.delete(habit.id) }
-        return next
-      })
-    })
-  }
 
   const isItemDone = (item: TaskFieldItem) => {
     const ft = item.field_type ?? 'checkbox'
@@ -671,15 +641,53 @@ export const MorningTab = ({
             <div className="rounded-2xl border border-[#7dd3fc]/18 bg-[#7dd3fc]/5 px-3 py-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8ed8ff]">Primary target</p>
-                <button
-                  type="button"
-                  onClick={() => onBossSet?.(brief.primary_target)}
-                  className="shrink-0 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#aee5ff]"
-                >
-                  Apply
-                </button>
+                <div className="flex gap-1.5">
+                  {!editingTarget && (
+                    <button
+                      type="button"
+                      onClick={() => { setEditingTarget(true); setEditTargetText(brief.primary_target) }}
+                      className="shrink-0 rounded-full border border-white/[0.12] px-2 py-0.5 text-[10px] text-white/40 hover:text-white/70 transition-colors"
+                    >
+                      編集
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = editingTarget ? editTargetText : brief.primary_target
+                      if (editingTarget && brief) setBrief({ ...brief, primary_target: editTargetText })
+                      setEditingTarget(false)
+                      onBossSet?.(target)
+                    }}
+                    className="shrink-0 rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#aee5ff]"
+                  >
+                    Apply
+                  </button>
+                </div>
               </div>
-              <p className="mt-2 text-sm font-semibold text-white">{brief.primary_target}</p>
+              {editingTarget ? (
+                <div className="mt-2 flex flex-col gap-2">
+                  <textarea
+                    value={editTargetText}
+                    onChange={e => setEditTargetText(e.target.value)}
+                    rows={3}
+                    autoFocus
+                    className="w-full resize-none rounded-xl border border-[#7dd3fc]/30 bg-[#07111d] px-3 py-2 text-sm font-semibold text-white placeholder-white/20 focus:border-[#7dd3fc]/60 focus:outline-none"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setEditingTarget(false)} className="text-[10px] text-white/36 hover:text-white/60">キャンセル</button>
+                    <button
+                      type="button"
+                      onClick={() => { if (brief) setBrief({ ...brief, primary_target: editTargetText }); setEditingTarget(false) }}
+                      className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-0.5 text-[10px] font-semibold text-[#aee5ff]"
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm font-semibold text-white">{brief.primary_target}</p>
+              )}
               {boss && <p className="mt-2 text-[11px] text-white/32">現在: {boss}</p>}
             </div>
 
@@ -723,54 +731,6 @@ export const MorningTab = ({
         )}
       </div>
 
-      {!isReadOnly && (
-        <div className="mx-4 mt-4 rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8da4c3]">My habits</p>
-          {dbHabits.length === 0 ? (
-            <p className="mt-3 text-xs text-white/38">
-              マンダラチャートから習慣を追加すると、ここに表示されます。
-            </p>
-          ) : (
-            <div className="mt-3 border-y border-white/[0.05] bg-[#111827]/70">
-              {dbHabits.map(habit => {
-                const isChecked = habitChecked.has(habit.id)
-                return (
-                  <div
-                    key={habit.id}
-                    className={['flex items-center gap-3 border-t border-white/[0.05] px-4 py-3 transition-all duration-300', isChecked ? 'opacity-50' : ''].join(' ')}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleHabit(habit)}
-                      className={[
-                        'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border transition-all duration-200 active:scale-90',
-                        isChecked ? 'border-[#7dd3fc] bg-[#7dd3fc]' : 'border-white/20 hover:border-white/40',
-                      ].join(' ')}
-                    >
-                      {isChecked && (
-                        <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <span className={['text-sm transition-all duration-300', isChecked ? 'text-white/28 line-through' : 'text-white/82'].join(' ')}>
-                        {habit.title}
-                      </span>
-                      {habit.wanna_be_connection_text && (
-                        <p className="mt-0.5 truncate text-[11px] text-white/28">{habit.wanna_be_connection_text}</p>
-                      )}
-                    </div>
-                    {(habit.current_streak ?? 0) > 0 && (
-                      <span className="text-[11px] text-white/32 flex-shrink-0">{habit.current_streak} days</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {done === total && total > 0 && (
         <div className="mx-4 mt-4 rounded-2xl border border-[#34d399]/30 bg-[#34d399]/6 px-4 py-4 text-center">
