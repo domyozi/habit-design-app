@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react'
+import { CalendarPanel } from '@/components/calendar/CalendarPanel'
 import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, useTodayStorage, todayKey, useOpsStorage, type OpsTask } from '@/lib/storage'
 import { useTodoDefinitions } from '@/lib/todos'
 import { useAuth } from '@/hooks/useAuth'
@@ -501,6 +502,7 @@ function MainApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage<boolean>('ui:sidebar-collapsed', false)
   const [railCollapsed, setRailCollapsed] = useLocalStorage<boolean>('ui:rail-collapsed', false)
   const [pendingTarget, setPendingTarget] = useState<string | null>(null)
+  const [showCalendar, setShowCalendar] = useState(false)
   const [pendingTasks, setPendingTasks] = useState<JournalBriefResult['tasks']>([])
 
   const eveningDone = eveningChecked.length > 0
@@ -510,7 +512,7 @@ function MainApp() {
     <UserContextCtx.Provider value={[userContext, updateUserContext]}>
     <div className="min-h-screen bg-[#05080d]">
       <div
-        className="mx-auto min-h-screen w-full max-w-[1680px] lg:grid"
+        className="min-h-screen w-full lg:grid"
         style={{
           gridTemplateColumns: [
             railCollapsed ? '0px' : '248px',
@@ -656,6 +658,25 @@ function MainApp() {
           <span className="text-[8px] font-semibold uppercase tracking-[0.2em] text-white/28" style={{ writingMode: 'vertical-rl' }}>PANEL</span>
           <span className="text-sm">‹</span>
         </button>
+      )}
+
+      {/* ── Google Calendar 計画ボタン（morning / evening タブのみ表示） ─── */}
+      {(tab === 'morning' || tab === 'evening') && (
+        <button
+          type="button"
+          onClick={() => setShowCalendar(true)}
+          className="fixed bottom-24 right-4 z-30 flex items-center gap-2 rounded-2xl border border-[#7dd3fc]/20 bg-[#07111d]/92 px-4 py-2.5 text-xs font-semibold text-[#7dd3fc]/80 shadow-lg backdrop-blur-xl transition-all hover:border-[#7dd3fc]/40 hover:text-[#7dd3fc] lg:bottom-6"
+        >
+          <span>📅</span>
+          <span>カレンダーで計画</span>
+        </button>
+      )}
+
+      {showCalendar && (
+        <CalendarPanel
+          todoDefinitions={todoDefinitions}
+          onClose={() => setShowCalendar(false)}
+        />
       )}
 
       <BottomNav
