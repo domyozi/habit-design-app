@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS public.journal_entries (
     entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
     content TEXT NOT NULL,
     entry_type VARCHAR(30)
-        CHECK (entry_type IN ('journaling', 'daily_report', 'checklist', 'kpi_update')),
+        CHECK (entry_type IN ('journaling', 'daily_report', 'checklist', 'kpi_update', 'evening_feedback')),
     raw_input TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

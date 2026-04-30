@@ -17,15 +17,20 @@ from app.core.supabase import get_supabase
 
 router = APIRouter(prefix="/journals")
 
+ALLOWED_ENTRY_TYPES = {'journaling', 'daily_report', 'checklist', 'kpi_update', 'evening_feedback'}
+
 
 @router.post("", status_code=201)
 async def upsert_journal(
     payload: dict,
     user_id: str = Depends(get_current_user),
 ):
+    from fastapi import HTTPException
     supabase = get_supabase()
     entry_date = payload.get("entry_date") or str(date_type.today())
     entry_type = payload.get("entry_type", "journaling")
+    if entry_type not in ALLOWED_ENTRY_TYPES:
+        raise HTTPException(status_code=422, detail=f"Invalid entry_type: {entry_type}")
 
     existing = (
         supabase.table("journal_entries")
