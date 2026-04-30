@@ -314,7 +314,6 @@ function MainApp() {
 
   const handleEveningComplete = () => {
     setEveningDoneBanner(true)
-    setTab('home')
   }
 
   const bossValue = boss?.value ?? null

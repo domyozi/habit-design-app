@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDailyStorage, todayKey } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { streamEveningFeedback, checkRateLimit, extractMemoryPatch, mergeContextPatch } from '@/lib/ai'
 import { useUserContext } from '@/lib/user-context'
+import { saveEveningFeedback, loadEveningFeedback } from '@/lib/api'
 
 interface CheckItem { id: string; label: string; minutes?: number }
 
@@ -72,11 +73,19 @@ export const EveningTab = ({
   const [stars, setStars] = useDailyStorage<number>('evening', 'stars', 0, dateKey)
   // Notes（統合フリーテキスト）
   const [notes, setNotes] = useDailyStorage<string>('evening', 'notes', '', dateKey)
-  // フィードバック
-  const [savedFeedback, setSavedFeedback] = useDailyStorage<string>('evening', 'feedback', '', dateKey)
+  // フィードバック（Supabase 永続化）
+  const [savedFeedback, setSavedFeedback] = useState('')
   const [streamingFeedback, setStreamingFeedback] = useState('')
   const [feedbackLoading, setFeedbackLoading] = useState(false)
   const [feedbackError, setFeedbackError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    loadEveningFeedback(dateKey).then(fb => {
+      if (!cancelled && fb) setSavedFeedback(fb)
+    })
+    return () => { cancelled = true }
+  }, [dateKey])
   // 日報保存
   const [, setSavedReport] = useDailyStorage<string>('evening', 'report', '', dateKey)
   const [, setSavedReportAt] = useDailyStorage<string>('evening', 'reportAt', '', dateKey)
@@ -159,6 +168,7 @@ export const EveningTab = ({
           setSavedFeedback(full)
           setStreamingFeedback('')
           setFeedbackLoading(false)
+          void saveEveningFeedback(dateKey, full)
           // バックグラウンドでメモリ更新（ノンブロッキング）
           void (async () => {
             const patch = await extractMemoryPatch(full, userCtx)

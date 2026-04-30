@@ -352,6 +352,33 @@ export const fetchJournalByDate = (date: string) =>
     `/api/journals/${date}?entry_type=journaling`,
   )
 
+/**
+ * イブニングフィードバックを保存する（日付で upsert）
+ * POST /api/journals
+ */
+export const saveEveningFeedback = async (date: string, content: string): Promise<void> => {
+  await apiPost('/api/journals', {
+    entry_date: date,
+    entry_type: 'evening_feedback',
+    content,
+  })
+}
+
+/**
+ * イブニングフィードバックを取得する
+ * GET /api/journals?entry_type=evening_feedback
+ */
+export const loadEveningFeedback = async (date: string): Promise<string | null> => {
+  try {
+    const entries = await apiGet<Array<{ entry_date: string; content: string }>>(
+      `/api/journals?entry_type=evening_feedback&limit=30`,
+    )
+    return entries?.find(e => e.entry_date === date)?.content ?? null
+  } catch {
+    return null
+  }
+}
+
 // ============================================================
 // Todo定義 API クライアント
 // ============================================================
