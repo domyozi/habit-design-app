@@ -5,6 +5,7 @@ import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } f
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, extractMemoryPatch, mergeContextPatch, type JournalBriefResult } from '@/lib/ai'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { useUserContext } from '@/lib/user-context'
+import { saveMorningJournal } from '@/lib/api'
 
 // ─── 型 ───────────────────────────────────────────────────────
 interface CheckItem {
@@ -269,6 +270,14 @@ export const MorningTab = ({
   const [weight, setWeight] = useDailyStorage<string>('morning', 'weight', '', dateKey)
   const [condition, setCondition] = useDailyStorage<number>('morning', 'condition', 0, dateKey)
   const [journal, setJournal] = useDailyStorage<string>('morning', 'journal', '', dateKey)
+  const journalSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (isReadOnly || !journal.trim()) return
+    if (journalSaveTimer.current) clearTimeout(journalSaveTimer.current)
+    journalSaveTimer.current = setTimeout(() => {
+      void saveMorningJournal(dateKey, journal)
+    }, 1500)
+  }, [journal]) // eslint-disable-line react-hooks/exhaustive-deps
   const [, setSavedReport] = useDailyStorage<string>('morning', 'report', '', dateKey)
   const [, setSavedReportAt] = useDailyStorage<string>('morning', 'reportAt', '', dateKey)
   const [activeTaskTab, setActiveTaskTab] = useDailyStorage<'tasks' | 'record'>('morning', 'task-tab', 'tasks', dateKey)

@@ -378,6 +378,14 @@ export const loadEveningFeedback = async (date: string): Promise<string | null> 
 }
 
 /**
+ * モーニングジャーナルを保存する（日付で upsert）
+ */
+export const saveMorningJournal = async (date: string, content: string): Promise<void> => {
+  if (!content.trim()) return
+  await apiPost('/api/journals', { entry_date: date, entry_type: 'morning_journal', content })
+}
+
+/**
  * イブニングノートを保存する（日付で upsert）
  */
 export const saveEveningNotes = async (date: string, content: string): Promise<void> => {
@@ -397,8 +405,8 @@ export const loadEveningNotes = async (date: string): Promise<string | null> => 
 }
 
 export interface DailyLogData {
-  morning_journal: string | null   // raw_input from journaling entry
-  morning_feedback: string | null  // content from journaling entry
+  morning_journal: string | null   // content from morning_journal entry
+  morning_feedback: string | null  // content from journaling entry (AI brief)
   evening_notes: string | null
   evening_feedback: string | null
 }
@@ -411,10 +419,9 @@ export const fetchDailyLog = async (date: string): Promise<DailyLogData> => {
   try {
     const entries = await apiGet<Entry[]>(`/api/journals?date=${date}&limit=20`)
     const find = (type: string) => (entries ?? []).find(e => e.entry_type === type)
-    const journaling = find('journaling')
     return {
-      morning_journal: journaling?.raw_input ?? null,
-      morning_feedback: journaling?.content ?? null,
+      morning_journal: find('morning_journal')?.content ?? null,
+      morning_feedback: find('journaling')?.content ?? null,
       evening_notes: find('evening_notes')?.content ?? null,
       evening_feedback: find('evening_feedback')?.content ?? null,
     }
