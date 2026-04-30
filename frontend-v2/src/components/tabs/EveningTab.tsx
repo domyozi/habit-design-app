@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useDailyStorage, todayKey } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
+import { streamEveningFeedback, checkRateLimit } from '@/lib/ai'
 
 interface CheckItem { id: string; label: string; minutes?: number }
 
@@ -68,6 +70,11 @@ export const EveningTab = ({
   const [stars, setStars] = useDailyStorage<number>('evening', 'stars', 0, dateKey)
   // Notes（統合フリーテキスト）
   const [notes, setNotes] = useDailyStorage<string>('evening', 'notes', '', dateKey)
+  // フィードバック
+  const [savedFeedback, setSavedFeedback] = useDailyStorage<string>('evening', 'feedback', '', dateKey)
+  const [streamingFeedback, setStreamingFeedback] = useState('')
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [feedbackError, setFeedbackError] = useState<string | null>(null)
   // 日報保存
   const [, setSavedReport] = useDailyStorage<string>('evening', 'report', '', dateKey)
   const [, setSavedReportAt] = useDailyStorage<string>('evening', 'reportAt', '', dateKey)
@@ -91,24 +98,23 @@ export const EveningTab = ({
   const total = allItems.length
   const done = allItems.filter(isItemDone).length
 
-  const generateReport = () => {
+  const generateReport = async () => {
+    if (feedbackLoading) return
+    if (!checkRateLimit('evening-feedback', 30_000)) {
+      setFeedbackError('少し間をおいてから再度お試しください。')
+      return
+    }
+
     const reflectionLines = REFLECTION_ITEMS.map(
       i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}`
     ).join('\n')
-    const prepLines = PREP_ITEMS.map(
-      i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}`
-    ).join('\n')
     const reflectionDone = REFLECTION_ITEMS.filter(i => checked.has(i.id)).length
-    const prepDone = PREP_ITEMS.filter(i => checked.has(i.id)).length
 
     const text = [
       `# Evening report — ${formatDate()}`,
       '',
       `## Reflection tasks (${reflectionDone}/${REFLECTION_ITEMS.length})`,
       reflectionLines,
-      '',
-      `## Preparation tasks (${prepDone}/${PREP_ITEMS.length})`,
-      prepLines,
       '',
       `## Daily condition`,
       `${starStr(stars)}（${stars}/5）`,
@@ -134,7 +140,30 @@ export const EveningTab = ({
     setSavedReport(text)
     setSavedReportAt(nowStr())
     onGenerateReport?.(text)
-    onComplete?.()
+
+    // フィードバックをストリーミング
+    setFeedbackLoading(true)
+    setStreamingFeedback('')
+    setFeedbackError(null)
+    setSavedFeedback('')
+    try {
+      await streamEveningFeedback(
+        notes,
+        bossProp ?? null,
+        done,
+        total,
+        (accumulated) => setStreamingFeedback(accumulated),
+        (full) => {
+          setSavedFeedback(full)
+          setStreamingFeedback('')
+          setFeedbackLoading(false)
+          onComplete?.()
+        },
+      )
+    } catch {
+      setFeedbackError('フィードバックの取得に失敗しました。')
+      setFeedbackLoading(false)
+    }
   }
 
   // F-12: Evening プログレスバー用集計
@@ -231,16 +260,41 @@ export const EveningTab = ({
         </div>
       </div>
 
+      {/* フィードバック表示 */}
+      {(streamingFeedback || savedFeedback) && (
+        <div className="mt-4">
+          <div className="flex items-center border-l-2 border-[#c4b5fd]/60 px-4 py-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ddd6fe]/70">Feedback</span>
+          </div>
+          <div className="border-y border-white/[0.05] bg-[#111827]/70 px-4 py-4">
+            <p className="text-sm leading-relaxed text-white/82 whitespace-pre-wrap">
+              {streamingFeedback || savedFeedback}
+              {feedbackLoading && (
+                <span className="ml-0.5 inline-block h-[1em] w-2 animate-pulse bg-[#c4b5fd]/70 align-middle" />
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {feedbackError && (
+        <p className="mx-4 mt-2 text-xs text-[#fecaca]">{feedbackError}</p>
+      )}
+
       <div className="mx-4 mt-4 flex items-center justify-between">
         <span className="text-xs text-white/36">
           {isReadOnly ? 'Record' : 'Completion rate'}{' '}
           <span className="font-mono text-white">{done} / {total}</span>
         </span>
         {!isReadOnly && (
-          <button type="button" onClick={generateReport}
-            className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#c4b5fd]/45 bg-gradient-to-r from-[#a78bfa]/15 to-[#7dd3fc]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#ddd6fe]">
+          <button
+            type="button"
+            onClick={() => { void generateReport() }}
+            disabled={feedbackLoading}
+            className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#c4b5fd]/45 bg-gradient-to-r from-[#a78bfa]/15 to-[#7dd3fc]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#ddd6fe] disabled:opacity-40"
+          >
             <AiMark size={11} />
-            Generate report
+            {feedbackLoading ? 'Generating…' : savedFeedback ? 'Regenerate' : 'Generate report'}
           </button>
         )}
       </div>

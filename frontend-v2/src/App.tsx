@@ -301,7 +301,7 @@ function MainApp() {
   }
 
   const handleEveningReport = (text: string) => {
-    // プライマリーターゲット完了判定: notes内に完了示唆のキーワード + boss言及があれば自動チェック
+    // プライマリーターゲット完了判定のみ。ナビゲーションは EveningTab 側のフィードバック完了後に行う
     const bossVal = boss?.value ?? null
     const bossIsCompleted = boss?.completed ?? false
     if (bossVal && !bossIsCompleted) {
@@ -310,9 +310,6 @@ function MainApp() {
       const hasBossMention = text.includes(bossVal)
       if (hasCompletion && hasBossMention) toggleCompleted()
     }
-    // Generate Report 実行で Evening を自動完了
-    setEveningDoneBanner(true)
-    setTab('home')
   }
 
   const handleEveningComplete = () => {
