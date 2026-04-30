@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { streamEveningFeedback, checkRateLimit, extractMemoryPatch, mergeContextPatch } from '@/lib/ai'
 import { useUserContext } from '@/lib/user-context'
-import { saveEveningFeedback, loadEveningFeedback } from '@/lib/api'
+import { saveEveningFeedback, loadEveningFeedback, saveEveningNotes, loadEveningNotes } from '@/lib/api'
 
 interface CheckItem { id: string; label: string; minutes?: number }
 
@@ -71,8 +71,26 @@ export const EveningTab = ({
   const checked = new Set(checkedArr)
   const [weight, setWeight] = useDailyStorage<string>('evening', 'weight', '', dateKey)
   const [stars, setStars] = useDailyStorage<number>('evening', 'stars', 0, dateKey)
-  // Notes（統合フリーテキスト）
-  const [notes, setNotes] = useDailyStorage<string>('evening', 'notes', '', dateKey)
+  // Notes（Supabase 永続化）
+  const [notes, setNotes] = useState('')
+  const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    loadEveningNotes(dateKey).then(n => {
+      if (!cancelled && n !== null) setNotes(n)
+    })
+    return () => { cancelled = true }
+  }, [dateKey])
+
+  const handleNotesChange = (value: string) => {
+    setNotes(value)
+    if (notesTimer.current) clearTimeout(notesTimer.current)
+    notesTimer.current = setTimeout(() => {
+      void saveEveningNotes(dateKey, value)
+    }, 1000)
+  }
+
   // フィードバック（Supabase 永続化）
   const [savedFeedback, setSavedFeedback] = useState('')
   const [streamingFeedback, setStreamingFeedback] = useState('')
@@ -272,7 +290,7 @@ export const EveningTab = ({
         <div className="border-y border-white/[0.05] bg-[#111827]/70 px-4 py-3">
           <textarea
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={e => handleNotesChange(e.target.value)}
             placeholder={"Gap・気づき・翌日の予定など、なんでも..."}
             rows={8}
             className="w-full resize-none rounded border border-white/10 bg-[#0b1320] px-3 py-2.5 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"

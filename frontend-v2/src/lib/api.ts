@@ -370,12 +370,69 @@ export const saveEveningFeedback = async (date: string, content: string): Promis
  */
 export const loadEveningFeedback = async (date: string): Promise<string | null> => {
   try {
-    const entries = await apiGet<Array<{ entry_date: string; content: string }>>(
-      `/api/journals?entry_type=evening_feedback&limit=30`,
-    )
-    return entries?.find(e => e.entry_date === date)?.content ?? null
+    const entry = await apiGet<{ content: string } | null>(`/api/journals/${date}?entry_type=evening_feedback`)
+    return entry?.content ?? null
   } catch {
     return null
+  }
+}
+
+/**
+ * イブニングノートを保存する（日付で upsert）
+ */
+export const saveEveningNotes = async (date: string, content: string): Promise<void> => {
+  await apiPost('/api/journals', { entry_date: date, entry_type: 'evening_notes', content })
+}
+
+/**
+ * イブニングノートを取得する
+ */
+export const loadEveningNotes = async (date: string): Promise<string | null> => {
+  try {
+    const entry = await apiGet<{ content: string } | null>(`/api/journals/${date}?entry_type=evening_notes`)
+    return entry?.content ?? null
+  } catch {
+    return null
+  }
+}
+
+export interface DailyLogData {
+  morning_journal: string | null   // raw_input from journaling entry
+  morning_feedback: string | null  // content from journaling entry
+  evening_notes: string | null
+  evening_feedback: string | null
+}
+
+/**
+ * 特定日の全ログを取得する（Daily Note 表示用）
+ */
+export const fetchDailyLog = async (date: string): Promise<DailyLogData> => {
+  type Entry = { entry_type: string; content: string; raw_input: string | null }
+  try {
+    const entries = await apiGet<Entry[]>(`/api/journals?date=${date}&limit=20`)
+    const find = (type: string) => (entries ?? []).find(e => e.entry_type === type)
+    const journaling = find('journaling')
+    return {
+      morning_journal: journaling?.raw_input ?? null,
+      morning_feedback: journaling?.content ?? null,
+      evening_notes: find('evening_notes')?.content ?? null,
+      evening_feedback: find('evening_feedback')?.content ?? null,
+    }
+  } catch {
+    return { morning_journal: null, morning_feedback: null, evening_notes: null, evening_feedback: null }
+  }
+}
+
+/**
+ * ジャーナルエントリーが存在する日付の一覧を取得する（Daily Note 一覧用）
+ */
+export const fetchDailyLogDates = async (): Promise<string[]> => {
+  try {
+    const entries = await apiGet<Array<{ entry_date: string }>>('/api/journals?limit=200')
+    const dates = [...new Set((entries ?? []).map(e => e.entry_date))]
+    return dates.sort((a, b) => b.localeCompare(a))
+  } catch {
+    return []
   }
 }
 

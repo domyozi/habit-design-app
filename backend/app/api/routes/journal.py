@@ -17,7 +17,7 @@ from app.core.supabase import get_supabase
 
 router = APIRouter(prefix="/journals")
 
-ALLOWED_ENTRY_TYPES = {'journaling', 'daily_report', 'checklist', 'kpi_update', 'evening_feedback'}
+ALLOWED_ENTRY_TYPES = {'journaling', 'daily_report', 'checklist', 'kpi_update', 'evening_feedback', 'evening_notes'}
 
 
 @router.post("", status_code=201)
@@ -66,6 +66,7 @@ async def upsert_journal(
 @router.get("")
 async def list_journals(
     entry_type: Optional[str] = None,
+    date: Optional[str] = None,
     limit: int = Query(default=30, ge=1, le=200),
     user_id: str = Depends(get_current_user),
 ):
@@ -79,6 +80,8 @@ async def list_journals(
     )
     if entry_type:
         query = query.eq("entry_type", entry_type)
+    if date:
+        query = query.eq("entry_date", date)
     return query.execute().data
 
 

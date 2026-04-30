@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { TiptapEditor } from '@/components/editor/TiptapEditor'
 import { useNotes } from '@/hooks/useNotes'
 import { exportToMarkdown } from '@/lib/note-export'
+import { fetchDailyLog, fetchDailyLogDates, type DailyLogData } from '@/lib/api'
+import { useUserContext } from '@/lib/user-context'
 
 const DEBOUNCE_MS = 400
 
@@ -15,7 +17,203 @@ const formatRelative = (iso: string): string => {
   return `${Math.floor(hrs / 24)}日前`
 }
 
-export function NotesPage() {
+const formatDateLabel = (iso: string): string => {
+  const d = new Date(iso)
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土']
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}（${weekdays[d.getDay()]}）`
+}
+
+// ── Daily Log View ──────────────────────────────────────────────────────
+function DailySection({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-6">
+      <div className="flex items-center border-l-2 px-4 py-2 mb-2" style={{ borderColor: color }}>
+        <span className="text-xs font-semibold uppercase tracking-[0.20em]" style={{ color }}>
+          {title}
+        </span>
+      </div>
+      <div className="border-y border-white/[0.05] bg-[#111827]/70 px-4 py-3">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function DailyLogView() {
+  const [dates, setDates] = useState<string[]>([])
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [log, setLog] = useState<DailyLogData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [userCtx] = useUserContext()
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024
+  const [showDetail, setShowDetail] = useState(false)
+
+  useEffect(() => {
+    fetchDailyLogDates().then(d => {
+      setDates(d)
+      if (d.length > 0) setSelectedDate(d[0])
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!selectedDate) return
+    setLoading(true)
+    fetchDailyLog(selectedDate).then(data => {
+      setLog(data)
+      setLoading(false)
+      if (isMobile) setShowDetail(true)
+    })
+  }, [selectedDate]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasMemory = userCtx && (
+    userCtx.identity || userCtx.patterns ||
+    (userCtx.values_keywords?.length ?? 0) > 0 ||
+    Object.keys(userCtx.insights ?? {}).length > 0
+  )
+
+  const hasAnyContent = log && (
+    log.morning_journal || log.morning_feedback ||
+    log.evening_notes || log.evening_feedback
+  )
+
+  return (
+    <div className="flex h-full min-h-[calc(100svh-64px)] flex-col lg:flex-row">
+      {/* Date sidebar */}
+      {(!showDetail || !isMobile) && (
+        <div className="flex w-full flex-col border-b border-white/[0.06] lg:w-64 lg:min-w-[240px] lg:border-b-0 lg:border-r">
+          <div className="flex-1 overflow-y-auto">
+            {dates.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center">
+                <span className="text-3xl text-white/10">📅</span>
+                <p className="text-sm text-white/36">記録がありません</p>
+                <p className="text-[10px] text-white/22">Morning / Evening を使うと自動で記録されます</p>
+              </div>
+            ) : (
+              dates.map(date => (
+                <button
+                  key={date}
+                  type="button"
+                  onClick={() => setSelectedDate(date)}
+                  className={[
+                    'w-full border-b border-white/[0.04] px-4 py-3.5 text-left transition-colors',
+                    selectedDate === date
+                      ? 'bg-[#7dd3fc]/[0.06] border-l-2 border-l-[#7dd3fc]/40'
+                      : 'hover:bg-white/[0.03]',
+                  ].join(' ')}
+                >
+                  <p className="text-sm font-medium text-white/80">{formatDateLabel(date)}</p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Detail panel */}
+      {(!isMobile || showDetail) && (
+        <div className="flex flex-1 flex-col min-w-0 overflow-y-auto">
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => setShowDetail(false)}
+              className="px-4 py-3 text-xs text-white/40 hover:text-white/70 text-left border-b border-white/[0.06]"
+            >
+              ← 一覧
+            </button>
+          )}
+
+          {!selectedDate ? (
+            <div className="flex flex-1 items-center justify-center">
+              <p className="text-sm text-white/28">日付を選択してください</p>
+            </div>
+          ) : loading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-[#7dd3fc]/60" />
+            </div>
+          ) : (
+            <div className="px-0 py-4">
+              {/* Date heading */}
+              <div className="px-4 pb-4 border-b border-white/[0.06] mb-4">
+                <h2 className="text-xl font-bold text-white/88">{formatDateLabel(selectedDate)}</h2>
+              </div>
+
+              {!hasAnyContent && !hasMemory ? (
+                <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                  <span className="text-3xl text-white/10">📝</span>
+                  <p className="text-sm text-white/36">この日の記録はありません</p>
+                </div>
+              ) : (
+                <>
+                  {log?.morning_journal && (
+                    <DailySection title="モーニングジャーナル" color="#86efac">
+                      <p className="text-sm leading-relaxed text-white/80 whitespace-pre-wrap">{log.morning_journal}</p>
+                    </DailySection>
+                  )}
+
+                  {log?.evening_notes && (
+                    <DailySection title="夜の振り返り" color="#7dd3fc">
+                      <p className="text-sm leading-relaxed text-white/80 whitespace-pre-wrap">{log.evening_notes}</p>
+                    </DailySection>
+                  )}
+
+                  {log?.evening_feedback && (
+                    <DailySection title="フィードバック" color="#c4b5fd">
+                      <p className="text-sm leading-relaxed text-white/80 whitespace-pre-wrap">{log.evening_feedback}</p>
+                    </DailySection>
+                  )}
+
+                  {hasMemory && (
+                    <DailySection title="今日、僕（AI）が学んだきみのこと" color="#f9a8d4">
+                      <div className="space-y-3 text-sm text-white/76">
+                        {userCtx?.identity && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Identity</p>
+                            <p className="leading-relaxed whitespace-pre-wrap">{userCtx.identity}</p>
+                          </div>
+                        )}
+                        {userCtx?.patterns && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Patterns</p>
+                            <p className="leading-relaxed whitespace-pre-wrap">{userCtx.patterns}</p>
+                          </div>
+                        )}
+                        {(userCtx?.values_keywords?.length ?? 0) > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Values</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {userCtx!.values_keywords!.map(kw => (
+                                <span key={kw} className="rounded-full border border-[#f9a8d4]/20 bg-[#f9a8d4]/10 px-2.5 py-0.5 text-[11px] text-[#f9a8d4]/80">
+                                  {kw}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {Object.keys(userCtx?.insights ?? {}).length > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Insights</p>
+                            <div className="space-y-1">
+                              {Object.entries(userCtx!.insights!).map(([k, v]) => (
+                                <p key={k} className="leading-relaxed"><span className="text-white/40">{k}:</span> {String(v)}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </DailySection>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Notes (free-form) View ──────────────────────────────────────────────
+function FreeNotesView() {
   const { notes, selected, selectedId, setSelectedId, createNote, updateNote, deleteNote } = useNotes()
   const [localTitle, setLocalTitle] = useState('')
   const [localBody, setLocalBody] = useState('')
@@ -73,8 +271,7 @@ export function NotesPage() {
     exportToMarkdown(localTitle || '無題のノート', localBody)
   }
 
-  const displayTitle = (note: { title: string }) =>
-    note.title.trim() || '無題のノート'
+  const displayTitle = (note: { title: string }) => note.title.trim() || '無題のノート'
 
   const filteredNotes = query.trim()
     ? notes.filter(n =>
@@ -87,10 +284,8 @@ export function NotesPage() {
 
   return (
     <div className="flex h-full min-h-[calc(100svh-64px)] flex-col lg:flex-row">
-      {/* ── Sidebar ─────────────────────────────────────────── */}
       {(!showEditor || !isMobile) && (
         <div className="flex w-full flex-col border-b border-white/[0.06] lg:w-64 lg:min-w-[240px] lg:border-b-0 lg:border-r">
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-4 border-b border-white/[0.06]">
             <h1 className="text-sm font-semibold text-white/88">ノート</h1>
             <button
@@ -102,7 +297,6 @@ export function NotesPage() {
             </button>
           </div>
 
-          {/* Search */}
           <div className="px-3 py-2 border-b border-white/[0.04]">
             <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2">
               <span className="text-[11px] text-white/30">🔍</span>
@@ -119,7 +313,6 @@ export function NotesPage() {
             </div>
           </div>
 
-          {/* Note list */}
           <div className="flex-1 overflow-y-auto">
             {filteredNotes.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
@@ -161,8 +354,6 @@ export function NotesPage() {
                     </div>
                     <p className="mt-0.5 text-[10px] text-white/36">{formatRelative(note.updated_at)}</p>
                   </button>
-
-                  {/* Pin button — visible on hover */}
                   <button
                     type="button"
                     title={note.pinned ? 'ピン解除' : 'ピン留め'}
@@ -178,10 +369,8 @@ export function NotesPage() {
         </div>
       )}
 
-      {/* ── Editor ──────────────────────────────────────────── */}
       {showEditor && selected ? (
         <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-          {/* Editor header */}
           <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
             {isMobile && (
               <button type="button" onClick={() => setShowEditor(false)} className="text-xs text-white/40 hover:text-white/70 mr-1">
@@ -189,32 +378,16 @@ export function NotesPage() {
               </button>
             )}
             <p className="text-[10px] text-white/25 flex-1">テキスト選択でフォーマット　/でブロック挿入　画像はペースト or ドロップ</p>
-            <button
-              type="button"
-              onClick={() => handlePinToggle(selected.id, selected.pinned)}
-              title={selected.pinned ? 'ピン解除' : 'ピン留め'}
-              className="rounded-lg px-2 py-1 text-[11px] text-white/30 hover:text-white/70 transition-colors"
-            >
+            <button type="button" onClick={() => handlePinToggle(selected.id, selected.pinned)} title={selected.pinned ? 'ピン解除' : 'ピン留め'} className="rounded-lg px-2 py-1 text-[11px] text-white/30 hover:text-white/70 transition-colors">
               {selected.pinned ? '📌' : '🔧'}
             </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] text-white/40 hover:border-white/[0.16] hover:text-white/70 transition-colors"
-              title="Markdownとしてエクスポート"
-            >
+            <button type="button" onClick={handleExport} className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] text-white/40 hover:border-white/[0.16] hover:text-white/70 transition-colors" title="Markdownとしてエクスポート">
               ↓ .md
             </button>
-            <button
-              type="button"
-              onClick={() => handleDelete(selected.id)}
-              className="rounded-lg border border-red-500/10 px-2.5 py-1 text-[10px] text-red-400/50 hover:border-red-500/30 hover:text-red-400/80 transition-colors"
-            >
+            <button type="button" onClick={() => handleDelete(selected.id)} className="rounded-lg border border-red-500/10 px-2.5 py-1 text-[10px] text-red-400/50 hover:border-red-500/30 hover:text-red-400/80 transition-colors">
               削除
             </button>
           </div>
-
-          {/* Title */}
           <input
             type="text"
             value={localTitle}
@@ -222,17 +395,9 @@ export function NotesPage() {
             placeholder="無題のノート"
             className="w-full bg-transparent px-6 py-5 text-xl font-bold text-white/90 placeholder:text-white/20 outline-none border-b border-white/[0.04]"
           />
-
-          {/* Rich text editor */}
           <div className="flex-1 overflow-y-auto">
-            <TiptapEditor
-              content={localBody}
-              onChange={handleBodyChange}
-              onCharCount={(c, w) => { setCharCount(c); setWordCount(w) }}
-            />
+            <TiptapEditor content={localBody} onChange={handleBodyChange} onCharCount={(c, w) => { setCharCount(c); setWordCount(w) }} />
           </div>
-
-          {/* Footer */}
           <div className="flex items-center justify-between border-t border-white/[0.04] px-6 py-2">
             <p className="text-[10px] text-white/20">{formatRelative(selected.updated_at)} に更新</p>
             <p className="text-[10px] text-white/20">{charCount} 文字　{wordCount} 語</p>
@@ -249,6 +414,40 @@ export function NotesPage() {
           </div>
         )
       )}
+    </div>
+  )
+}
+
+// ── NotesPage (tab container) ───────────────────────────────────────────
+type PageTab = 'daily' | 'notes'
+
+export function NotesPage() {
+  const [pageTab, setPageTab] = useState<PageTab>('daily')
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Tab toggle */}
+      <div className="flex border-b border-white/[0.06] px-4 gap-1 pt-1">
+        {(['daily', 'notes'] as PageTab[]).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setPageTab(t)}
+            className={[
+              'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors border-b-2 -mb-px',
+              pageTab === t
+                ? 'border-[#7dd3fc] text-[#7dd3fc]'
+                : 'border-transparent text-white/36 hover:text-white/60',
+            ].join(' ')}
+          >
+            {t === 'daily' ? 'Daily' : 'Notes'}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {pageTab === 'daily' ? <DailyLogView /> : <FreeNotesView />}
+      </div>
     </div>
   )
 }
