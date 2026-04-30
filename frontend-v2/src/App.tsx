@@ -502,6 +502,7 @@ function MainApp() {
         <EveningTab
           key={`${currentDate}:${viewDate}`}
           boss={bossValue}
+          bossCompleted={bossCompleted}
           onGenerateReport={handleEveningReport}
           onComplete={handleEveningComplete}
           viewDate={viewDate}

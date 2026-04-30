@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type OpsTask } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } from '@/lib/todos'
-import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, extractMemoryPatch, mergeContextPatch, type JournalBriefResult } from '@/lib/ai'
+import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, extractMemoryPatch, mergeContextPatch, type JournalBriefResult, type YesterdayContext } from '@/lib/ai'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { useUserContext } from '@/lib/user-context'
-import { saveMorningJournal } from '@/lib/api'
+import { saveMorningJournal, fetchDailyLog } from '@/lib/api'
 
 // ─── 型 ───────────────────────────────────────────────────────
 interface CheckItem {
@@ -319,10 +319,38 @@ export const MorningTab = ({
     setBriefError(null)
     setStreamingText('')
     setBrief(null)
+
+    // 昨日のコンテキストを収集（タイムラグ対策）
+    const yk = yesterdayKey()
+    const yesterdayCtx: YesterdayContext = {}
+    if (boss) {
+      yesterdayCtx.primaryTarget = boss
+      yesterdayCtx.primaryTargetCompleted = bossCompleted ?? false
+    }
+    try {
+      const ykLog = await fetchDailyLog(yk)
+      if (ykLog.evening_feedback) yesterdayCtx.eveningFeedback = ykLog.evening_feedback
+    } catch { /* silent */ }
+    try {
+      const rawChecked = localStorage.getItem(`daily:${yk}:morning:checked`)
+      const ykChecked: string[] = rawChecked ? JSON.parse(rawChecked) : []
+      const ykTotal = todoDefinitions.filter(t => t.is_active && (t.timing === 'morning' || !t.timing)).length
+      if (ykTotal > 0) {
+        yesterdayCtx.morningTasksDone = ykChecked.length
+        yesterdayCtx.morningTasksTotal = ykTotal
+      }
+    } catch { /* silent */ }
+
     try {
       await streamJournalBrief(
         journal,
-        { currentGoal: boss ?? null, identity: '', existingTaskLabels: existingLabels },
+        {
+          currentGoal: boss ?? null,
+          currentGoalCompleted: bossCompleted,
+          identity: userCtx?.identity ?? '',
+          existingTaskLabels: existingLabels,
+          yesterdayContext: Object.keys(yesterdayCtx).length > 0 ? yesterdayCtx : undefined,
+        },
         (accumulated) => setStreamingText(accumulated),
         (fullText) => {
           const result = extractJsonBlock<JournalBriefResult>(fullText)

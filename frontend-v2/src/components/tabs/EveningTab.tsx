@@ -3,7 +3,7 @@ import { useDailyStorage, todayKey } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
-import { streamEveningFeedback, checkRateLimit, extractMemoryPatch, mergeContextPatch } from '@/lib/ai'
+import { streamEveningFeedback, checkRateLimit, extractMemoryPatch, mergeContextPatch, type TodayMorningContext } from '@/lib/ai'
 import { useUserContext } from '@/lib/user-context'
 import { saveEveningFeedback, loadEveningFeedback, saveEveningNotes, loadEveningNotes } from '@/lib/api'
 
@@ -37,11 +37,13 @@ const starStr = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n)
 
 export const EveningTab = ({
   boss: bossProp,
+  bossCompleted,
   onGenerateReport,
   onComplete,
   viewDate,
 }: {
   boss?: string | null
+  bossCompleted?: boolean
   onGenerateReport?: (text: string) => void
   onComplete?: () => void
   viewDate?: string
@@ -175,6 +177,17 @@ export const EveningTab = ({
     setStreamingFeedback('')
     setFeedbackError(null)
     setSavedFeedback('')
+    // 今日の朝コンテキストを収集（タイムラグ対策）
+    const morningCheckedRaw = localStorage.getItem(`daily:${dateKey}:morning:checked`)
+    const morningChecked: string[] = morningCheckedRaw ? JSON.parse(morningCheckedRaw) : []
+    const morningTotal = todoDefinitions.filter(t => t.is_active && (t.timing === 'morning' || !t.timing)).length
+    const todayMorningCtx: TodayMorningContext = {
+      primaryTarget: bossProp ?? undefined,
+      primaryTargetCompleted: bossCompleted,
+      morningTasksDone: morningChecked.length,
+      morningTasksTotal: morningTotal > 0 ? morningTotal : undefined,
+    }
+
     try {
       await streamEveningFeedback(
         notes,
@@ -187,6 +200,7 @@ export const EveningTab = ({
           setStreamingFeedback('')
           setFeedbackLoading(false)
           void saveEveningFeedback(dateKey, full)
+
           // バックグラウンドでメモリ更新（ノンブロッキング）
           void (async () => {
             const patch = await extractMemoryPatch(full, userCtx)
@@ -197,6 +211,7 @@ export const EveningTab = ({
           })()
           onComplete?.()
         },
+        todayMorningCtx,
       )
     } catch {
       setFeedbackError('フィードバックの取得に失敗しました。')
