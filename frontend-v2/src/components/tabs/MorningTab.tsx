@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type OpsTask } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } from '@/lib/todos'
-import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult } from '@/lib/ai'
+import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, extractMemoryPatch, mergeContextPatch, type JournalBriefResult } from '@/lib/ai'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
+import { useUserContext } from '@/lib/user-context'
 
 // ─── 型 ───────────────────────────────────────────────────────
 interface CheckItem {
@@ -239,6 +240,7 @@ export const MorningTab = ({
 }) => {
   const dateKey = viewDate ?? todayKey()
   const isReadOnly = dateKey !== todayKey()
+  const [userCtx, updateUserCtx] = useUserContext()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
   const [briefLoading, setBriefLoading] = useState(false)
   const [streamingText, setStreamingText] = useState('')
@@ -322,6 +324,14 @@ export const MorningTab = ({
             setBriefError('解析に失敗しました。もう一度お試しください。')
           }
           setBriefLoading(false)
+          // バックグラウンドでメモリ更新（ノンブロッキング）
+          void (async () => {
+            const patch = await extractMemoryPatch(fullText, userCtx)
+            if (patch && Object.keys(patch).length > 0) {
+              const merged = mergeContextPatch(userCtx, patch)
+              if (Object.keys(merged).length > 0) await updateUserCtx(merged)
+            }
+          })()
         },
       )
     } catch (e) {

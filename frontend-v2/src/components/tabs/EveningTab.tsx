@@ -3,7 +3,8 @@ import { useDailyStorage, todayKey } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
-import { streamEveningFeedback, checkRateLimit } from '@/lib/ai'
+import { streamEveningFeedback, checkRateLimit, extractMemoryPatch, mergeContextPatch } from '@/lib/ai'
+import { useUserContext } from '@/lib/user-context'
 
 interface CheckItem { id: string; label: string; minutes?: number }
 
@@ -46,6 +47,7 @@ export const EveningTab = ({
 }) => {
   const dateKey = viewDate ?? todayKey()
   const isReadOnly = dateKey !== todayKey()
+  const [userCtx, updateUserCtx] = useUserContext()
   const [todoDefinitions] = useTodoDefinitions()
   const eveningGrouped = byTimingGrouped(todoDefinitions, 'evening')
   // 夜の全タスクをカテゴリ順にフラット化
@@ -157,6 +159,14 @@ export const EveningTab = ({
           setSavedFeedback(full)
           setStreamingFeedback('')
           setFeedbackLoading(false)
+          // バックグラウンドでメモリ更新（ノンブロッキング）
+          void (async () => {
+            const patch = await extractMemoryPatch(full, userCtx)
+            if (patch && Object.keys(patch).length > 0) {
+              const merged = mergeContextPatch(userCtx, patch)
+              if (Object.keys(merged).length > 0) await updateUserCtx(merged)
+            }
+          })()
           onComplete?.()
         },
       )

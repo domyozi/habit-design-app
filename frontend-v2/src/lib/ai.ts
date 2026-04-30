@@ -1,4 +1,5 @@
 import { API_BASE_URL, apiPost, getStoredAccessToken } from './api'
+import type { UserContext } from '@/lib/api'
 
 // Claude API はバックエンド経由で呼び出し、APIキーをブラウザへ露出しない。
 
@@ -126,6 +127,101 @@ export const extractJsonBlock = <T>(text: string): T | null => {
   } catch {
     return null
   }
+}
+
+// ─── AI メモリ自動更新 ──────────────────────────────────────────
+
+/**
+ * セッションテキストから UserContext への差分パッチを抽出する。
+ * 失敗時は null を返す（サイレント）。
+ */
+export async function extractMemoryPatch(
+  sessionText: string,
+  currentCtx: UserContext | null,
+): Promise<Partial<UserContext> | null> {
+  if (sessionText.length < 80) return null
+
+  const currentSummary = [
+    currentCtx?.identity ? `identity: ${currentCtx.identity}` : '',
+    currentCtx?.patterns ? `patterns: ${currentCtx.patterns}` : '',
+    currentCtx?.values_keywords?.length
+      ? `values_keywords: ${currentCtx.values_keywords.join(', ')}` : '',
+    currentCtx?.insights ? `insights: ${JSON.stringify(currentCtx.insights)}` : '',
+  ].filter(Boolean).join('\n') || 'なし'
+
+  const prompt = `以下のコーチングセッションテキストから、ユーザーに関する新しい洞察のみを抽出してください。
+既存メモリと重複する内容は含めないでください。
+
+## 現在のユーザーメモリ（既存情報）
+${currentSummary}
+
+## 今回のセッションテキスト
+<user_input>
+${sessionText}
+</user_input>
+
+以下のJSON形式で回答してください。更新不要なフィールドは含めないでください。新情報がない場合は {} を返してください。
+
+\`\`\`json
+{
+  "identity": "新たに判明したアイデンティティ情報（追記用）",
+  "patterns": "新たに観察された行動パターン",
+  "values_keywords": ["新キーワード"],
+  "insights": { "キー": "具体的な発見" }
+}
+\`\`\`
+
+ルール：確実に読み取れた事実のみ。推測・一般論は除く。`
+
+  let accumulated = ''
+  try {
+    await streamClaude(
+      [{ role: 'user', content: prompt }],
+      'あなたはユーザーのパーソナリティ分析を行うAIです。セッションテキストから客観的な洞察のみを抽出し、JSON形式で返してください。',
+      (chunk) => { accumulated += chunk },
+      undefined,
+      512,
+    )
+    return extractJsonBlock<Partial<UserContext>>(accumulated)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 既存コンテキストと新しい差分を追記型でマージする（破壊的上書きを避ける）。
+ */
+export function mergeContextPatch(
+  current: UserContext | null,
+  patch: Partial<UserContext>,
+): Partial<UserContext> {
+  const result: Partial<UserContext> = {}
+
+  if (patch.identity?.trim()) {
+    result.identity = current?.identity
+      ? `${current.identity}\n${patch.identity.trim()}`
+      : patch.identity.trim()
+  }
+
+  if (patch.patterns?.trim()) {
+    result.patterns = current?.patterns
+      ? `${current.patterns}\n${patch.patterns.trim()}`
+      : patch.patterns.trim()
+  }
+
+  if (patch.values_keywords?.length) {
+    const existing = new Set(current?.values_keywords ?? [])
+    const newKw = patch.values_keywords.filter(k => !existing.has(k))
+    if (newKw.length > 0) {
+      result.values_keywords = [...(current?.values_keywords ?? []), ...newKw]
+    }
+  }
+
+  if (patch.insights && Object.keys(patch.insights).length > 0) {
+    result.insights = { ...(current?.insights ?? {}), ...patch.insights }
+  }
+
+  return result
 }
 
 export async function generateCoachBrief(statePrompt: string): Promise<CoachBrief | null> {
