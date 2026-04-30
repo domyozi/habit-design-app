@@ -32,12 +32,12 @@ const formatDate = () => {
 const starStr = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n)
 
 export const EveningTab = ({
-  onBossSet,
+  boss: bossProp,
   onGenerateReport,
   onComplete,
   viewDate,
 }: {
-  onBossSet: (task: string) => void
+  boss?: string | null
   onGenerateReport?: (text: string) => void
   onComplete?: () => void
   viewDate?: string
@@ -66,7 +66,6 @@ export const EveningTab = ({
   const checked = new Set(checkedArr)
   const [weight, setWeight] = useDailyStorage<string>('evening', 'weight', '', dateKey)
   const [stars, setStars] = useDailyStorage<number>('evening', 'stars', 0, dateKey)
-  const [boss, setBoss] = useDailyStorage<string>('evening', 'boss-draft', '', dateKey)
   // Notes（統合フリーテキスト）
   const [notes, setNotes] = useDailyStorage<string>('evening', 'notes', '', dateKey)
   // 日報保存
@@ -116,11 +115,10 @@ export const EveningTab = ({
       weight ? `体重（夜）: ${weight} kg` : '体重（夜）: 未記録',
       '',
       notes ? `## Notes\n${notes}` : '',
-      `## Primary target for tomorrow`,
-      boss.trim() ? boss.trim() : '（未設定）',
+      bossProp ? `## Primary target\n${bossProp}` : '',
       '',
       '---',
-      '今日1日の振り返りと明日へのアドバイスをお願いします。',
+      '今日1日の振り返りと明日へのアドバイスをお願いします。プライマリーターゲットが達成されたかどうかも、notesの内容を踏まえて評価してください。',
     ].filter(Boolean).join('\n')
 
     const nowStr = () => {
@@ -136,6 +134,7 @@ export const EveningTab = ({
     setSavedReport(text)
     setSavedReportAt(nowStr())
     onGenerateReport?.(text)
+    onComplete?.()
   }
 
   // F-12: Evening プログレスバー用集計
@@ -232,75 +231,18 @@ export const EveningTab = ({
         </div>
       </div>
 
-      <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
-        <div className="flex items-center border-l-2 border-[#7dd3fc] px-4 py-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#aee5ff]">Tomorrow</span>
-        </div>
-        <div className="border-y border-white/[0.05] bg-[#111827]/70">
-          {!isReadOnly && (
-            <div className="border-t border-white/[0.05] px-4 py-3">
-              <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#aee5ff]">
-                Primary target for tomorrow
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={boss}
-                  onChange={e => setBoss(e.target.value)}
-                  placeholder="明日の最重要タスクを今設定..."
-                  className="flex-1 rounded border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white/85"
-                />
-                <button
-                  type="button"
-                  disabled={!boss.trim()}
-                  onClick={() => { onBossSet(boss.trim()); setBoss('') }}
-                  className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-30"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          )}
-          {isReadOnly && boss && (
-            <div className="border-t border-white/[0.05] px-4 py-3">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#aee5ff]">Primary target</p>
-              <p className="text-sm text-white/85">{boss}</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {!isReadOnly && done === total && total > 0 && (
-        <div className="mx-4 mt-4 rounded-2xl border border-[#c4b5fd]/30 bg-[#c4b5fd]/6 px-4 py-4 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#ddd6fe]">Sequence complete</p>
-          <p className="mt-1 text-sm font-semibold text-white/86">Evening review is fully recorded.</p>
-          <p className="mt-1 text-[11px] text-white/40">Return home or generate the report when needed.</p>
-        </div>
-      )}
-
       <div className="mx-4 mt-4 flex items-center justify-between">
         <span className="text-xs text-white/36">
           {isReadOnly ? 'Record' : 'Completion rate'}{' '}
           <span className="font-mono text-white">{done} / {total}</span>
         </span>
-        <div className="flex gap-2">
-          {!isReadOnly && (
+        {!isReadOnly && (
           <button type="button" onClick={generateReport}
             className="ai-btn-generate flex items-center gap-2 rounded-full border border-[#c4b5fd]/45 bg-gradient-to-r from-[#a78bfa]/15 to-[#7dd3fc]/15 px-6 py-2.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#ddd6fe]">
             <AiMark size={11} />
             Generate report
           </button>
-          )}
-          {!isReadOnly && (
-            <button type="button"
-              onClick={() => {
-                if (onComplete) onComplete()
-              }}
-              className="rounded-full border border-[#c4b5fd]/30 bg-[#c4b5fd] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-black">
-              Complete review
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   )

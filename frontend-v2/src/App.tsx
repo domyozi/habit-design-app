@@ -300,8 +300,19 @@ function MainApp() {
     setTab('monthly')
   }
 
-  const handleEveningReport = (_text: string) => {
-    // 夜はレポートを保存するだけにして、明示的な完了操作を残す
+  const handleEveningReport = (text: string) => {
+    // プライマリーターゲット完了判定: notes内に完了示唆のキーワード + boss言及があれば自動チェック
+    const bossVal = boss?.value ?? null
+    const bossIsCompleted = boss?.completed ?? false
+    if (bossVal && !bossIsCompleted) {
+      const completionKeywords = ['完了', '達成', 'できた', '終わった', 'done', 'completed', '✅']
+      const hasCompletion = completionKeywords.some(kw => text.toLowerCase().includes(kw.toLowerCase()))
+      const hasBossMention = text.includes(bossVal)
+      if (hasCompletion && hasBossMention) toggleCompleted()
+    }
+    // Generate Report 実行で Evening を自動完了
+    setEveningDoneBanner(true)
+    setTab('home')
   }
 
   const handleEveningComplete = () => {
@@ -494,7 +505,7 @@ function MainApp() {
       {tab === 'evening'  && (
         <EveningTab
           key={`${currentDate}:${viewDate}`}
-          onBossSet={setBoss}
+          boss={bossValue}
           onGenerateReport={handleEveningReport}
           onComplete={handleEveningComplete}
           viewDate={viewDate}
