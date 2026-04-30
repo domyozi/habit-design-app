@@ -28,11 +28,14 @@
           var p = new URLSearchParams(h.slice(1))
           var t = p.get('access_token')
           var e = p.get('expires_in')
-          if (t) {
+          var returnedState = p.get('state')
+          var expectedState = sessionStorage.getItem('google:cal:oauth_state')
+          sessionStorage.removeItem('google:cal:oauth_state')
+          if (t && returnedState && expectedState && returnedState === expectedState) {
             localStorage.setItem('google:cal:token', t)
             localStorage.setItem('google:cal:token_exp', String(Date.now() + Number(e || 3600) * 1000))
-            history.replaceState(null, '', location.pathname + location.search)
           }
+          history.replaceState(null, '', location.pathname + location.search)
         }
       })()
     </script>

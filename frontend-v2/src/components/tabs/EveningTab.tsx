@@ -22,42 +22,6 @@ export const CheckRow = ({ item, checked, onToggle }: { item: CheckItem; checked
   </div>
 )
 
-const TextArea = ({
-  label,
-  value,
-  onChange,
-  placeholder,
-  color = '#a78bfa',
-  maxLength = 500,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  placeholder: string
-  color?: string
-  maxLength?: number
-}) => (
-  <div className="border-t border-white/[0.05] px-4 py-3">
-    <div className="mb-2 flex items-center justify-between">
-      <label className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color }}>
-        {label}
-      </label>
-      {value.length > maxLength * 0.8 && (
-        <span className={['text-[10px]', value.length >= maxLength ? 'text-[#fecaca]' : 'text-white/30'].join(' ')}>
-          {value.length}/{maxLength}
-        </span>
-      )}
-    </div>
-    <textarea
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      maxLength={maxLength}
-      rows={3}
-      className="w-full resize-none rounded border border-white/10 bg-[#0b1320] px-3 py-2 text-sm text-white/80 placeholder-white/20"
-    />
-  </div>
-)
 
 const formatDate = () => {
   const d = new Date()
@@ -103,10 +67,8 @@ export const EveningTab = ({
   const [weight, setWeight] = useDailyStorage<string>('evening', 'weight', '', dateKey)
   const [stars, setStars] = useDailyStorage<number>('evening', 'stars', 0, dateKey)
   const [boss, setBoss] = useDailyStorage<string>('evening', 'boss-draft', '', dateKey)
-  // Gap / 気づき / 翌日スケジュール（新フィールド）
-  const [gap, setGap] = useDailyStorage<string>('evening', 'gap', '', dateKey)
-  const [insight, setInsight] = useDailyStorage<string>('evening', 'insight', '', dateKey)
-  const [tomorrow, setTomorrow] = useDailyStorage<string>('evening', 'tomorrow', '', dateKey)
+  // Notes（統合フリーテキスト）
+  const [notes, setNotes] = useDailyStorage<string>('evening', 'notes', '', dateKey)
   // 日報保存
   const [, setSavedReport] = useDailyStorage<string>('evening', 'report', '', dateKey)
   const [, setSavedReportAt] = useDailyStorage<string>('evening', 'reportAt', '', dateKey)
@@ -153,9 +115,7 @@ export const EveningTab = ({
       `${starStr(stars)}（${stars}/5）`,
       weight ? `体重（夜）: ${weight} kg` : '体重（夜）: 未記録',
       '',
-      gap ? `## Gap\n${gap}` : '',
-      insight ? `## Insight\n${insight}` : '',
-      tomorrow ? `## Next day plan\n${tomorrow}` : '',
+      notes ? `## Notes\n${notes}` : '',
       `## Primary target for tomorrow`,
       boss.trim() ? boss.trim() : '（未設定）',
       '',
@@ -179,11 +139,8 @@ export const EveningTab = ({
   }
 
   // F-12: Evening プログレスバー用集計
-  const eveningProgressTotal = allItems.length + 3 // タスク + Gap + Insight + Tomorrow
-  const eveningProgressDone = done +
-    (gap.trim() ? 1 : 0) +
-    (insight.trim() ? 1 : 0) +
-    (tomorrow.trim() ? 1 : 0)
+  const eveningProgressTotal = allItems.length + 1 // タスク + Notes
+  const eveningProgressDone = done + (notes.trim() ? 1 : 0)
   const eveningProgressPct = eveningProgressTotal > 0
     ? Math.round((eveningProgressDone / eveningProgressTotal) * 100)
     : 0
@@ -264,27 +221,13 @@ export const EveningTab = ({
         <div className="flex items-center justify-between border-l-2 border-[#7dd3fc] px-4 py-2">
           <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#aee5ff]">Notes</span>
         </div>
-        <div className="border-y border-white/[0.05] bg-[#111827]/70">
-          <TextArea
-            label="今日のGap（差分・課題）"
-            value={gap}
-            onChange={setGap}
-            placeholder="今日できなかったこと、改善点..."
-            color="#f59e0b"
-          />
-          <TextArea
-            label="気づき・学び"
-            value={insight}
-            onChange={setInsight}
-            placeholder="今日気づいたこと、学んだこと..."
-            color="#22c55e"
-          />
-          <TextArea
-            label="翌日スケジュール"
-            value={tomorrow}
-            onChange={setTomorrow}
-            placeholder="明日のタスク・予定..."
-            color="#38bdf8"
+        <div className="border-y border-white/[0.05] bg-[#111827]/70 px-4 py-3">
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder={"Gap・気づき・翌日の予定など、なんでも..."}
+            rows={8}
+            className="w-full resize-none rounded border border-white/10 bg-[#0b1320] px-3 py-2.5 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"
           />
         </div>
       </div>

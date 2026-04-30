@@ -10,7 +10,7 @@ import uuid
 from datetime import date as date_type
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
@@ -61,7 +61,7 @@ async def upsert_journal(
 @router.get("")
 async def list_journals(
     entry_type: Optional[str] = None,
-    limit: int = 30,
+    limit: int = Query(default=30, ge=1, le=200),
     user_id: str = Depends(get_current_user),
 ):
     supabase = get_supabase()

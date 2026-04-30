@@ -9,6 +9,7 @@
   GET  /api/integrations/token        - Shortcuts 用トークンを取得（JWT）
   POST /api/integrations/token/regenerate - トークンを再生成（JWT）
 """
+import time
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -18,6 +19,21 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
 from app.models.schemas import HealthMetricItem, HealthBatchRequest
+
+# レート制限: 1時間あたり最大 120 リクエスト（iOS Shortcuts は1日1〜4回程度）
+_INTEGRATIONS_RATE_LIMIT_MAX = 120
+_INTEGRATIONS_RATE_LIMIT_WINDOW = 3600
+_integrations_rate_buckets: dict[str, list[float]] = {}
+
+
+def _enforce_integrations_rate_limit(key: str) -> None:
+    now = time.monotonic()
+    window_start = now - _INTEGRATIONS_RATE_LIMIT_WINDOW
+    recent = [t for t in _integrations_rate_buckets.get(key, []) if t >= window_start]
+    if len(recent) >= _INTEGRATIONS_RATE_LIMIT_MAX:
+        raise HTTPException(status_code=429, detail="Too many requests. Please retry later.")
+    recent.append(now)
+    _integrations_rate_buckets[key] = recent
 
 router = APIRouter(prefix="/integrations")
 
@@ -94,6 +110,7 @@ async def log_health_metric(
     user_id: str = Depends(_resolve_user),
 ):
     """単一の健康データを記録する。JWT または X-Shortcuts-Token で認証。"""
+    _enforce_integrations_rate_limit(user_id)
     metric = payload.get("metric", "")
     if metric not in ALLOWED_METRICS:
         raise HTTPException(status_code=400, detail=f"Unknown metric: {metric}. Allowed: {sorted(ALLOWED_METRICS)}")
@@ -113,6 +130,7 @@ async def batch_log_health_metrics(
     user_id: str = Depends(_resolve_user),
 ):
     """複数の健康データを一括記録する。iOS Shortcuts から全指標を1回で送信するために使用。"""
+    _enforce_integrations_rate_limit(user_id)
     saved = []
     errors = []
 
@@ -152,6 +170,7 @@ async def get_health_summary(
     user_id: str = Depends(get_current_user),
 ):
     """各メトリクスの最新値 + 過去7日分の日別集計を返す。"""
+    _enforce_integrations_rate_limit(user_id)
     supabase = get_supabase()
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 

@@ -44,16 +44,24 @@ export const TaskUrlField = ({
           placeholder={item.field_options?.placeholder ?? 'https://'}
           className="flex-1 rounded-xl border border-white/[0.08] bg-[#0b1320] px-2 py-1.5 text-sm text-white/82 placeholder-white/20 focus:border-white/20 focus:outline-none disabled:opacity-50"
         />
-        {value && (
-          <a
-            href={value}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-[#7dd3fc]/60 hover:text-[#7dd3fc] flex-shrink-0"
-          >
-            開く↗
-          </a>
-        )}
+        {value && (() => {
+          try {
+            const u = new URL(value)
+            if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+            return (
+              <a
+                href={value}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-[#7dd3fc]/60 hover:text-[#7dd3fc] flex-shrink-0"
+              >
+                開く↗
+              </a>
+            )
+          } catch {
+            return null
+          }
+        })()}
       </div>
     </div>
   )

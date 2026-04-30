@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 
 const TOKEN_KEY = 'google:cal:token'
 const TOKEN_EXP_KEY = 'google:cal:token_exp'
+const OAUTH_STATE_KEY = 'google:cal:oauth_state'
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
 const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'
 
@@ -50,12 +51,17 @@ export function useGoogleCalendar() {
 
   const connect = useCallback(() => {
     const redirectUri = window.location.origin
+    const stateBytes = new Uint8Array(16)
+    crypto.getRandomValues(stateBytes)
+    const state = Array.from(stateBytes).map(b => b.toString(16).padStart(2, '0')).join('')
+    sessionStorage.setItem(OAUTH_STATE_KEY, state)
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
     url.searchParams.set('client_id', CLIENT_ID)
     url.searchParams.set('redirect_uri', redirectUri)
     url.searchParams.set('response_type', 'token')
     url.searchParams.set('scope', SCOPES)
     url.searchParams.set('prompt', 'select_account')
+    url.searchParams.set('state', state)
     window.location.href = url.toString()
   }, [])
 

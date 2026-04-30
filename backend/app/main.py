@@ -73,8 +73,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["content-type", "authorization", "x-shortcuts-token"],
 )
 
 # 【APIルーター登録】: /api/v1 プレフィックスで全エンドポイントをマウント 🔵
