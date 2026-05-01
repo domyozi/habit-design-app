@@ -381,18 +381,20 @@ function FreeNotesView() {
               ← 一覧
             </button>
           )}
-          <input
-            type="text"
-            value={localTitle}
-            onChange={e => handleTitleChange(e.target.value)}
-            placeholder="無題のノート"
-            className="w-full bg-transparent px-6 py-5 text-xl font-bold text-white/90 placeholder:text-white/20 outline-none border-b border-white/[0.04]"
-          />
           <div className="flex-1 overflow-y-auto">
             <TiptapEditor
               content={localBody}
               onChange={handleBodyChange}
               onCharCount={(c, w) => { setCharCount(c); setWordCount(w) }}
+              headerSlot={
+                <input
+                  type="text"
+                  value={localTitle}
+                  onChange={e => handleTitleChange(e.target.value)}
+                  placeholder="無題のノート"
+                  className="w-full bg-transparent px-6 py-5 text-xl font-bold text-white/90 placeholder:text-white/20 outline-none border-b border-white/[0.04]"
+                />
+              }
               actionsSlot={
                 <>
                   <button

@@ -1,4 +1,4 @@
-import { useEditor, EditorContent, useEditorState } from '@tiptap/react'
+import { useEditor, EditorContent, useEditorState, ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -48,6 +48,93 @@ async function resizeImageFromClipboard(item: DataTransferItem): Promise<string 
   if (!file) return null
   return resizeImageFile(file)
 }
+
+// ─── Resizable image node view ────────────────────────────────────────────────
+
+const ResizableImageView = ({ node, updateAttributes, selected }: NodeViewProps) => {
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [isResizing, setIsResizing] = useState(false)
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startWidth = (node.attrs.width as number | null) ?? imgRef.current?.offsetWidth ?? 400
+    setIsResizing(true)
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const newWidth = Math.max(80, startWidth + (ev.clientX - startX))
+      updateAttributes({ width: newWidth })
+    }
+    const onMouseUp = () => {
+      setIsResizing(false)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
+  return (
+    <NodeViewWrapper as="span" style={{ display: 'inline-block', position: 'relative', verticalAlign: 'bottom', lineHeight: 0 }}>
+      <img
+        ref={imgRef}
+        src={node.attrs.src as string}
+        alt={(node.attrs.alt as string) || ''}
+        draggable={false}
+        style={{
+          width: node.attrs.width ? `${node.attrs.width as number}px` : '100%',
+          maxWidth: '100%',
+          display: 'block',
+          borderRadius: '8px',
+          border: selected || isResizing ? '2px solid #7dd3fc' : '1px solid rgba(255,255,255,0.08)',
+          margin: '4px 0',
+          userSelect: 'none',
+        }}
+      />
+      {(selected || isResizing) && (
+        <span
+          style={{
+            position: 'absolute',
+            right: -5,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 10,
+            height: 32,
+            background: '#7dd3fc',
+            borderRadius: 5,
+            cursor: 'ew-resize',
+            zIndex: 10,
+            display: 'block',
+          }}
+          onMouseDown={handleMouseDown}
+        />
+      )}
+    </NodeViewWrapper>
+  )
+}
+
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: el => {
+          const w = el.getAttribute('width')
+          return w ? parseInt(w) : null
+        },
+        renderHTML: attrs => {
+          if (!attrs.width) return {}
+          return { width: String(attrs.width as number), style: `width:${attrs.width as number}px` }
+        },
+      },
+    }
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImageView)
+  },
+})
 
 // ─── Color palettes ───────────────────────────────────────────────────────────
 
@@ -343,6 +430,7 @@ interface Props {
   onCharCount?: (chars: number, words: number) => void
   placeholder?: string
   actionsSlot?: React.ReactNode
+  headerSlot?: React.ReactNode
 }
 
 interface SlashState {
@@ -351,7 +439,7 @@ interface SlashState {
   from: number
 }
 
-export function TiptapEditor({ content, onChange, onCharCount, placeholder = 'ここに書き殴ってください... (/ でブロック挿入)', actionsSlot }: Props) {
+export function TiptapEditor({ content, onChange, onCharCount, placeholder = 'ここに書き殴ってください... (/ でブロック挿入)', actionsSlot, headerSlot }: Props) {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [slash, setSlash] = useState<SlashState | null>(null)
 
@@ -365,7 +453,7 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
       Link.configure({ openOnClick: false }),
       TaskList,
       TaskItem.configure({ nested: true }),
-      Image.configure({ inline: true, allowBase64: true }),
+      ResizableImage.configure({ inline: true, allowBase64: true }),
       CodeBlockLowlight.configure({ lowlight }),
       CharacterCount,
       Placeholder.configure({ placeholder, emptyEditorClass: 'is-editor-empty' }),
@@ -489,6 +577,7 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
   return (
     <div className="relative flex-1 flex flex-col">
       <FixedToolbar editor={editor} onImageClick={handleToolbarImageClick} actionsSlot={actionsSlot} />
+      {headerSlot}
       <BubbleToolbar editor={editor} />
 
       {slash && (
