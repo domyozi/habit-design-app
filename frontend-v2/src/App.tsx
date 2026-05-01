@@ -475,7 +475,6 @@ function MainApp() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage<boolean>('ui:sidebar-collapsed', false)
   const [railCollapsed, setRailCollapsed] = useLocalStorage<boolean>('ui:rail-collapsed', false)
-  const [displayName] = useLocalStorage<string>('settings:display_name', '')
   const [pendingTarget, setPendingTarget] = useState<string | null>(null)
   const [pendingTasks, setPendingTasks] = useState<JournalBriefResult['tasks']>([])
 
@@ -505,7 +504,7 @@ function MainApp() {
           eveningDone={eveningDone}
           lang={(userContext?.lang ?? localStorage.getItem('settings:lang') ?? 'ja') as import('@/lib/lang').AppLang}
           userEmail={session?.user?.email}
-          displayName={displayName || undefined}
+          displayName={userContext?.display_name || undefined}
           onSignOut={signOut}
           healthConnected={healthConnected}
         />

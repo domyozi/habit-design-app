@@ -608,6 +608,7 @@ export interface UserContext {
   insights?: Record<string, unknown>
   lang?: 'ja' | 'en'
   granularity?: string
+  display_name?: string
 }
 
 /**
@@ -661,6 +662,11 @@ export interface HealthSummary {
   weekly: Record<string, HealthWeeklyPoint[]>
 }
 
+export interface HealthTokenStatus {
+  configured: boolean
+  token?: string
+}
+
 /**
  * 各指標の最新値 + 過去7日分の集計を取得する
  * GET /api/integrations/summary
@@ -669,15 +675,15 @@ export const fetchHealthSummary = (): Promise<HealthSummary> =>
   apiGet<HealthSummary>('/api/integrations/summary')
 
 /**
- * Shortcuts 用トークンを取得する
+ * Shortcuts 用トークン状態を取得する
  * GET /api/integrations/token
  */
-export const fetchHealthToken = (): Promise<{ token: string }> =>
-  apiGet<{ token: string }>('/api/integrations/token')
+export const fetchHealthToken = (): Promise<HealthTokenStatus> =>
+  apiGet<HealthTokenStatus>('/api/integrations/token')
 
 /**
  * Shortcuts 用トークンを再生成する
  * POST /api/integrations/token/regenerate
  */
-export const regenerateHealthToken = (): Promise<{ token: string }> =>
-  apiPost<{ token: string }>('/api/integrations/token/regenerate', {})
+export const regenerateHealthToken = (): Promise<HealthTokenStatus> =>
+  apiPost<HealthTokenStatus>('/api/integrations/token/regenerate', {})

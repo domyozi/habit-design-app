@@ -359,15 +359,19 @@ const GRANULARITY_OPTIONS = [
 
 const ProfileSettings = () => {
   const [ctx, updateCtx] = useUserContext()
-  const [displayName, setDisplayName] = useState(() => localStorage.getItem('settings:display_name') ?? '')
-  // F-17: use API; fall back to localStorage for backward compat
-  const granularity = ctx?.granularity ?? localStorage.getItem('settings:profile:granularity') ?? 'adult'
+  const [displayName, setDisplayName] = useState(ctx?.display_name ?? '')
+  const granularity = ctx?.granularity ?? 'adult'
+
+  // ctx がロードされたら表示名を同期
+  useEffect(() => {
+    if (ctx?.display_name !== undefined) setDisplayName(ctx.display_name)
+  }, [ctx?.display_name])
+
   const handleChange = (v: string) => {
-    localStorage.setItem('settings:profile:granularity', v)
     void updateCtx({ granularity: v })
   }
   const saveDisplayName = () => {
-    localStorage.setItem('settings:display_name', displayName.trim())
+    void updateCtx({ display_name: displayName.trim() })
   }
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
