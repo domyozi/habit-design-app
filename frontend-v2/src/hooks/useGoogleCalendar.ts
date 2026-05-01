@@ -32,37 +32,55 @@ function parseHashToken(): string | null {
   const params = new URLSearchParams(hash.slice(1))
   const token = params.get('access_token')
   const expiresIn = params.get('expires_in')
+  const returnedState = params.get('state')
+  const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY)
+  sessionStorage.removeItem(OAUTH_STATE_KEY)
+  history.replaceState(null, '', window.location.pathname + window.location.search)
+  if (!returnedState || !expectedState || returnedState !== expectedState) return null
   if (!token) return null
   const exp = Date.now() + Number(expiresIn ?? 3600) * 1000
   localStorage.setItem(TOKEN_KEY, token)
   localStorage.setItem(TOKEN_EXP_KEY, String(exp))
-  // Clean hash from URL without reload
-  history.replaceState(null, '', window.location.pathname + window.location.search)
   return token
 }
 
+function buildAuthUrl(silent: boolean): string {
+  const redirectUri = window.location.origin
+  const stateBytes = new Uint8Array(16)
+  crypto.getRandomValues(stateBytes)
+  const state = Array.from(stateBytes).map(b => b.toString(16).padStart(2, '0')).join('')
+  sessionStorage.setItem(OAUTH_STATE_KEY, state)
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+  url.searchParams.set('client_id', CLIENT_ID)
+  url.searchParams.set('redirect_uri', redirectUri)
+  url.searchParams.set('response_type', 'token')
+  url.searchParams.set('scope', SCOPES)
+  url.searchParams.set('prompt', silent ? 'none' : 'select_account')
+  url.searchParams.set('state', state)
+  return url.toString()
+}
+
+// ポップアップとして開かれた場合、トークンを保存してウィンドウを閉じる
+const isPopup = typeof window !== 'undefined' && window.opener != null && window.name === 'gcal-auth'
+if (isPopup) {
+  const t = parseHashToken()
+  if (t) setTimeout(() => window.close(), 300)
+}
+
 export function useGoogleCalendar() {
-  const [token, setToken] = useState<string | null>(() => parseHashToken() ?? getStoredToken())
+  const [token, setToken] = useState<string | null>(() => {
+    if (isPopup) return null
+    return parseHashToken() ?? getStoredToken()
+  })
   const [events, setEvents] = useState<CalEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const isConnected = Boolean(token)
 
-  const connect = useCallback(() => {
-    const redirectUri = window.location.origin
-    const stateBytes = new Uint8Array(16)
-    crypto.getRandomValues(stateBytes)
-    const state = Array.from(stateBytes).map(b => b.toString(16).padStart(2, '0')).join('')
-    sessionStorage.setItem(OAUTH_STATE_KEY, state)
-    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-    url.searchParams.set('client_id', CLIENT_ID)
-    url.searchParams.set('redirect_uri', redirectUri)
-    url.searchParams.set('response_type', 'token')
-    url.searchParams.set('scope', SCOPES)
-    url.searchParams.set('prompt', 'select_account')
-    url.searchParams.set('state', state)
-    window.location.href = url.toString()
+  const connect = useCallback((silent = false) => {
+    const url = buildAuthUrl(silent)
+    window.open(url, 'gcal-auth', 'width=520,height=640,left=200,top=100,noopener=0')
   }, [])
 
   const disconnect = useCallback(() => {
@@ -71,6 +89,40 @@ export function useGoogleCalendar() {
     setToken(null)
     setEvents([])
   }, [])
+
+  // ポップアップで保存されたトークンを storage イベントで受け取る
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TOKEN_KEY && e.newValue) {
+        const fresh = getStoredToken()
+        if (fresh) setToken(fresh)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  // 有効期限5分前にサイレント再認証
+  useEffect(() => {
+    if (!token) return
+    const exp = Number(localStorage.getItem(TOKEN_EXP_KEY) ?? 0)
+    const msUntilExpiry = exp - Date.now()
+    const refreshAt = msUntilExpiry - 5 * 60 * 1000
+    if (refreshAt <= 0) return
+    const timer = setTimeout(() => connect(true), refreshAt)
+    return () => clearTimeout(timer)
+  }, [token, connect])
+
+  // フォーカス時にトークン再確認
+  useEffect(() => {
+    const onFocus = () => {
+      const stored = getStoredToken()
+      if (stored && stored !== token) setToken(stored)
+      else if (!stored && token) setToken(null)
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [token])
 
   const fetchEvents = useCallback(async (weekStart: Date) => {
     if (!token) return
@@ -95,7 +147,8 @@ export function useGoogleCalendar() {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (res.status === 401) {
-        disconnect()
+        // サイレント再認証を試みる（ポップアップ）
+        connect(true)
         return
       }
       const data = await res.json()
@@ -105,7 +158,7 @@ export function useGoogleCalendar() {
     } finally {
       setLoading(false)
     }
-  }, [token, disconnect])
+  }, [token, connect])
 
   const createEvent = useCallback(async (
     summary: string,
@@ -135,13 +188,13 @@ export function useGoogleCalendar() {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}))
       const reason = errData?.error?.message ?? `HTTP ${res.status}`
-      if (res.status === 401) disconnect()
+      if (res.status === 401) connect(true)
       throw new Error(reason)
     }
     const created: CalEvent = await res.json()
     setEvents(prev => [...prev, created])
     return created
-  }, [token])
+  }, [token, connect])
 
   const updateEvent = useCallback(async (
     eventId: string,
@@ -171,23 +224,13 @@ export function useGoogleCalendar() {
     )
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}))
-      if (res.status === 401) disconnect()
+      if (res.status === 401) connect(true)
       throw new Error(errData?.error?.message ?? `HTTP ${res.status}`)
     }
     const updated: CalEvent = await res.json()
     setEvents(prev => prev.map(e => e.id === eventId ? updated : e))
     return updated
-  }, [token, events, disconnect])
-
-  // Re-check token on focus (may have come back from OAuth)
-  useEffect(() => {
-    const onFocus = () => {
-      const stored = getStoredToken()
-      if (stored && stored !== token) setToken(stored)
-    }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [token])
+  }, [token, events, connect])
 
   return { isConnected, connect, disconnect, fetchEvents, createEvent, updateEvent, events, loading, error }
 }

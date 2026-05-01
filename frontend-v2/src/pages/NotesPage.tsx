@@ -16,6 +16,11 @@ const formatRelative = (iso: string): string => {
   return `${Math.floor(hrs / 24)}日前`
 }
 
+const formatShortDate = (iso: string): string => {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+
 const formatDateLabel = (iso: string): string => {
   const d = new Date(iso)
   const weekdays = ['日', '月', '火', '水', '木', '金', '土']
@@ -425,7 +430,11 @@ function FreeNotesView() {
             />
           </div>
           <div className="flex items-center justify-between border-t border-white/[0.04] px-6 py-2">
-            <p className="text-[10px] text-white/20">{formatRelative(selected.updated_at)} に更新</p>
+            <div className="flex items-center gap-2 text-[10px] text-white/20">
+              <span>作成: {formatShortDate(selected.created_at)}</span>
+              <span>·</span>
+              <span>更新: {formatRelative(selected.updated_at)}</span>
+            </div>
             <p className="text-[10px] text-white/20">{charCount} 文字　{wordCount} 語</p>
           </div>
         </div>

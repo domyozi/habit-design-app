@@ -8,6 +8,9 @@ import {
   extractJsonBlock,
   stripJsonBlock,
   checkRateLimit,
+  streamWannaBeReflection,
+  extractMemoryPatch,
+  mergeContextPatch,
   type MandalaData,
   type IntakeQuestion,
   type Granularity,
@@ -49,7 +52,7 @@ type GenerateStep = 'input' | 'clarifying' | 'generating'
 
 export const WannaBeTab = () => {
   const { session, loading: authLoading } = useAuth()
-  const [userCtx] = useContext(UserContextCtx)
+  const [userCtx, updateUserCtx] = useContext(UserContextCtx)
 
   // ─── Data state ───────────────────────────────────────────────
   const [mandala, setMandala] = useState<MandalaData | null>(null)
@@ -116,6 +119,72 @@ export const WannaBeTab = () => {
       return next
     })
   }, [])
+
+  // ─── WannaBe Reflection (音声/テキスト入力 + AI フィードバック) ─────
+  const [reflectionInput, setReflectionInput] = useState('')
+  const [reflectionFeedback, setReflectionFeedback] = useState('')
+  const [reflectionLoading, setReflectionLoading] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null)
+
+  const handleVoiceToggle = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+    if (!SR) {
+      alert('このブラウザは音声入力に対応していません。')
+      return
+    }
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec: any = new SR()
+    rec.lang = 'ja-JP'
+    rec.continuous = true
+    rec.interimResults = true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join('')
+      setReflectionInput(transcript)
+    }
+    rec.onend = () => setIsRecording(false)
+    rec.start()
+    recognitionRef.current = rec
+    setIsRecording(true)
+  }, [isRecording])
+
+  const handleReflectionGenerate = useCallback(async () => {
+    if (!reflectionInput.trim() || reflectionLoading) return
+    if (!checkRateLimit('wannabe-reflection', 10_000)) {
+      return
+    }
+    setReflectionLoading(true)
+    setReflectionFeedback('')
+    try {
+      await streamWannaBeReflection(
+        reflectionInput,
+        userCtx,
+        (accumulated) => setReflectionFeedback(accumulated),
+        async (fullText) => {
+          setReflectionFeedback(fullText)
+          setReflectionLoading(false)
+          // メモリ更新
+          try {
+            const patch = await extractMemoryPatch(fullText, userCtx)
+            if (patch && Object.keys(patch).length > 0 && userCtx) {
+              const merged = mergeContextPatch(userCtx, patch)
+              await updateUserCtx(merged)
+            }
+          } catch { /* silent */ }
+        },
+      )
+    } catch {
+      setReflectionLoading(false)
+    }
+  }, [reflectionInput, reflectionLoading, userCtx, updateUserCtx])
 
   // ─── Cell selection + AI suggestions (Sprint B) ───────────────
   const [selectedAction, setSelectedAction] = useState<string | null>(null)
@@ -338,7 +407,78 @@ export const WannaBeTab = () => {
       )}
 
       <div className="space-y-4 px-4 py-4 pb-6">
-        {/* Header with progress ring */}
+
+        {/* ── WannaBe リフレクション ─────────────────────────────────── */}
+        <div className="rounded-[28px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-4 py-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8da4c3]">Wanna Be</p>
+          <p className="mt-1 text-lg font-semibold text-white">リフレクション</p>
+          <p className="mt-1 text-sm text-white/50">理想の自分・気づき・今感じていることを話してください</p>
+        </div>
+
+        {/* テキスト入力エリア */}
+        <div className="rounded-2xl border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">
+          <textarea
+            value={reflectionInput}
+            onChange={e => setReflectionInput(e.target.value)}
+            placeholder="今の自分、理想の姿、気づき、悩み、なんでも自由に話してください..."
+            rows={6}
+            className="w-full resize-none rounded-[20px] border border-white/10 bg-[#08101a] px-4 py-3 text-sm leading-7 text-white/88 placeholder-white/18 shadow-inner outline-none transition-colors focus:border-[#7dd3fc]/30"
+          />
+          <div className="mt-3 flex items-center gap-2">
+            {/* 音声入力ボタン */}
+            <button
+              type="button"
+              onClick={handleVoiceToggle}
+              className={[
+                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors',
+                isRecording
+                  ? 'border-[#f87171]/40 bg-[#f87171]/10 text-[#f87171] animate-pulse'
+                  : 'border-white/10 text-white/50 hover:border-white/25 hover:text-white/80',
+              ].join(' ')}
+            >
+              <span>{isRecording ? '⏹' : '🎙'}</span>
+              <span>{isRecording ? '録音中…' : '音声入力'}</span>
+            </button>
+
+            <div className="flex-1" />
+
+            {reflectionInput.trim() && (
+              <button
+                type="button"
+                onClick={() => setReflectionInput('')}
+                className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] text-white/38 hover:text-white/70"
+              >
+                クリア
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleReflectionGenerate}
+              disabled={!reflectionInput.trim() || reflectionLoading}
+              className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff] disabled:opacity-40"
+            >
+              {reflectionLoading ? 'フィードバック生成中…' : 'フィードバックを得る →'}
+            </button>
+          </div>
+        </div>
+
+        {/* フィードバック表示エリア */}
+        {(reflectionFeedback || reflectionLoading) && (
+          <div className="rounded-2xl border border-[#7dd3fc]/15 bg-[#05111e] px-4 py-4">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ed8ff]/60">フィードバック</p>
+            {reflectionFeedback ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/80">{reflectionFeedback}</p>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-white/40">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#7dd3fc]/60" />
+                生成中…
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* マンダラチャート（非表示：データは保持） */}
+        {false && <>
         <div className="rounded-[28px] border border-[#9fb4d1]/10 bg-[linear-gradient(180deg,rgba(9,16,27,0.98),rgba(7,12,21,0.96))] px-4 py-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1">
@@ -490,12 +630,14 @@ export const WannaBeTab = () => {
         )}
 
         {/* Mandala Grid */}
-        {mandala && (
+        {mandala && (() => {
+          const m = mandala!
+          return (
           <div className="rounded-2xl border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">
             <div className="mb-3 flex items-center justify-between gap-2 print-hide">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8da4c3]">Mandala chart</p>
-                <p className="mt-1 text-sm font-semibold text-white/88">{mandala.mainGoal}</p>
+                <p className="mt-1 text-sm font-semibold text-white/88">{m.mainGoal}</p>
               </div>
               <div className="flex items-center gap-2">
                 {!showInput && (
@@ -519,7 +661,7 @@ export const WannaBeTab = () => {
             <div className="overflow-x-auto">
               <div className="min-w-max">
                 <MandalaGrid
-                  data={mandala}
+                  data={m}
                   onUpdate={handleMandalaUpdate}
                   checkedActions={checkedActions}
                   onToggleAction={toggleAction}
@@ -531,12 +673,15 @@ export const WannaBeTab = () => {
               </div>
             </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* AI Cell Suggestion Panel */}
         {selectedAction && mandala && (() => {
-          const [eIdx, aIdx] = selectedAction.split('-').map(Number)
-          const el = mandala.elements[eIdx]
+          const sa = selectedAction!
+          const m = mandala!
+          const [eIdx, aIdx] = sa.split('-').map(Number)
+          const el = m.elements[eIdx]
           return el ? (
             <CellSuggestionPanel
               elementTitle={el.title}
@@ -552,11 +697,13 @@ export const WannaBeTab = () => {
         })()}
 
         {/* Legend */}
-        {mandala && (
+        {mandala && (() => {
+          const m = mandala!
+          return (
           <div className="rounded-2xl border border-white/[0.06] bg-white/[0.01] px-4 py-3">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/28">要素一覧</p>
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-              {mandala.elements.map((el, i) => {
+              {m.elements.map((el, i) => {
                 const color = [
                   '#7dd3fc','#a78bfa','#34d399','#f59e0b',
                   '#f87171','#fb923c','#c084fc','#86efac',
@@ -570,7 +717,9 @@ export const WannaBeTab = () => {
               })}
             </div>
           </div>
-        )}
+          )
+        })()}
+        </>}
       </div>
     </>
   )

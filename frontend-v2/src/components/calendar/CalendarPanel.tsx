@@ -185,7 +185,7 @@ export function CalendarPanel({ todoDefinitions, onClose, mode = 'overlay' }: Pr
             </div>
             <button
               type="button"
-              onClick={connect}
+              onClick={() => connect()}
               className="flex items-center gap-2.5 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-[#1a1a1a] shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24">

@@ -452,7 +452,26 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = 'ã
       Underline,
       Link.configure({ openOnClick: false }),
       TaskList,
-      TaskItem.configure({ nested: true }),
+      TaskItem.configure({ nested: true }).extend({
+        addKeyboardShortcuts() {
+          return {
+            'Mod-Space': () => this.editor.commands.command(({ tr, state }) => {
+              const { $from } = state.selection
+              for (let depth = $from.depth; depth > 0; depth--) {
+                const node = $from.node(depth)
+                if (node.type.name === 'taskItem') {
+                  tr.setNodeMarkup($from.before(depth), undefined, {
+                    ...node.attrs,
+                    checked: !node.attrs.checked,
+                  })
+                  return true
+                }
+              }
+              return false
+            }),
+          }
+        },
+      }),
       ResizableImage.configure({ inline: true, allowBase64: true }),
       CodeBlockLowlight.configure({ lowlight }),
       CharacterCount,
