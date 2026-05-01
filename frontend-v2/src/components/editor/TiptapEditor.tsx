@@ -8,6 +8,10 @@ import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
 import CharacterCount from '@tiptap/extension-character-count'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { TextStyle } from '@tiptap/extension-text-style'
+import { Color } from '@tiptap/extension-color'
+import Highlight from '@tiptap/extension-highlight'
+import TextAlign from '@tiptap/extension-text-align'
 import { common, createLowlight } from 'lowlight'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -45,7 +49,20 @@ async function resizeImageFromClipboard(item: DataTransferItem): Promise<string 
   return resizeImageFile(file)
 }
 
-// ─── Bubble toolbar ───────────────────────────────────────────────────────────
+// ─── Color palettes ───────────────────────────────────────────────────────────
+
+const TEXT_COLORS = [
+  '#ffffff', '#a0aec0', '#fc8181', '#f6ad55',
+  '#faf089', '#68d391', '#76e4f7', '#90cdf4',
+  '#b794f4', '#f687b3', '#fbd38d', '#86efac',
+]
+
+const HIGHLIGHT_COLORS = [
+  '#fecaca', '#fed7aa', '#fef08a', '#bbf7d0',
+  '#bae6fd', '#e9d5ff', '#fbcfe8', '#d1d5db',
+]
+
+// ─── Shared ToolBtn ───────────────────────────────────────────────────────────
 
 const ToolBtn = ({ active, onClick, children, title }: {
   active?: boolean; onClick: () => void; children: React.ReactNode; title?: string
@@ -63,6 +80,197 @@ const ToolBtn = ({ active, onClick, children, title }: {
   </button>
 )
 
+const Sep = () => <span className="mx-1 h-4 w-px bg-white/[0.14]" />
+
+// ─── Color picker popup ───────────────────────────────────────────────────────
+
+const ColorPicker = ({
+  colors,
+  onSelect,
+  onClear,
+  children,
+  title,
+  activeColor,
+}: {
+  colors: string[]
+  onSelect: (color: string) => void
+  onClear: () => void
+  children: React.ReactNode
+  title?: string
+  activeColor?: string
+}) => {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        title={title}
+        onMouseDown={e => { e.preventDefault(); setOpen(v => !v) }}
+        className="flex h-7 min-w-[26px] items-center justify-center rounded px-1 text-xs font-semibold transition-colors select-none text-white/60 hover:bg-white/10 hover:text-white/90"
+      >
+        {children}
+        {activeColor && (
+          <span
+            className="ml-0.5 inline-block h-1.5 w-3 rounded-full"
+            style={{ backgroundColor: activeColor }}
+          />
+        )}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-8 z-50 flex flex-col gap-1.5 rounded-xl border border-white/[0.14] bg-[#0d1825]/96 p-2 shadow-2xl backdrop-blur-xl">
+          <div className="grid grid-cols-4 gap-1">
+            {colors.map(c => (
+              <button
+                key={c}
+                type="button"
+                onMouseDown={e => { e.preventDefault(); onSelect(c); setOpen(false) }}
+                className="h-5 w-5 rounded border border-white/10 transition-transform hover:scale-110"
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onMouseDown={e => { e.preventDefault(); onClear(); setOpen(false) }}
+            className="mt-0.5 text-[10px] text-white/40 hover:text-white/70"
+          >
+            クリア
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Fixed toolbar ────────────────────────────────────────────────────────────
+
+function FixedToolbar({
+  editor,
+  onImageClick,
+}: {
+  editor: ReturnType<typeof useEditor>
+  onImageClick: () => void
+}) {
+  const s = useEditorState({
+    editor,
+    selector: (ctx) => ({
+      bold: ctx.editor?.isActive('bold'),
+      italic: ctx.editor?.isActive('italic'),
+      underline: ctx.editor?.isActive('underline'),
+      strike: ctx.editor?.isActive('strike'),
+      code: ctx.editor?.isActive('code'),
+      link: ctx.editor?.isActive('link'),
+      h1: ctx.editor?.isActive('heading', { level: 1 }),
+      h2: ctx.editor?.isActive('heading', { level: 2 }),
+      h3: ctx.editor?.isActive('heading', { level: 3 }),
+      alignCenter: ctx.editor?.isActive({ textAlign: 'center' }),
+      alignRight: ctx.editor?.isActive({ textAlign: 'right' }),
+      taskList: ctx.editor?.isActive('taskList'),
+      color: ctx.editor?.getAttributes('textStyle').color as string | undefined,
+      highlight: ctx.editor?.getAttributes('highlight').color as string | undefined,
+    }),
+  })
+
+  if (!editor) return null
+
+  const headingValue = s?.h1 ? '1' : s?.h2 ? '2' : s?.h3 ? '3' : '0'
+
+  const setLink = () => {
+    const prev = editor.getAttributes('link').href as string | undefined
+    const url = window.prompt('URL', prev ?? '')
+    if (url === null) return
+    if (url === '') { editor.chain().focus().unsetLink().run(); return }
+    editor.chain().focus().setLink({ href: url }).run()
+  }
+
+  return (
+    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-0.5 border-b border-white/[0.08] bg-[#0b1320]/95 px-2 py-1 backdrop-blur-sm">
+      {/* Undo / Redo */}
+      <ToolBtn onClick={() => editor.chain().focus().undo().run()} title="元に戻す">↩</ToolBtn>
+      <ToolBtn onClick={() => editor.chain().focus().redo().run()} title="やり直す">↪</ToolBtn>
+      <Sep />
+
+      {/* Heading selector */}
+      <select
+        value={headingValue}
+        onChange={e => {
+          const v = e.target.value
+          if (v === '0') editor.chain().focus().setParagraph().run()
+          else editor.chain().focus().toggleHeading({ level: Number(v) as 1 | 2 | 3 }).run()
+        }}
+        onMouseDown={e => e.stopPropagation()}
+        className="h-7 rounded bg-white/[0.06] px-1.5 text-[11px] text-white/70 focus:outline-none cursor-pointer"
+      >
+        <option value="0">本文</option>
+        <option value="1">H1</option>
+        <option value="2">H2</option>
+        <option value="3">H3</option>
+      </select>
+      <Sep />
+
+      {/* Text formatting */}
+      <ToolBtn active={s?.bold} onClick={() => editor.chain().focus().toggleBold().run()} title="太字"><strong>B</strong></ToolBtn>
+      <ToolBtn active={s?.italic} onClick={() => editor.chain().focus().toggleItalic().run()} title="斜体"><em>I</em></ToolBtn>
+      <ToolBtn active={s?.underline} onClick={() => editor.chain().focus().toggleUnderline().run()} title="下線"><span className="underline">U</span></ToolBtn>
+      <ToolBtn active={s?.strike} onClick={() => editor.chain().focus().toggleStrike().run()} title="取り消し線"><span className="line-through">S</span></ToolBtn>
+      <ToolBtn active={s?.code} onClick={() => editor.chain().focus().toggleCode().run()} title="コード">{'<>'}</ToolBtn>
+      <Sep />
+
+      {/* Text color */}
+      <ColorPicker
+        colors={TEXT_COLORS}
+        onSelect={c => editor.chain().focus().setColor(c).run()}
+        onClear={() => editor.chain().focus().unsetColor().run()}
+        title="文字色"
+        activeColor={s?.color}
+      >
+        <span className="font-bold" style={{ color: s?.color ?? 'rgba(255,255,255,0.6)' }}>A</span>
+      </ColorPicker>
+
+      {/* Highlight */}
+      <ColorPicker
+        colors={HIGHLIGHT_COLORS}
+        onSelect={c => editor.chain().focus().toggleHighlight({ color: c }).run()}
+        onClear={() => editor.chain().focus().unsetHighlight().run()}
+        title="背景色"
+        activeColor={s?.highlight}
+      >
+        <span className="underline decoration-[3px]" style={{ textDecorationColor: s?.highlight ?? 'rgba(255,255,255,0.4)' }}>A</span>
+      </ColorPicker>
+      <Sep />
+
+      {/* Text align */}
+      <ToolBtn active={!s?.alignCenter && !s?.alignRight} onClick={() => editor.chain().focus().setTextAlign('left').run()} title="左揃え">≡</ToolBtn>
+      <ToolBtn active={s?.alignCenter} onClick={() => editor.chain().focus().setTextAlign('center').run()} title="中央揃え">
+        <svg width="12" height="10" viewBox="0 0 12 10" fill="currentColor"><rect x="1" y="0" width="10" height="1.5" rx="0.75"/><rect x="2.5" y="3" width="7" height="1.5" rx="0.75"/><rect x="1" y="6" width="10" height="1.5" rx="0.75"/><rect x="2.5" y="9" width="7" height="1.5" rx="0.75"/></svg>
+      </ToolBtn>
+      <ToolBtn active={s?.alignRight} onClick={() => editor.chain().focus().setTextAlign('right').run()} title="右揃え">
+        <svg width="12" height="10" viewBox="0 0 12 10" fill="currentColor"><rect x="1" y="0" width="10" height="1.5" rx="0.75"/><rect x="4" y="3" width="7" height="1.5" rx="0.75"/><rect x="1" y="6" width="10" height="1.5" rx="0.75"/><rect x="4" y="9" width="7" height="1.5" rx="0.75"/></svg>
+      </ToolBtn>
+      <Sep />
+
+      {/* Insert */}
+      <ToolBtn active={s?.taskList} onClick={() => editor.chain().focus().toggleTaskList().run()} title="チェックリスト">☑</ToolBtn>
+      <ToolBtn onClick={onImageClick} title="画像を挿入">🖼</ToolBtn>
+      <ToolBtn active={s?.link} onClick={setLink} title="リンク">🔗</ToolBtn>
+      <ToolBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="区切り線">—</ToolBtn>
+    </div>
+  )
+}
+
+// ─── Bubble toolbar (text-selection) ─────────────────────────────────────────
+
 function BubbleToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
@@ -76,9 +284,6 @@ function BubbleToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       strike: ctx.editor?.isActive('strike'),
       code: ctx.editor?.isActive('code'),
       link: ctx.editor?.isActive('link'),
-      h1: ctx.editor?.isActive('heading', { level: 1 }),
-      h2: ctx.editor?.isActive('heading', { level: 2 }),
-      h3: ctx.editor?.isActive('heading', { level: 3 }),
     }),
   })
 
@@ -91,7 +296,7 @@ function BubbleToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       if (!sel || sel.rangeCount === 0) { setPos(null); return }
       const rect = sel.getRangeAt(0).getBoundingClientRect()
       if (!rect.width) { setPos(null); return }
-      const tw = ref.current?.offsetWidth ?? 320
+      const tw = ref.current?.offsetWidth ?? 280
       const top = rect.top - 48
       const left = Math.max(8, Math.min(rect.left + (rect.width - tw) / 2, window.innerWidth - tw - 8))
       setPos({ top, left })
@@ -103,14 +308,6 @@ function BubbleToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
 
   if (!pos || !editor) return null
 
-  const setLink = () => {
-    const prev = editor.getAttributes('link').href as string | undefined
-    const url = window.prompt('URL', prev ?? '')
-    if (url === null) return
-    if (url === '') { editor.chain().focus().unsetLink().run(); return }
-    editor.chain().focus().setLink({ href: url }).run()
-  }
-
   return createPortal(
     <div
       ref={ref}
@@ -118,16 +315,11 @@ function BubbleToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       style={{ top: pos.top, left: pos.left }}
       onMouseDown={e => e.preventDefault()}
     >
-      <ToolBtn active={s?.h1} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} title="見出し1">H1</ToolBtn>
-      <ToolBtn active={s?.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="見出し2">H2</ToolBtn>
-      <ToolBtn active={s?.h3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} title="見出し3">H3</ToolBtn>
-      <span className="mx-1 h-4 w-px bg-white/[0.14]" />
       <ToolBtn active={s?.bold} onClick={() => editor.chain().focus().toggleBold().run()} title="太字"><strong>B</strong></ToolBtn>
       <ToolBtn active={s?.italic} onClick={() => editor.chain().focus().toggleItalic().run()} title="斜体"><em>I</em></ToolBtn>
       <ToolBtn active={s?.underline} onClick={() => editor.chain().focus().toggleUnderline().run()} title="下線"><span className="underline">U</span></ToolBtn>
       <ToolBtn active={s?.strike} onClick={() => editor.chain().focus().toggleStrike().run()} title="取り消し線"><span className="line-through">S</span></ToolBtn>
       <ToolBtn active={s?.code} onClick={() => editor.chain().focus().toggleCode().run()} title="コード">{'<>'}</ToolBtn>
-      <ToolBtn active={s?.link} onClick={setLink} title="リンク">🔗</ToolBtn>
     </div>,
     document.body
   )
@@ -145,7 +337,7 @@ interface Props {
 interface SlashState {
   query: string
   pos: { top: number; left: number }
-  from: number   // position of the `/` in the doc
+  from: number
 }
 
 export function TiptapEditor({ content, onChange, onCharCount, placeholder = 'ここに書き殴ってください... (/ でブロック挿入)' }: Props) {
@@ -156,16 +348,20 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
-        codeBlock: false,  // replaced by CodeBlockLowlight
+        codeBlock: false,
       }),
       Underline,
       Link.configure({ openOnClick: false }),
       TaskList,
       TaskItem.configure({ nested: true }),
-      Image.configure({ inline: false, allowBase64: true }),
+      Image.configure({ inline: true, allowBase64: true }),
       CodeBlockLowlight.configure({ lowlight }),
       CharacterCount,
       Placeholder.configure({ placeholder, emptyEditorClass: 'is-editor-empty' }),
+      TextStyle,
+      Color,
+      Highlight.configure({ multicolor: true }),
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
     ],
     content: (() => {
       if (!content) return ''
@@ -176,14 +372,12 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
       const json = JSON.stringify(editor.getJSON())
       onChange(json)
 
-      // Char/word count
       if (onCharCount) {
         const text = editor.getText()
         const words = text.trim() ? text.trim().split(/\s+/).length : 0
         onCharCount(editor.storage.characterCount.characters(), words)
       }
 
-      // Slash command detection
       const { from } = editor.state.selection
       const $from = editor.state.doc.resolve(from)
       const lineText = $from.parent.textContent.slice(0, $from.parentOffset)
@@ -237,7 +431,6 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
     },
   })
 
-  // Sync content when switching notes
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     const parsed = (() => {
@@ -253,7 +446,6 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content])
 
-  // Close slash menu on click outside
   useEffect(() => {
     if (!slash) return
     const close = () => setSlash(null)
@@ -272,16 +464,20 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
 
   const handleSlashImageInsert = () => {
     if (!editor || !slash) return
-    // Delete the slash text before opening file input
     editor.chain().focus().deleteRange({ from: slash.from, to: editor.state.selection.from }).run()
     setSlash(null)
+    imageInputRef.current?.click()
+  }
+
+  const handleToolbarImageClick = () => {
     imageInputRef.current?.click()
   }
 
   if (!editor) return null
 
   return (
-    <div className="relative flex-1">
+    <div className="relative flex-1 flex flex-col">
+      <FixedToolbar editor={editor} onImageClick={handleToolbarImageClick} />
       <BubbleToolbar editor={editor} />
 
       {slash && (
@@ -302,7 +498,7 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
         onChange={handleImageFileInput}
       />
 
-      <EditorContent editor={editor} className="px-6 py-4" />
+      <EditorContent editor={editor} className="px-6 py-4 flex-1" />
     </div>
   )
 }

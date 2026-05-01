@@ -146,7 +146,7 @@ input:focus, textarea:focus, select:focus {
   min-height: 200px;
 }
 
-.tiptap p { margin: 0 0 0.5em; color: rgba(255,255,255,0.72); font-size: 14px; line-height: 1.7; }
+.tiptap p { margin: 0 0 0.2em; color: rgba(255,255,255,0.72); font-size: 14px; line-height: 1.5; }
 .tiptap h1 { font-size: 1.6em; font-weight: 700; color: rgba(255,255,255,0.9); margin: 1em 0 0.4em; }
 .tiptap h2 { font-size: 1.3em; font-weight: 700; color: rgba(255,255,255,0.88); margin: 0.9em 0 0.35em; }
 .tiptap h3 { font-size: 1.1em; font-weight: 600; color: rgba(255,255,255,0.85); margin: 0.8em 0 0.3em; }
@@ -182,7 +182,7 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin: 4px 0;
+  margin: 2px 0;
 }
 .tiptap ul[data-type="taskList"] li > label {
   flex-shrink: 0;
@@ -260,6 +260,19 @@ input:focus, textarea:focus, select:focus {
 .tiptap:focus-visible {
   outline: none;
 }
+
+/* Highlight mark */
+.tiptap mark { border-radius: 3px; padding: 0 2px; }
+
+/* Text align */
+.tiptap p[style*="text-align: center"],
+.tiptap h1[style*="text-align: center"],
+.tiptap h2[style*="text-align: center"],
+.tiptap h3[style*="text-align: center"] { text-align: center; }
+.tiptap p[style*="text-align: right"],
+.tiptap h1[style*="text-align: right"],
+.tiptap h2[style*="text-align: right"],
+.tiptap h3[style*="text-align: right"] { text-align: right; }
 
 @media print {
   .print-hide,
