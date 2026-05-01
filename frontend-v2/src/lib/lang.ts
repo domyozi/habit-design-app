@@ -12,8 +12,8 @@ export interface NavItem {
 
 const NAV_JA: NavItem[] = [
   { id: 'home',     icon: '⌂', label: 'ホーム',    note: 'デイリー実行',      color: '#7dd3fc' },
-  { id: 'morning',  icon: '◎', label: 'モーニング', note: 'コア + ルーティン', color: '#7dd3fc' },
-  { id: 'evening',  icon: '◑', label: 'イブニング', note: '振り返り + 翌日',   color: '#c4b5fd' },
+  { id: 'morning',  icon: '◎', label: 'レコード',   note: 'コア + ルーティン', color: '#7dd3fc' },
+  { id: 'evening',  icon: '◑', label: 'ジャーナル', note: '振り返り + 翌日',   color: '#c4b5fd' },
   { id: 'monthly',  icon: '⊞', label: '分析',       note: '習慣分析・レポート',color: '#38bdf8' },
   { id: 'wanna-be', icon: '◆', label: '理想像',     note: 'アイデンティティ',  color: '#f59e0b' },
   { id: 'notes',    icon: '✎', label: 'ノート',    note: 'らくがき帳',         color: '#86efac' },
@@ -23,8 +23,8 @@ const NAV_JA: NavItem[] = [
 
 const NAV_EN: NavItem[] = [
   { id: 'home',     icon: '⌂', label: 'Home',     note: 'daily execution',   color: '#7dd3fc' },
-  { id: 'morning',  icon: '◎', label: 'Morning',  note: 'core + routine',    color: '#7dd3fc' },
-  { id: 'evening',  icon: '◑', label: 'Evening',  note: 'review + next day', color: '#c4b5fd' },
+  { id: 'morning',  icon: '◎', label: 'Record',   note: 'core + routine',    color: '#7dd3fc' },
+  { id: 'evening',  icon: '◑', label: 'Journal',  note: 'review + next day', color: '#c4b5fd' },
   { id: 'monthly',  icon: '⊞', label: 'Analytics',note: 'habit analysis',    color: '#38bdf8' },
   { id: 'wanna-be', icon: '◆', label: 'Wanna Be', note: 'identity board',    color: '#f59e0b' },
   { id: 'notes',    icon: '✎', label: 'Notes',    note: 'scratch pad',       color: '#86efac' },
