@@ -17,7 +17,7 @@ from app.core.supabase import get_supabase
 
 router = APIRouter(prefix="/journals")
 
-ALLOWED_ENTRY_TYPES = {'journaling', 'daily_report', 'checklist', 'kpi_update', 'evening_feedback', 'evening_notes', 'morning_journal'}
+ALLOWED_ENTRY_TYPES = {'journaling', 'daily_report', 'checklist', 'kpi_update', 'evening_feedback', 'evening_notes', 'morning_journal', 'user_context_snapshot'}
 
 
 @router.post("", status_code=201)

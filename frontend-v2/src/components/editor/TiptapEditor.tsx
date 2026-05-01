@@ -158,9 +158,11 @@ const ColorPicker = ({
 function FixedToolbar({
   editor,
   onImageClick,
+  actionsSlot,
 }: {
   editor: ReturnType<typeof useEditor>
   onImageClick: () => void
+  actionsSlot?: React.ReactNode
 }) {
   const s = useEditorState({
     editor,
@@ -265,6 +267,14 @@ function FixedToolbar({
       <ToolBtn onClick={onImageClick} title="画像を挿入">🖼</ToolBtn>
       <ToolBtn active={s?.link} onClick={setLink} title="リンク">🔗</ToolBtn>
       <ToolBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="区切り線">—</ToolBtn>
+
+      {actionsSlot && (
+        <>
+          <span className="ml-auto" />
+          <Sep />
+          {actionsSlot}
+        </>
+      )}
     </div>
   )
 }
@@ -332,6 +342,7 @@ interface Props {
   onChange: (json: string) => void
   onCharCount?: (chars: number, words: number) => void
   placeholder?: string
+  actionsSlot?: React.ReactNode
 }
 
 interface SlashState {
@@ -340,7 +351,7 @@ interface SlashState {
   from: number
 }
 
-export function TiptapEditor({ content, onChange, onCharCount, placeholder = 'ここに書き殴ってください... (/ でブロック挿入)' }: Props) {
+export function TiptapEditor({ content, onChange, onCharCount, placeholder = 'ここに書き殴ってください... (/ でブロック挿入)', actionsSlot }: Props) {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [slash, setSlash] = useState<SlashState | null>(null)
 
@@ -477,7 +488,7 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
 
   return (
     <div className="relative flex-1 flex flex-col">
-      <FixedToolbar editor={editor} onImageClick={handleToolbarImageClick} />
+      <FixedToolbar editor={editor} onImageClick={handleToolbarImageClick} actionsSlot={actionsSlot} />
       <BubbleToolbar editor={editor} />
 
       {slash && (

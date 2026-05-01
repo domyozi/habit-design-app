@@ -5,7 +5,7 @@ import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/tod
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { streamEveningFeedback, checkRateLimit, extractMemoryPatch, mergeContextPatch, type TodayMorningContext } from '@/lib/ai'
 import { useUserContext } from '@/lib/user-context'
-import { saveEveningFeedback, loadEveningFeedback, saveEveningNotes, loadEveningNotes } from '@/lib/api'
+import { saveEveningFeedback, loadEveningFeedback, saveEveningNotes, loadEveningNotes, saveUserContextSnapshot } from '@/lib/api'
 
 interface CheckItem { id: string; label: string; minutes?: number }
 
@@ -218,7 +218,10 @@ export const EveningTab = ({
             const patch = await extractMemoryPatch(full, userCtx)
             if (patch && Object.keys(patch).length > 0) {
               const merged = mergeContextPatch(userCtx, patch)
-              if (Object.keys(merged).length > 0) await updateUserCtx(merged)
+              if (Object.keys(merged).length > 0) {
+                await updateUserCtx(merged)
+                await saveUserContextSnapshot(dateKey, merged)
+              }
             }
           })()
           onComplete?.()

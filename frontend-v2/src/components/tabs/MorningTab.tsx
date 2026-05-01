@@ -5,7 +5,7 @@ import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } f
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, extractMemoryPatch, mergeContextPatch, type JournalBriefResult, type YesterdayContext } from '@/lib/ai'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { useUserContext } from '@/lib/user-context'
-import { saveMorningJournal, fetchDailyLog } from '@/lib/api'
+import { saveMorningJournal, fetchDailyLog, saveUserContextSnapshot } from '@/lib/api'
 
 // ─── 型 ───────────────────────────────────────────────────────
 interface CheckItem {
@@ -377,7 +377,10 @@ export const MorningTab = ({
             const patch = await extractMemoryPatch(fullText, userCtx)
             if (patch && Object.keys(patch).length > 0) {
               const merged = mergeContextPatch(userCtx, patch)
-              if (Object.keys(merged).length > 0) await updateUserCtx(merged)
+              if (Object.keys(merged).length > 0) {
+                await updateUserCtx(merged)
+                await saveUserContextSnapshot(dateKey, merged)
+              }
             }
           })()
         },

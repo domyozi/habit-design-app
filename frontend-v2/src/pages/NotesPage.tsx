@@ -3,7 +3,6 @@ import { TiptapEditor } from '@/components/editor/TiptapEditor'
 import { useNotes } from '@/hooks/useNotes'
 import { exportToMarkdown } from '@/lib/note-export'
 import { fetchDailyLog, fetchDailyLogDates, type DailyLogData } from '@/lib/api'
-import { useUserContext } from '@/lib/user-context'
 
 const DEBOUNCE_MS = 400
 
@@ -44,7 +43,6 @@ function DailyLogView() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [log, setLog] = useState<DailyLogData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [userCtx] = useUserContext()
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024
   const [showDetail, setShowDetail] = useState(false)
 
@@ -65,10 +63,17 @@ function DailyLogView() {
     })
   }, [selectedDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasMemory = userCtx && (
-    userCtx.identity || userCtx.patterns ||
-    (userCtx.values_keywords?.length ?? 0) > 0 ||
-    Object.keys(userCtx.insights ?? {}).length > 0
+  // スナップショットを解析（日付別に保存された AI メモリ）
+  const snapshotCtx = (() => {
+    if (!log?.user_context_snapshot) return null
+    try { return JSON.parse(log.user_context_snapshot) as import('@/lib/api').UserContext }
+    catch { return null }
+  })()
+
+  const hasMemory = snapshotCtx && (
+    snapshotCtx.identity || snapshotCtx.patterns ||
+    (snapshotCtx.values_keywords?.length ?? 0) > 0 ||
+    Object.keys(snapshotCtx.insights ?? {}).length > 0
   )
 
   const hasAnyContent = log && (
@@ -162,26 +167,26 @@ function DailyLogView() {
                     </DailySection>
                   )}
 
-                  {hasMemory && (
+                  {hasMemory && snapshotCtx && (
                     <DailySection title="今日、僕（AI）が学んだきみのこと" color="#f9a8d4">
                       <div className="space-y-3 text-sm text-white/76">
-                        {userCtx?.identity && (
+                        {snapshotCtx.identity && (
                           <div>
                             <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Identity</p>
-                            <p className="leading-relaxed whitespace-pre-wrap">{userCtx.identity}</p>
+                            <p className="leading-relaxed whitespace-pre-wrap">{snapshotCtx.identity}</p>
                           </div>
                         )}
-                        {userCtx?.patterns && (
+                        {snapshotCtx.patterns && (
                           <div>
                             <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Patterns</p>
-                            <p className="leading-relaxed whitespace-pre-wrap">{userCtx.patterns}</p>
+                            <p className="leading-relaxed whitespace-pre-wrap">{snapshotCtx.patterns}</p>
                           </div>
                         )}
-                        {(userCtx?.values_keywords?.length ?? 0) > 0 && (
+                        {(snapshotCtx.values_keywords?.length ?? 0) > 0 && (
                           <div>
                             <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Values</p>
                             <div className="flex flex-wrap gap-1.5">
-                              {userCtx!.values_keywords!.map(kw => (
+                              {snapshotCtx.values_keywords!.map(kw => (
                                 <span key={kw} className="rounded-full border border-[#f9a8d4]/20 bg-[#f9a8d4]/10 px-2.5 py-0.5 text-[11px] text-[#f9a8d4]/80">
                                   {kw}
                                 </span>
@@ -189,11 +194,11 @@ function DailyLogView() {
                             </div>
                           </div>
                         )}
-                        {Object.keys(userCtx?.insights ?? {}).length > 0 && (
+                        {Object.keys(snapshotCtx.insights ?? {}).length > 0 && (
                           <div>
                             <p className="text-[10px] uppercase tracking-[0.18em] text-white/36 mb-1">Insights</p>
                             <div className="space-y-1">
-                              {Object.entries(userCtx!.insights!).map(([k, v]) => (
+                              {Object.entries(snapshotCtx.insights!).map(([k, v]) => (
                                 <p key={k} className="leading-relaxed"><span className="text-white/40">{k}:</span> {String(v)}</p>
                               ))}
                             </div>
@@ -371,23 +376,11 @@ function FreeNotesView() {
 
       {showEditor && selected ? (
         <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
-            {isMobile && (
-              <button type="button" onClick={() => setShowEditor(false)} className="text-xs text-white/40 hover:text-white/70 mr-1">
-                ← 一覧
-              </button>
-            )}
-            <p className="text-[10px] text-white/25 flex-1">テキスト選択でフォーマット　/でブロック挿入　画像はペースト or ドロップ</p>
-            <button type="button" onClick={() => handlePinToggle(selected.id, selected.pinned)} title={selected.pinned ? 'ピン解除' : 'ピン留め'} className="rounded-lg px-2 py-1 text-[11px] text-white/30 hover:text-white/70 transition-colors">
-              {selected.pinned ? '📌' : '🔧'}
+          {isMobile && (
+            <button type="button" onClick={() => setShowEditor(false)} className="border-b border-white/[0.06] px-4 py-2 text-xs text-white/40 hover:text-white/70 text-left">
+              ← 一覧
             </button>
-            <button type="button" onClick={handleExport} className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] text-white/40 hover:border-white/[0.16] hover:text-white/70 transition-colors" title="Markdownとしてエクスポート">
-              ↓ .md
-            </button>
-            <button type="button" onClick={() => handleDelete(selected.id)} className="rounded-lg border border-red-500/10 px-2.5 py-1 text-[10px] text-red-400/50 hover:border-red-500/30 hover:text-red-400/80 transition-colors">
-              削除
-            </button>
-          </div>
+          )}
           <input
             type="text"
             value={localTitle}
@@ -396,7 +389,38 @@ function FreeNotesView() {
             className="w-full bg-transparent px-6 py-5 text-xl font-bold text-white/90 placeholder:text-white/20 outline-none border-b border-white/[0.04]"
           />
           <div className="flex-1 overflow-y-auto">
-            <TiptapEditor content={localBody} onChange={handleBodyChange} onCharCount={(c, w) => { setCharCount(c); setWordCount(w) }} />
+            <TiptapEditor
+              content={localBody}
+              onChange={handleBodyChange}
+              onCharCount={(c, w) => { setCharCount(c); setWordCount(w) }}
+              actionsSlot={
+                <>
+                  <button
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); handlePinToggle(selected.id, selected.pinned) }}
+                    title={selected.pinned ? 'ピン解除' : 'ピン留め'}
+                    className="flex h-7 items-center justify-center rounded px-1.5 text-xs text-white/40 hover:bg-white/10 hover:text-white/70 transition-colors select-none"
+                  >
+                    {selected.pinned ? '📌' : '🔧'}
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); handleExport() }}
+                    title="Markdownとしてエクスポート"
+                    className="flex h-7 items-center justify-center rounded px-2 text-[10px] text-white/40 hover:bg-white/10 hover:text-white/70 transition-colors select-none border border-white/[0.08]"
+                  >
+                    ↓ .md
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); handleDelete(selected.id) }}
+                    className="flex h-7 items-center justify-center rounded px-2 text-[10px] text-red-400/50 hover:bg-red-500/10 hover:text-red-400/80 transition-colors select-none border border-red-500/10"
+                  >
+                    削除
+                  </button>
+                </>
+              }
+            />
           </div>
           <div className="flex items-center justify-between border-t border-white/[0.04] px-6 py-2">
             <p className="text-[10px] text-white/20">{formatRelative(selected.updated_at)} に更新</p>

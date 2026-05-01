@@ -378,6 +378,19 @@ export const loadEveningFeedback = async (date: string): Promise<string | null> 
 }
 
 /**
+ * UserContext スナップショットを日付別に保存する（AI セッション完了後に呼ぶ）
+ */
+export const saveUserContextSnapshot = async (date: string, ctx: object): Promise<void> => {
+  try {
+    await apiPost('/api/journals', {
+      entry_date: date,
+      entry_type: 'user_context_snapshot',
+      content: JSON.stringify(ctx),
+    })
+  } catch { /* silent — non-critical */ }
+}
+
+/**
  * モーニングジャーナルを保存する（日付で upsert）
  */
 export const saveMorningJournal = async (date: string, content: string): Promise<void> => {
@@ -405,10 +418,11 @@ export const loadEveningNotes = async (date: string): Promise<string | null> => 
 }
 
 export interface DailyLogData {
-  morning_journal: string | null   // content from morning_journal entry
-  morning_feedback: string | null  // content from journaling entry (AI brief)
+  morning_journal: string | null
+  morning_feedback: string | null
   evening_notes: string | null
   evening_feedback: string | null
+  user_context_snapshot: string | null  // JSON snapshot of UserContext at time of AI session
 }
 
 /**
@@ -424,9 +438,10 @@ export const fetchDailyLog = async (date: string): Promise<DailyLogData> => {
       morning_feedback: find('journaling')?.content ?? null,
       evening_notes: find('evening_notes')?.content ?? null,
       evening_feedback: find('evening_feedback')?.content ?? null,
+      user_context_snapshot: find('user_context_snapshot')?.content ?? null,
     }
   } catch {
-    return { morning_journal: null, morning_feedback: null, evening_notes: null, evening_feedback: null }
+    return { morning_journal: null, morning_feedback: null, evening_notes: null, evening_feedback: null, user_context_snapshot: null }
   }
 }
 
