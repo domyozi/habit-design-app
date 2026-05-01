@@ -3,7 +3,9 @@ import { CalendarPanel } from '@/components/calendar/CalendarPanel'
 import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, todayKey } from '@/lib/storage'
 import { useTodoDefinitions } from '@/lib/todos'
 import { useAuth } from '@/hooks/useAuth'
+import { useUserProfile } from '@/hooks/useUserProfile'
 import { AuthPage } from '@/pages/AuthPage'
+import { AgeOnboarding } from '@/components/AgeOnboarding'
 import { PrivacyPage } from '@/pages/PrivacyPage'
 import { BrandMark } from '@/components/ui/BrandMark'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -646,6 +648,7 @@ function MainApp() {
 
 export default function App() {
   const { session, loading: authLoading } = useAuth()
+  const { profile, loading: profileLoading, refetch: refetchProfile } = useUserProfile(!!session)
 
   if (window.location.pathname === '/privacy') return <PrivacyPage />
 
@@ -666,6 +669,18 @@ export default function App() {
   }
 
   if (!session) return <AuthPage />
+
+  if (profileLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#05080d]">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-[#7dd3fc]/60" />
+      </div>
+    )
+  }
+
+  if (profile && profile.age == null) {
+    return <AgeOnboarding onComplete={() => { void refetchProfile() }} />
+  }
 
   return <MainApp />
 }

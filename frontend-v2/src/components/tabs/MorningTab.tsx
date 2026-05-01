@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type OpsTask } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } from '@/lib/todos'
-import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, extractMemoryPatch, mergeContextPatch, type JournalBriefResult, type YesterdayContext } from '@/lib/ai'
+import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult, type YesterdayContext } from '@/lib/ai'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { useUserContext } from '@/lib/user-context'
-import { saveMorningJournal, fetchDailyLog, saveUserContextSnapshot } from '@/lib/api'
+import { saveMorningJournal, fetchDailyLog } from '@/lib/api'
 
 // ─── 型 ───────────────────────────────────────────────────────
 interface CheckItem {
@@ -240,7 +240,7 @@ export const MorningTab = ({
 }) => {
   const dateKey = viewDate ?? todayKey()
   const isReadOnly = dateKey !== todayKey()
-  const [userCtx, updateUserCtx] = useUserContext()
+  const [userCtx] = useUserContext()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
   const [briefLoading, setBriefLoading] = useState(false)
   const [streamingText, setStreamingText] = useState('')
@@ -369,17 +369,7 @@ export const MorningTab = ({
             setBriefError('解析に失敗しました。もう一度お試しください。')
           }
           setBriefLoading(false)
-          // バックグラウンドでメモリ更新（ノンブロッキング）
-          void (async () => {
-            const patch = await extractMemoryPatch(fullText, userCtx)
-            if (patch && Object.keys(patch).length > 0) {
-              const merged = mergeContextPatch(userCtx, patch)
-              if (Object.keys(merged).length > 0) {
-                await updateUserCtx(merged)
-                await saveUserContextSnapshot(dateKey, merged)
-              }
-            }
-          })()
+          // メモリ自動更新は backend (POST /api/journals → BackgroundTasks) で実行される
           // バックグラウンドで習慣候補抽出（失敗してもサイレント）
           void import('@/lib/api').then(api => api.extractHabitSuggestions(journal, 'morning', dateKey).catch(() => {}))
         },

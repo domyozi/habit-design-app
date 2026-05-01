@@ -87,7 +87,7 @@ async def create_message(
         return "".join(text_blocks)
     except anthropic.APIError as e:
         logger.error("Claude API障害 (create_message): %s", str(e))
-        raise AIUnavailableError(f"Claude APIが利用不能です: {str(e)}") from e
+        raise AIUnavailableError("Claude API is unavailable") from e
 
 
 async def stream_message(
@@ -121,7 +121,7 @@ async def stream_message(
                 yield text
     except anthropic.APIError as e:
         logger.error("Claude API障害 (stream_message): %s", str(e))
-        raise AIUnavailableError(f"Claude APIが利用不能です: {str(e)}") from e
+        raise AIUnavailableError("Claude API is unavailable") from e
 
 
 async def analyze_wanna_be(
@@ -170,7 +170,7 @@ async def analyze_wanna_be(
 
     except anthropic.APIError as e:
         logger.error("Claude API障害 (analyze_wanna_be): %s", str(e))
-        raise AIUnavailableError(f"Claude APIが利用不能です: {str(e)}") from e
+        raise AIUnavailableError("Claude API is unavailable") from e
 
 
 async def generate_weekly_review(
@@ -230,7 +230,7 @@ async def generate_weekly_review(
 
     except anthropic.APIError as e:
         logger.error("Claude API障害 (generate_weekly_review): %s", str(e))
-        raise AIUnavailableError(f"Claude APIが利用不能です: {str(e)}") from e
+        raise AIUnavailableError("Claude API is unavailable") from e
 
 
 def _extract_goals_json(text: str) -> list:
@@ -353,3 +353,170 @@ def _extract_actions_json(text: str) -> list:
     except (json.JSONDecodeError, TypeError):
         logger.warning("アクションJSONのパース失敗")
         return []
+
+
+# =============================================
+# メモリ自動抽出（ジャーナル投稿フック用）
+# =============================================
+
+# 抽出対象フィールドの最低入力長。短すぎる投稿では抽出を行わない。
+_MEMORY_EXTRACTION_MIN_LENGTH = 80
+
+
+async def extract_memory_facts(
+    session_text: str,
+    current_ctx: dict | None,
+    async_client=None,
+) -> dict | None:
+    """
+    【メモリ抽出】: ジャーナル投稿テキストから user_context への差分パッチを抽出する。
+
+    Args:
+        session_text: 抽出対象の投稿テキスト（content など）
+        current_ctx: 既存の user_context レコード（identity / patterns / values_keywords / insights）
+        async_client: AsyncAnthropic（テスト用に注入可能）
+
+    Returns:
+        dict: 差分パッチ（identity / patterns / values_keywords / insights のサブセット）。
+        None: 短すぎる入力・AI 失敗・JSON パース失敗・新情報なし
+    """
+    if not session_text or len(session_text) < _MEMORY_EXTRACTION_MIN_LENGTH:
+        return None
+
+    current_summary_parts: list[str] = []
+    if current_ctx:
+        if current_ctx.get("identity"):
+            current_summary_parts.append(f"identity: {current_ctx['identity']}")
+        if current_ctx.get("patterns"):
+            current_summary_parts.append(f"patterns: {current_ctx['patterns']}")
+        kw = current_ctx.get("values_keywords") or []
+        if isinstance(kw, list) and kw:
+            current_summary_parts.append(f"values_keywords: {', '.join(str(x) for x in kw)}")
+        if current_ctx.get("insights"):
+            current_summary_parts.append(
+                f"insights: {json.dumps(current_ctx['insights'], ensure_ascii=False)}"
+            )
+    current_summary = "\n".join(current_summary_parts) or "なし"
+
+    system_prompt = (
+        "あなたはユーザーのパーソナリティ分析を行うAIです。"
+        "セッションテキストから客観的な洞察のみを抽出し、JSON形式で返してください。"
+    )
+    user_prompt = f"""以下のジャーナル投稿テキストから、ユーザーに関する新しい洞察のみを抽出してください。
+既存メモリと重複する内容は含めないでください。
+
+## 現在のユーザーメモリ（既存情報）
+{current_summary}
+
+## 今回の投稿テキスト
+<user_input>
+{session_text}
+</user_input>
+
+以下のJSON形式で回答してください。更新不要なフィールドは含めないでください。新情報がない場合は {{}} を返してください。
+
+```json
+{{
+  "identity": "新たに判明したアイデンティティ情報（追記用）",
+  "patterns": "新たに観察された行動パターン",
+  "values_keywords": ["新キーワード"],
+  "insights": {{ "キー": "具体的な発見" }}
+}}
+```
+
+ルール：確実に読み取れた事実のみ。推測・一般論は除く。"""
+
+    try:
+        response = await create_message(
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=512,
+            async_client=async_client,
+        )
+    except AIUnavailableError:
+        logger.warning("メモリ抽出: Claude API 利用不可")
+        return None
+    except Exception as e:  # noqa: BLE001 - 抽出失敗はメインフローを壊さない
+        logger.warning("メモリ抽出: 予期しない例外 %s", e)
+        return None
+
+    return _extract_memory_json(response)
+
+
+def _extract_memory_json(text: str) -> dict | None:
+    """
+    ```json ... ``` フェンスドブロック、もしくは最初の { から最後の } までを抽出して dict を返す。
+    パース失敗・空 dict・想定外形式は None。
+    """
+    import re
+
+    match = re.search(r'```json\s*(.*?)```', text, re.DOTALL)
+    if match:
+        candidate = match.group(1).strip()
+    else:
+        first = text.find("{")
+        last = text.rfind("}")
+        if first < 0 or last < 0 or last <= first:
+            return None
+        candidate = text[first : last + 1]
+
+    try:
+        data = json.loads(candidate)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("メモリ JSON のパース失敗")
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    cleaned: dict = {}
+    identity = data.get("identity")
+    if isinstance(identity, str) and identity.strip():
+        cleaned["identity"] = identity.strip()
+    patterns = data.get("patterns")
+    if isinstance(patterns, str) and patterns.strip():
+        cleaned["patterns"] = patterns.strip()
+    kw = data.get("values_keywords")
+    if isinstance(kw, list):
+        kw_clean = [s.strip() for s in kw if isinstance(s, str) and s.strip()]
+        if kw_clean:
+            cleaned["values_keywords"] = kw_clean
+    insights = data.get("insights")
+    if isinstance(insights, dict) and insights:
+        cleaned["insights"] = insights
+
+    return cleaned or None
+
+
+def merge_memory_patch(current: dict | None, patch: dict) -> dict:
+    """
+    既存メモリと新しい差分を追記型でマージする（破壊的上書きを避ける）。
+    返り値は user_context テーブルへ送る upsert 用の dict（変更フィールドのみ）。
+    """
+    result: dict = {}
+    current = current or {}
+
+    if patch.get("identity"):
+        existing = current.get("identity")
+        result["identity"] = f"{existing}\n{patch['identity']}" if existing else patch["identity"]
+
+    if patch.get("patterns"):
+        existing = current.get("patterns")
+        result["patterns"] = f"{existing}\n{patch['patterns']}" if existing else patch["patterns"]
+
+    if patch.get("values_keywords"):
+        existing_kw = current.get("values_keywords") or []
+        merged_kw = list(existing_kw)
+        for kw in patch["values_keywords"]:
+            if kw and kw not in merged_kw:
+                merged_kw.append(kw)
+        if merged_kw != list(existing_kw):
+            result["values_keywords"] = merged_kw
+
+    if patch.get("insights"):
+        existing_insights = current.get("insights") or {}
+        merged = {**existing_insights, **patch["insights"]}
+        if merged != existing_insights:
+            result["insights"] = merged
+
+    return result

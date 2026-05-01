@@ -11,6 +11,7 @@ import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 import { AiMark } from '@/components/ui/AiMark'
 import { useUserContext } from '@/lib/user-context'
+import { useUserProfile } from '@/hooks/useUserProfile'
 import { supabase } from '@/lib/supabase'
 import type { AppLang } from '@/lib/lang'
 
@@ -348,31 +349,15 @@ const TodoManager = () => {
 
 // ─── SettingsPage ─────────────────────────────────────────────
 
-const ApiKeySettings = () => (
-  <div className="rounded-2xl border border-white/[0.06] bg-[#0b1320]/80 px-4 py-4">
-    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">AI connection</p>
-    <p className="mt-2 text-sm text-white/62">
-      Anthropic API Key はサーバー側の環境変数で管理されます。ブラウザや localStorage には保存しません。
-    </p>
-    <p className="mt-2 text-[11px] text-white/30">
-      AI機能には認証済みセッションとバックエンドの ANTHROPIC_API_KEY 設定が必要です。
-    </p>
-  </div>
-)
-
-const GRANULARITY_OPTIONS = [
-  { value: 'child', label: 'こども' },
-  { value: 'student', label: '学生' },
-  { value: 'adult', label: '大人' },
-] as const
-
 const ProfileSettings = () => {
   const [ctx, updateCtx] = useUserContext()
+  const { profile, update: updateProfile } = useUserProfile(true)
   const [displayName, setDisplayName] = useState(ctx?.display_name ?? '')
   const [avatarUploading, setAvatarUploading] = useState(false)
-  const granularity = ctx?.granularity ?? 'adult'
+  const [ageDraft, setAgeDraft] = useState<string>('')
   const isComposing = useRef(false)
   const isFocused = useRef(false)
+  const ageFocused = useRef(false)
 
   // ctx ロード後に同期（フォーカス中は上書きしない — IME 二重入力防止）
   useEffect(() => {
@@ -381,11 +366,24 @@ const ProfileSettings = () => {
     }
   }, [ctx?.display_name])
 
-  const handleChange = (v: string) => {
-    void updateCtx({ granularity: v })
-  }
+  // profile ロード時に年齢入力を同期
+  useEffect(() => {
+    if (!ageFocused.current && profile) {
+      setAgeDraft(profile.age == null ? '' : String(profile.age))
+    }
+  }, [profile?.age])
+
   const saveDisplayName = () => {
     void updateCtx({ display_name: displayName.trim() })
+  }
+
+  const saveAge = () => {
+    const trimmed = ageDraft.trim()
+    if (trimmed === '') return
+    const parsed = Number(trimmed)
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 150) return
+    if (profile && profile.age === parsed) return
+    void updateProfile({ age: parsed })
   }
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -452,23 +450,23 @@ const ProfileSettings = () => {
         />
       </div>
 
-      <p className="mt-3 text-[11px] text-white/38">マンダラチャートのアクションの難易度・語調が変わります</p>
-      <div className="mt-2 flex gap-2">
-        {GRANULARITY_OPTIONS.map(opt => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => handleChange(opt.value)}
-            className={[
-              'flex-1 rounded-full border py-2 text-xs font-semibold transition-all',
-              granularity === opt.value
-                ? 'border-[#7dd3fc]/40 bg-[#7dd3fc]/15 text-[#aee5ff]'
-                : 'border-white/10 bg-white/[0.02] text-white/42 hover:border-white/25',
-            ].join(' ')}
-          >
-            {opt.label}
-          </button>
-        ))}
+      {/* 年齢: AI への語調・難易度ヒント */}
+      <div className="mt-3">
+        <p className="mb-1.5 text-[11px] text-white/38">年齢（AI コーチの語調・難易度を調整）</p>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={150}
+          step={1}
+          value={ageDraft}
+          onChange={e => setAgeDraft(e.target.value)}
+          onFocus={() => { ageFocused.current = true }}
+          onBlur={() => { ageFocused.current = false; saveAge() }}
+          onKeyDown={e => { if (e.key === 'Enter') { saveAge(); (e.target as HTMLInputElement).blur() } }}
+          placeholder="例: 30"
+          className="w-full rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"
+        />
       </div>
     </div>
   )
@@ -1177,7 +1175,6 @@ export const SettingsPage = () => {
           <LangSettings />
           <ProfileSettings />
           <IntegrationsSettings />
-          <ApiKeySettings />
         </div>
       )}
 

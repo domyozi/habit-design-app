@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useContext } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useUserProfile } from '@/hooks/useUserProfile'
 import { UserContextCtx } from '@/lib/user-context'
 import {
   streamMandalaChart,
@@ -13,7 +14,6 @@ import {
   mergeContextPatch,
   type MandalaData,
   type IntakeQuestion,
-  type Granularity,
 } from '@/lib/ai'
 import {
   getWannaBe, getMandala, saveWannaBe, saveMandala, createHabit,
@@ -53,6 +53,8 @@ type GenerateStep = 'input' | 'clarifying' | 'generating'
 export const WannaBeTab = () => {
   const { session, loading: authLoading } = useAuth()
   const [userCtx, updateUserCtx] = useContext(UserContextCtx)
+  const { profile } = useUserProfile(true)
+  const userAge = profile?.age ?? null
 
   // ─── Data state ───────────────────────────────────────────────
   const [mandala, setMandala] = useState<MandalaData | null>(null)
@@ -205,7 +207,6 @@ export const WannaBeTab = () => {
     const el = mandala.elements[eIdx]
     if (!el) return
 
-    const granularity = (userCtx?.granularity ?? localStorage.getItem('settings:profile:granularity') ?? 'adult') as Granularity
     setSuggestLoading(true)
     setSuggestions([])
     setSuggestStreamText('')
@@ -215,7 +216,7 @@ export const WannaBeTab = () => {
         mandala.mainGoal,
         el.title,
         el.actions[aIdx] ?? '',
-        granularity,
+        userAge,
         (text) => { setSuggestStreamText(text) },
         (fullText) => {
           const parsed = extractJsonBlock<{ suggestions: string[] }>(fullText)
@@ -323,8 +324,6 @@ export const WannaBeTab = () => {
     setMandala(null)
     setError(null)
 
-    const granularity = (userCtx?.granularity ?? localStorage.getItem('settings:profile:granularity') ?? 'adult') as Granularity
-
     try {
       saveWannaBe(baseInput).catch(e => console.error('wanna_be 保存に失敗しました', e))
 
@@ -354,7 +353,7 @@ export const WannaBeTab = () => {
             setGenerateStep('input')
           }
         },
-        granularity,
+        userAge,
       )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'API呼び出しに失敗しました。')

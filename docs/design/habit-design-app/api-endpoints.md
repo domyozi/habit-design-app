@@ -104,18 +104,21 @@ data: {"type":"done","actions":[...]}\n\n
 
 **信頼性**: 🔵 *REQ-701/801/802より*
 
-**説明**: プロフィール更新（週次レビュー曜日・通知設定等）
+**説明**: プロフィール更新（週次レビュー曜日・通知設定・年齢等）
 
 **リクエスト**:
 ```json
 {
   "weekly_review_day": 5,
   "notification_email": "user@example.com",
-  "notification_enabled": true
+  "notification_enabled": true,
+  "age": 35
 }
 ```
 
 **レスポンス（成功）**: 更新後のUserProfileオブジェクト
+
+**備考**: `age` は利用開始時のオンボーディングで設定し、以降設定画面から変更可能。AI 出力の語調・難易度ヒントとしてプロンプトに渡される（旧 `granularity` の後継）。
 
 ---
 

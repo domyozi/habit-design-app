@@ -597,6 +597,46 @@ export const saveMonthlyTargets = (
 ): Promise<void> => apiPut('/api/monthly-targets', { year_month: yearMonth, targets })
 
 // ============================================================
+// User Profile API クライアント (user_profiles テーブル)
+// ============================================================
+
+export interface UserProfile {
+  id: string
+  display_name: string | null
+  timezone: string
+  weekly_review_day: number
+  notification_email: string | null
+  notification_enabled: boolean
+  age: number | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface UpdateUserProfileRequest {
+  display_name?: string
+  timezone?: string
+  weekly_review_day?: number
+  notification_email?: string | null
+  notification_enabled?: boolean
+  age?: number | null
+}
+
+interface ApiSuccessResponse<T> {
+  success: boolean
+  data: T
+}
+
+export const fetchUserProfile = async (): Promise<UserProfile> => {
+  const res = await apiGet<ApiSuccessResponse<UserProfile>>('/api/users/me')
+  return res.data
+}
+
+export const patchUserProfile = async (patch: UpdateUserProfileRequest): Promise<UserProfile> => {
+  const res = await apiPatch<ApiSuccessResponse<UserProfile>>('/api/users/me', patch)
+  return res.data
+}
+
+// ============================================================
 // User Context API クライアント
 // ============================================================
 
@@ -607,7 +647,6 @@ export interface UserContext {
   patterns?: string
   insights?: Record<string, unknown>
   lang?: 'ja' | 'en'
-  granularity?: string
   display_name?: string
   avatar_url?: string
 }

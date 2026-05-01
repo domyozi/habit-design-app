@@ -26,6 +26,7 @@ export interface UserProfile {
   weekly_review_day: number; // 🔵 REQ-701: 週次レビュー曜日（1=月〜7=日）
   notification_email: string | null; // 🔵 REQ-801
   notification_enabled: boolean; // 🔵 REQ-802
+  age: number | null; // 🟡 利用開始時のオンボーディングで取得。AI 出力の語調・難易度ヒント用（旧 granularity の後継）
   created_at: string; // 🔵 共通パターン
   updated_at: string; // 🔵 共通パターン
 }

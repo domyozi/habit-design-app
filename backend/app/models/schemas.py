@@ -10,6 +10,7 @@ TASK-0029: KGI/KPI モデル追加
 
 🔵 信頼性レベル: api-endpoints.md・interfaces.ts より
 """
+import math
 from datetime import date, datetime
 from typing import Any, Generic, Literal, Optional, TypeVar
 
@@ -87,6 +88,7 @@ class UserProfile(BaseModel):
     weekly_review_day: int = Field(default=1, ge=1, le=7)
     notification_email: Optional[str] = None
     notification_enabled: bool = False
+    age: Optional[int] = Field(default=None, ge=0, le=150)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -326,6 +328,7 @@ class UpdateUserProfileRequest(BaseModel):
     weekly_review_day: Optional[int] = Field(None, ge=1, le=7)
     notification_email: Optional[str] = None
     notification_enabled: Optional[bool] = None
+    age: Optional[int] = Field(None, ge=0, le=150)
 
 
 class CreateGoalRequest(BaseModel):
@@ -655,12 +658,34 @@ class KpiChartResponse(BaseModel):
 
 class HealthMetricItem(BaseModel):
     """バッチ送信の各指標アイテム。"""
-    metric: str
+    metric: str = Field(..., min_length=1, max_length=64)
     value: float
-    unit: Optional[str] = None
-    recorded_at: Optional[str] = None
+    unit: Optional[str] = Field(default=None, max_length=20)
+    recorded_at: Optional[str] = Field(default=None, max_length=64)
+
+    @field_validator("metric", mode="before")
+    @classmethod
+    def strip_metric(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("value")
+    @classmethod
+    def reject_non_finite_value(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("value must be finite")
+        return value
+
+    @field_validator("recorded_at")
+    @classmethod
+    def validate_recorded_at(cls, value: Optional[str]) -> Optional[str]:
+        if value in (None, ""):
+            return None
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return value
 
 
 class HealthBatchRequest(BaseModel):
     """iOS Shortcuts からの一括送信リクエスト。"""
-    metrics: list[HealthMetricItem]
+    metrics: list[HealthMetricItem] = Field(..., min_length=1, max_length=100)

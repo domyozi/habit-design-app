@@ -3,9 +3,8 @@ import { useDailyStorage, todayKey } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, HABIT_CATEGORIES } from '@/lib/todos'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
-import { streamEveningFeedback, checkRateLimit, extractMemoryPatch, mergeContextPatch, type TodayMorningContext } from '@/lib/ai'
-import { useUserContext } from '@/lib/user-context'
-import { saveEveningFeedback, loadEveningFeedback, saveEveningNotes, loadEveningNotes, saveUserContextSnapshot } from '@/lib/api'
+import { streamEveningFeedback, checkRateLimit, type TodayMorningContext } from '@/lib/ai'
+import { saveEveningFeedback, loadEveningFeedback, saveEveningNotes, loadEveningNotes } from '@/lib/api'
 
 interface CheckItem { id: string; label: string; minutes?: number }
 
@@ -52,7 +51,6 @@ export const EveningTab = ({
 }) => {
   const dateKey = viewDate ?? todayKey()
   const isReadOnly = dateKey !== todayKey()
-  const [userCtx, updateUserCtx] = useUserContext()
   const [todoDefinitions] = useTodoDefinitions()
   const eveningGrouped = byTimingGrouped(todoDefinitions, 'evening')
   // 夜の全タスクをカテゴリ順にフラット化
@@ -228,17 +226,7 @@ export const EveningTab = ({
             }
           }
 
-          // バックグラウンドでメモリ更新（ノンブロッキング）
-          void (async () => {
-            const patch = await extractMemoryPatch(full, userCtx)
-            if (patch && Object.keys(patch).length > 0) {
-              const merged = mergeContextPatch(userCtx, patch)
-              if (Object.keys(merged).length > 0) {
-                await updateUserCtx(merged)
-                await saveUserContextSnapshot(dateKey, merged)
-              }
-            }
-          })()
+          // メモリ自動更新は backend (POST /api/journals → BackgroundTasks) で実行される
           // バックグラウンドで習慣候補抽出（サイレント）
           void import('@/lib/api').then(api => api.extractHabitSuggestions(notes, 'evening', dateKey).catch(() => {}))
           onComplete?.()

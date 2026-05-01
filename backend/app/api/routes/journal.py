@@ -5,24 +5,37 @@
   POST /api/journals        - ジャーナルを保存（日付+タイプで upsert）
   GET  /api/journals        - ジャーナル一覧取得（直近 N 件）
   GET  /api/journals/{date} - 特定日のジャーナル取得
+
+【メモリ自動更新】:
+  POST /api/journals では保存後にバックグラウンドで AI 抽出を実行し、
+  user_context テーブル（identity / patterns / values_keywords / insights）を
+  追記マージで更新する。失敗してもメインフローは成功させる。
 """
+import logging
 import uuid
 from datetime import date as date_type
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
+from app.services.ai_service import extract_memory_facts, merge_memory_patch
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/journals")
 
 ALLOWED_ENTRY_TYPES = {'journaling', 'daily_report', 'checklist', 'kpi_update', 'evening_feedback', 'evening_notes', 'morning_journal', 'user_context_snapshot'}
 
+# メモリ抽出を実行する entry_type（短文・構造化データ系は除外）
+_MEMORY_EXTRACTION_TYPES = {'journaling', 'morning_journal', 'evening_notes', 'daily_report'}
+
 
 @router.post("", status_code=201)
 async def upsert_journal(
     payload: dict,
+    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user),
 ):
     from fastapi import HTTPException
@@ -41,10 +54,11 @@ async def upsert_journal(
         .execute()
     )
 
+    content = payload.get("content", "")
     data = {
         "user_id": user_id,
         "entry_date": entry_date,
-        "content": payload.get("content", ""),
+        "content": content,
         "entry_type": entry_type,
         "raw_input": payload.get("raw_input"),
     }
@@ -60,7 +74,38 @@ async def upsert_journal(
         data["id"] = str(uuid.uuid4())
         result = supabase.table("journal_entries").insert(data).execute()
 
+    # 投稿テキストからメモリ差分を抽出して user_context へ追記する。
+    # AI 失敗・空抽出はサイレントに無視する（メインフローを壊さない）。
+    if entry_type in _MEMORY_EXTRACTION_TYPES and isinstance(content, str) and content.strip():
+        background_tasks.add_task(_process_memory_extraction, user_id, content)
+
     return result.data[0] if result.data else {}
+
+
+async def _process_memory_extraction(user_id: str, session_text: str) -> None:
+    """ジャーナル投稿後にメモリを抽出して user_context を更新する（バックグラウンド実行）。"""
+    try:
+        supabase = get_supabase()
+        existing = (
+            supabase.table("user_context")
+            .select("identity, patterns, values_keywords, insights")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        current_ctx = existing.data[0] if existing.data else None
+
+        patch = await extract_memory_facts(session_text, current_ctx)
+        if not patch:
+            return
+
+        merged = merge_memory_patch(current_ctx, patch)
+        if not merged:
+            return
+
+        merged["user_id"] = user_id
+        supabase.table("user_context").upsert(merged, on_conflict="user_id").execute()
+    except Exception as e:  # noqa: BLE001 - バックグラウンド失敗をメインへ伝播させない
+        logger.warning("メモリ自動更新失敗 user_id=%s: %s", user_id, e)
 
 
 @router.get("")
