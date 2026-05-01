@@ -15,39 +15,52 @@ import { useUserProfile } from '@/hooks/useUserProfile'
 import { supabase } from '@/lib/supabase'
 import type { AppLang } from '@/lib/lang'
 
+// 数値系 field_type のとき unit 入力欄を出すかどうかの判定
+const NUMERIC_FIELD_TYPES = new Set<string>(['number', 'percent'])
+
+interface AddDraft {
+  label: string
+  field_type: TaskFieldType
+  unit: string
+}
+
+interface EditDraft {
+  label: string
+  field_type: TaskFieldType
+  unit: string
+  monthly_target: string
+}
+
 const TodoManager = () => {
   const [todos, setTodos] = useTodoDefinitions()
-  const [drafts, setDrafts] = useState<Record<HabitCategory, { label: string; timing: HabitTiming }>>({
-    habit:  { label: '', timing: 'morning' },
-    growth: { label: '', timing: 'morning' },
-    body:   { label: '', timing: 'morning' },
-    mind:   { label: '', timing: 'morning' },
-    system: { label: '', timing: 'morning' },
-    task:   { label: '', timing: 'morning' },
-  })
+  const [draft, setDraft] = useState<AddDraft>({ label: '', field_type: 'checkbox', unit: '' })
   const [openSection, setOpenSection] = useState<HabitCategory | null>('habit')
-  const [addingIn, setAddingIn] = useState<HabitCategory | null>(null)
+  const [adding, setAdding] = useState(false)
   const [showHidden, setShowHidden] = useState(false)
-  // 編集中アイテム: id → { label, timing, field_type, monthly_target }
-  const [editing, setEditing] = useState<Record<string, { label: string; timing: HabitTiming; field_type: string; monthly_target: string }>>({})
+  const [editing, setEditing] = useState<Record<string, EditDraft>>({})
 
-  const updateDraft = (section: HabitCategory, key: 'label' | 'timing', value: string) =>
-    setDrafts(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }))
+  const updateDraft = <K extends keyof AddDraft>(key: K, value: AddDraft[K]) =>
+    setDraft(prev => ({ ...prev, [key]: value }))
 
-  const addTodo = (section: HabitCategory) => {
-    const label = drafts[section].label.trim()
+  const addTodo = () => {
+    const label = draft.label.trim()
     if (!label) return
+    const unit = draft.unit.trim()
     const newTodo: TodoDefinition = {
       id: createTodoId(label),
       label,
-      section,
-      timing: drafts[section].timing,
+      section: 'habit',
+      timing: 'morning',
       isMust: false,
       is_active: true,
+      field_type: draft.field_type,
+      field_options: NUMERIC_FIELD_TYPES.has(draft.field_type) && unit
+        ? { unit }
+        : undefined,
     }
     setTodos(prev => [...prev, newTodo])
-    setDrafts(prev => ({ ...prev, [section]: { label: '', timing: 'morning' } }))
-    setAddingIn(null)
+    setDraft({ label: '', field_type: 'checkbox', unit: '' })
+    setAdding(false)
   }
 
   const hideTodo = (id: string) =>
@@ -64,8 +77,8 @@ const TodoManager = () => {
       ...prev,
       [item.id]: {
         label: item.label,
-        timing: item.timing,
         field_type: item.field_type ?? 'checkbox',
+        unit: item.field_options?.unit ?? '',
         monthly_target: item.monthly_target != null ? String(item.monthly_target) : '',
       },
     }))
@@ -77,11 +90,14 @@ const TodoManager = () => {
     const e = editing[id]
     if (!e?.label.trim()) return
     const mt = parseInt(e.monthly_target, 10)
+    const unit = e.unit.trim()
     setTodos(prev => prev.map(t => t.id === id ? {
       ...t,
       label: e.label.trim(),
-      timing: e.timing,
-      field_type: e.field_type as TaskFieldType,
+      field_type: e.field_type,
+      field_options: NUMERIC_FIELD_TYPES.has(e.field_type) && unit
+        ? { ...(t.field_options ?? {}), unit }
+        : t.field_options,
       monthly_target: !isNaN(mt) && mt > 0 ? mt : undefined,
     } : t))
     cancelEdit(id)
@@ -89,19 +105,12 @@ const TodoManager = () => {
 
   const allHidden = todos.filter(t => !t.is_active)
 
-  const timingColor = (timing: HabitTiming) =>
-    timing === 'morning' ? '#7dd3fc' : timing === 'evening' ? '#a78bfa' : '#94a3b8'
-
-  const timingLabel = (timing: HabitTiming) =>
-    timing === 'morning' ? 'AM' : timing === 'evening' ? 'PM' : '∞'
-
   return (
     <div className="px-4 py-3 space-y-2">
       {HABIT_CATEGORIES.map(section => {
         const activeItems = bySectionAll(todos, section.id).filter(t => t.is_active)
         const isOpen = openSection === section.id
-        const draft = drafts[section.id]
-        const isAdding = addingIn === section.id
+        const isNumericDraft = NUMERIC_FIELD_TYPES.has(draft.field_type)
 
         return (
           <div
@@ -140,6 +149,7 @@ const TodoManager = () => {
                     {activeItems.map(item => {
                       const isEditing = Boolean(editing[item.id])
                       const ed = editing[item.id]
+                      const isNumericEdit = ed ? NUMERIC_FIELD_TYPES.has(ed.field_type) : false
                       return (
                         <div key={item.id} className="group py-2.5 px-1">
                           {isEditing ? (
@@ -154,15 +164,6 @@ const TodoManager = () => {
                                   autoFocus
                                   className="flex-1 rounded-xl border border-white/[0.12] bg-[#08111c] px-3 py-1.5 text-sm text-white/88 placeholder-white/20 focus:border-white/22 focus:outline-none"
                                 />
-                                <select
-                                  value={ed.timing}
-                                  onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], timing: e.target.value as HabitTiming } }))}
-                                  className="rounded-xl border border-white/[0.08] bg-[#08111c] px-2 py-1.5 text-[11px] text-white/55 focus:outline-none"
-                                >
-                                  <option value="morning">朝</option>
-                                  <option value="evening">夜</option>
-                                  <option value="anytime">常時</option>
-                                </select>
                                 <button
                                   type="button"
                                   onClick={() => saveEdit(item.id)}
@@ -179,10 +180,10 @@ const TodoManager = () => {
                                   ×
                                 </button>
                               </div>
-                              <div className="flex items-center gap-3 pl-1">
+                              <div className="flex flex-wrap items-center gap-3 pl-1">
                                 <select
                                   value={ed.field_type}
-                                  onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], field_type: e.target.value } }))}
+                                  onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], field_type: e.target.value as TaskFieldType } }))}
                                   className="rounded-lg border border-white/[0.08] bg-[#08111c] px-2 py-1 text-[10px] text-white/50 focus:outline-none"
                                 >
                                   <option value="checkbox">チェック</option>
@@ -193,6 +194,18 @@ const TodoManager = () => {
                                   <option value="text-ai">テキスト+AI</option>
                                   <option value="url">URL</option>
                                 </select>
+                                {isNumericEdit && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-white/30">単位</span>
+                                    <input
+                                      type="text"
+                                      value={ed.unit}
+                                      onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], unit: e.target.value } }))}
+                                      placeholder="kg / km / 歩"
+                                      className="w-20 rounded-lg border border-white/[0.08] bg-[#08111c] px-2 py-1 text-[10px] text-white/55 focus:outline-none"
+                                    />
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-1.5">
                                   <span className="text-[10px] text-white/30">月目標</span>
                                   <input
@@ -211,18 +224,12 @@ const TodoManager = () => {
                           ) : (
                             /* ── 表示モード ── */
                             <div className="flex items-center gap-3">
-                              <span
-                                className="h-3.5 w-0.5 shrink-0 rounded-full"
-                                style={{ backgroundColor: `${timingColor(item.timing)}55` }}
-                              />
                               <p className="flex-1 text-sm text-white/72 leading-snug">{item.label}</p>
-                              <span
-                                className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.14em]"
-                                style={{ color: `${timingColor(item.timing)}80` }}
-                              >
-                                {timingLabel(item.timing)}
-                              </span>
-                              {/* 編集ボタン（ホバー時） */}
+                              {item.field_type && item.field_type !== 'checkbox' && (
+                                <span className="shrink-0 rounded-full bg-white/[0.04] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-white/35">
+                                  {item.field_type}{item.field_options?.unit ? ` ${item.field_options.unit}` : ''}
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => startEdit(item)}
@@ -246,58 +253,78 @@ const TodoManager = () => {
                     })}
                   </div>
                 ) : (
-                  <p className="px-1 py-2 text-[11px] text-white/22">まだ習慣がありません</p>
+                  <p className="px-1 py-2 text-[11px] text-white/22">まだ項目がありません</p>
                 )}
 
                 {/* 追加フォーム */}
-                {isAdding ? (
-                  <div className="mt-1 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={draft.label}
-                      onChange={e => updateDraft(section.id as HabitCategory, 'label', e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') addTodo(section.id as HabitCategory)
-                        if (e.key === 'Escape') setAddingIn(null)
-                      }}
-                      placeholder="習慣名を入力…"
-                      autoFocus
-                      className="flex-1 rounded-xl border border-white/[0.08] bg-[#08111c] px-3 py-2 text-sm text-white/88 placeholder-white/20 focus:border-white/16 focus:outline-none"
-                    />
-                    <select
-                      value={draft.timing}
-                      onChange={e => updateDraft(section.id as HabitCategory, 'timing', e.target.value)}
-                      className="rounded-xl border border-white/[0.08] bg-[#08111c] px-2 py-2 text-[11px] text-white/55 focus:outline-none"
-                    >
-                      <option value="morning">朝</option>
-                      <option value="evening">夜</option>
-                      <option value="anytime">常時</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => addTodo(section.id as HabitCategory)}
-                      disabled={!draft.label.trim()}
-                      className="shrink-0 rounded-xl border px-3 py-2 text-[11px] font-semibold disabled:opacity-30"
-                      style={{ borderColor: `${section.accent}35`, backgroundColor: `${section.accent}10`, color: section.accent }}
-                    >
-                      追加
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAddingIn(null)}
-                      className="shrink-0 px-1 text-sm text-white/22 hover:text-white/50"
-                    >
-                      ×
-                    </button>
+                {adding ? (
+                  <div className="mt-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={draft.label}
+                        onChange={e => updateDraft('label', e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') addTodo()
+                          if (e.key === 'Escape') setAdding(false)
+                        }}
+                        placeholder="項目名を入力…"
+                        autoFocus
+                        className="flex-1 rounded-xl border border-white/[0.08] bg-[#08111c] px-3 py-2 text-sm text-white/88 placeholder-white/20 focus:border-white/16 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={addTodo}
+                        disabled={!draft.label.trim()}
+                        className="shrink-0 rounded-xl border px-3 py-2 text-[11px] font-semibold disabled:opacity-30"
+                        style={{ borderColor: `${section.accent}35`, backgroundColor: `${section.accent}10`, color: section.accent }}
+                      >
+                        追加
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdding(false)}
+                        className="shrink-0 px-1 text-sm text-white/22 hover:text-white/50"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 pl-1">
+                      <select
+                        value={draft.field_type}
+                        onChange={e => updateDraft('field_type', e.target.value as TaskFieldType)}
+                        className="rounded-lg border border-white/[0.08] bg-[#08111c] px-2 py-1 text-[10px] text-white/50 focus:outline-none"
+                      >
+                        <option value="checkbox">チェック</option>
+                        <option value="number">数値</option>
+                        <option value="percent">%</option>
+                        <option value="select">選択</option>
+                        <option value="text">テキスト</option>
+                        <option value="text-ai">テキスト+AI</option>
+                        <option value="url">URL</option>
+                      </select>
+                      {isNumericDraft && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-white/30">単位</span>
+                          <input
+                            type="text"
+                            value={draft.unit}
+                            onChange={e => updateDraft('unit', e.target.value)}
+                            placeholder="kg / km / 歩"
+                            className="w-20 rounded-lg border border-white/[0.08] bg-[#08111c] px-2 py-1 text-[10px] text-white/55 focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setAddingIn(section.id as HabitCategory)}
+                    onClick={() => setAdding(true)}
                     className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-white/22 transition-colors hover:bg-white/[0.03] hover:text-white/45"
                   >
                     <span className="text-sm leading-none">+</span>
-                    <span className="text-[11px]">習慣を追加</span>
+                    <span className="text-[11px]">項目を追加</span>
                   </button>
                 )}
               </div>
@@ -626,12 +653,7 @@ const AiTaskCreator = () => {
   }
 
   const sectionLabel: Record<HabitCategory, string> = {
-    'habit':  'Habit（習慣）',
-    'growth': 'Growth（成長）',
-    'body':   'Body（身体）',
-    'mind':   'Mind（精神）',
-    'system': 'System（運用）',
-    'task':   'Task（個別）',
+    habit: 'Habit（習慣）',
   }
 
   const fieldTypeLabel: Record<TaskFieldType, string> = {
@@ -654,7 +676,7 @@ const AiTaskCreator = () => {
 
       {addedCount > 0 && (
         <div className="rounded-2xl border border-[#22c55e]/25 bg-[#22c55e]/8 px-3 py-2.5">
-          <p className="text-xs text-[#4ade80]">{addedCount}件追加しました。タスク定義タブで確認できます。</p>
+          <p className="text-xs text-[#4ade80]">{addedCount}件追加しました。習慣化・記録タブで確認できます。</p>
         </div>
       )}
 
@@ -1135,7 +1157,7 @@ const HabitSuggestionsPanel = () => {
 export const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState<'tasks' | 'ai' | 'memory'>('tasks')
 
-  const tabLabel = { tasks: 'タスク定義', ai: 'AI・設定', memory: 'メモリ' }
+  const tabLabel = { tasks: '習慣化・記録', ai: 'AI・設定', memory: 'メモリ' }
 
   return (
     <div className="pb-6">

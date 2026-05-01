@@ -950,8 +950,13 @@ export const MonthlyTab = () => {
 
   const [todoDefinitions] = useTodoDefinitions()
   // F-06: include all habits (not just isMust) in monthly analytics
+  // 「習慣の比較」は習慣化対象（category='habit'）のチェック式項目のみを対象とする。
+  // field_type が number/percent などの記録項目は別軸の分析（後続実装）で扱う。
   const habitDefs: HabitDef[] = useMemo(() => {
-    const allHabits = byTiming(todoDefinitions, 'morning').filter(t => t.is_active !== false)
+    const allHabits = byTiming(todoDefinitions, 'morning')
+      .filter(t => t.is_active !== false)
+      .filter(t => t.section === 'habit')
+      .filter(t => (t.field_type ?? 'checkbox') === 'checkbox')
     // limit to first 8 to avoid crowded charts
     return allHabits.slice(0, 8).map((t, i) => ({
       id: t.id,

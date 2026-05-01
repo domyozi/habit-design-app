@@ -68,12 +68,7 @@ const TaskRow = ({
 }
 
 const SECTION_ACCENT: Record<HabitCategory, string> = {
-  'habit':  '#ff6b35',
-  'growth': '#22c55e',
-  'body':   '#38bdf8',
-  'mind':   '#a78bfa',
-  'system': '#f59e0b',
-  'task':   '#94a3b8',
+  habit: '#ff6b35',
 }
 
 export const TaskListPanel = ({

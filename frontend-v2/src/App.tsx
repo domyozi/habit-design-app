@@ -335,7 +335,7 @@ function MainApp() {
           .map(t => ({
             id: createTodoId(t.label),
             label: t.label,
-            section: (t.section === 'morning-must' ? 'habit' : 'system') as import('@/lib/todos').HabitCategory,
+            section: 'habit' as import('@/lib/todos').HabitCategory,
             timing: 'morning' as import('@/lib/todos').HabitTiming,
             isMust: t.section === 'morning-must',
             is_active: true,
@@ -501,9 +501,9 @@ function MainApp() {
                 todoDefinitions={todoDefinitions}
                 morningChecked={morningChecked}
                 eveningChecked={eveningChecked}
-                onToggle={(id, section) => {
+                onToggle={(id) => {
                   const todo = todoDefinitions.find(t => t.id === id)
-                  const isMorning = todo ? (todo.timing === 'morning' || todo.timing === 'anytime') : (section !== 'body' && section !== 'system')
+                  const isMorning = todo ? (todo.timing === 'morning' || todo.timing === 'anytime') : true
                   if (isMorning) {
                     setMorningChecked(prev =>
                       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
