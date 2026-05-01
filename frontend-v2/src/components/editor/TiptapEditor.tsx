@@ -481,10 +481,24 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '�
               }
               return true // consume event — don't let HardBreak extension handle it
             }),
-            // Backspace → hardBreak ノードの直後ならそれを削除
+            // Backspace
             'Backspace': () => this.editor.commands.command(({ state }) => {
               const { $from } = state.selection
               if (!state.selection.empty) return false
+
+              // 空 taskItem の先頭 → 段落化（上の行にジャンプさせない）
+              let taskItemDepth = -1
+              for (let d = $from.depth; d > 0; d--) {
+                if ($from.node(d).type.name === 'taskItem') { taskItemDepth = d; break }
+              }
+              if (taskItemDepth !== -1 && $from.parentOffset === 0) {
+                const item = $from.node(taskItemDepth)
+                if (item.textContent === '' && item.childCount === 1) {
+                  return this.editor.commands.liftListItem(this.name)
+                }
+              }
+
+              // hardBreak 直後 → 削除
               const nodeBefore = $from.nodeBefore
               if (nodeBefore?.type.name === 'hardBreak') {
                 return this.editor.commands.deleteRange({ from: $from.pos - 1, to: $from.pos })
