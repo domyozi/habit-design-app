@@ -81,7 +81,7 @@ const NavGlyph = ({ id, active }: { id: TabId | 'cal'; active: boolean }) => {
 
   if (id === 'home') {
     return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M4 11.5 12 5l8 6.5" />
         <path d="M6.5 10.5V19h11v-8.5" />
       </svg>
@@ -89,28 +89,29 @@ const NavGlyph = ({ id, active }: { id: TabId | 'cal'; active: boolean }) => {
   }
 
   if (id === 'morning') {
+    // Record — clipboard with lines
     return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M6 15c1.2-2.4 3.4-4 6-4s4.8 1.6 6 4" />
-        <path d="M4 19h16" />
-        <path d="M12 5v2.5" />
-        <path d="M7.5 7.5 9 9" />
-        <path d="m16.5 7.5-1.5 1.5" />
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="6" y="4.5" width="12" height="15.5" rx="1.5" />
+        <path d="M10 4.5V3.5h4v1" />
+        <path d="M9 10.5h6M9 13.5h6M9 16.5h4" />
       </svg>
     )
   }
 
   if (id === 'evening') {
+    // Journal — book
     return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M15.5 4.5a7 7 0 1 0 4 12.7 7.6 7.6 0 0 1-4.5 1.3 7 7 0 0 1-6.8-8.7 7.4 7.4 0 0 1 7.3-5.3Z" />
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="4.5" y="4.5" width="15" height="15" rx="1.5" />
+        <path d="M9 4.5v15" />
       </svg>
     )
   }
 
   if (id === 'cal') {
     return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="4" y="5" width="16" height="15" rx="2" />
         <path d="M16 3v4M8 3v4M4 10h16" />
       </svg>
@@ -118,7 +119,7 @@ const NavGlyph = ({ id, active }: { id: TabId | 'cal'; active: boolean }) => {
   }
 
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M5 7h14" />
       <path d="M5 12h14" />
       <path d="M5 17h14" />
@@ -163,8 +164,8 @@ export const BottomNav = ({ active, onChange, currentPeriod, viewDate, onViewDat
             onClose={() => setShowCal(false)}
           />
         )}
-        <div className="grid grid-cols-5 gap-1 px-2 py-2">
-          {NAV_ITEMS.map(({ id, label, short }) => {
+        <div className="grid grid-cols-5 gap-0.5 px-1 py-1">
+          {NAV_ITEMS.map(({ id, label }) => {
             const isCal = id === 'cal'
             const isActive = isCal ? showCal : active === (id as TabId)
             const showNudge =
@@ -184,12 +185,12 @@ export const BottomNav = ({ active, onChange, currentPeriod, viewDate, onViewDat
                   }
                 }}
                 className={[
-                  'relative flex flex-col items-center gap-1 rounded-2xl px-1 py-2.5 transition-colors',
+                  'relative flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 transition-colors',
                   isActive ? 'bg-[#dbe8ff]/[0.08]' : 'bg-transparent hover:bg-white/[0.03]',
                 ].join(' ')}
               >
                 <span className={[
-                  'flex h-8 w-8 items-center justify-center rounded-xl border transition-colors',
+                  'flex h-6 w-6 items-center justify-center rounded-lg border transition-colors',
                   isActive
                     ? 'border-[#dbe8ff]/20 bg-[#dbe8ff]/[0.06]'
                     : showNudge
@@ -200,17 +201,14 @@ export const BottomNav = ({ active, onChange, currentPeriod, viewDate, onViewDat
                 >
                   <NavGlyph id={id} active={isActive} />
                 </span>
-                <span className={['text-[10px] font-semibold uppercase tracking-[0.22em]', isActive ? 'text-[#d7e3f4]' : showNudge ? 'text-[#7dd3fc]/70' : 'text-white/35'].join(' ')}>
-                  {short}
-                </span>
-                <span className={['text-[10px] transition-colors', isActive ? 'text-white/80' : 'text-white/35'].join(' ')}>
+                <span className={['text-[9px] transition-colors leading-tight', isActive ? 'text-white/80' : 'text-white/35'].join(' ')}>
                   {label}
                 </span>
                 {isActive && (
-                  <span className="absolute inset-x-4 top-0 h-px rounded-full bg-[#dbe8ff]/70" />
+                  <span className="absolute inset-x-3 top-0 h-px rounded-full bg-[#dbe8ff]/70" />
                 )}
                 {showNudge && (
-                  <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#7dd3fc]"
+                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#7dd3fc]"
                     style={{ animation: 'time-nudge 1s ease-in-out infinite' }} />
                 )}
               </button>
