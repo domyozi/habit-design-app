@@ -300,16 +300,8 @@ function MainApp() {
     setTab('monthly')
   }
 
-  const handleEveningReport = (text: string) => {
-    // プライマリーターゲット完了判定のみ。ナビゲーションは EveningTab 側のフィードバック完了後に行う
-    const bossVal = boss?.value ?? null
-    const bossIsCompleted = boss?.completed ?? false
-    if (bossVal && !bossIsCompleted) {
-      const completionKeywords = ['完了', '達成', 'できた', '終わった', 'done', 'completed', '✅']
-      const hasCompletion = completionKeywords.some(kw => text.toLowerCase().includes(kw.toLowerCase()))
-      const hasBossMention = text.includes(bossVal)
-      if (hasCompletion && hasBossMention) toggleCompleted()
-    }
+  const handleEveningReport = (_text: string) => {
+    // PT のクローズはキーワード検知ではなく AI フィードバック確認後に行う（handleEveningBossComplete）
   }
 
   const handleEveningComplete = () => {
@@ -505,6 +497,7 @@ function MainApp() {
           bossCompleted={bossCompleted}
           onGenerateReport={handleEveningReport}
           onComplete={handleEveningComplete}
+          onBossComplete={toggleCompleted}
           viewDate={viewDate}
         />
       )}

@@ -40,12 +40,14 @@ export const EveningTab = ({
   bossCompleted,
   onGenerateReport,
   onComplete,
+  onBossComplete,
   viewDate,
 }: {
   boss?: string | null
   bossCompleted?: boolean
   onGenerateReport?: (text: string) => void
   onComplete?: () => void
+  onBossComplete?: () => void
   viewDate?: string
 }) => {
   const dateKey = viewDate ?? todayKey()
@@ -212,6 +214,19 @@ export const EveningTab = ({
           setStreamingFeedback('')
           setFeedbackLoading(false)
           void saveEveningFeedback(dateKey, full)
+
+          // AI フィードバックが PT 達成を示唆する場合のみ確認ダイアログを表示
+          if (bossProp && !bossCompleted && onBossComplete) {
+            const ptSignals = ['達成', '完了', 'できた', 'クローズ', 'accomplished', 'achieved', 'completed', '✅']
+            const ptMentioned = bossProp.length >= 6 && full.includes(bossProp.slice(0, 6))
+            const hasAchievement = ptSignals.some(kw => full.includes(kw))
+            if (ptMentioned && hasAchievement) {
+              const ok = window.confirm(
+                `プライマリーターゲットを達成しましたか？\n\n「${bossProp}」\n\nAIがフィードバック内で達成を示唆しています。クローズしますか？`
+              )
+              if (ok) onBossComplete()
+            }
+          }
 
           // バックグラウンドでメモリ更新（ノンブロッキング）
           void (async () => {

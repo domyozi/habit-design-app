@@ -227,7 +227,6 @@ const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n)
 export const MorningTab = ({
   boss,
   bossCompleted,
-  onBossToggle,
   onBossSet,
   onGenerateReport,
   viewDate,
@@ -248,8 +247,6 @@ export const MorningTab = ({
   const [brief, setBrief] = useDailyStorage<JournalBriefResult | null>('morning', 'brief', null, dateKey)
   const [briefError, setBriefError] = useState<string | null>(null)
   const [editTargetText, setEditTargetText] = useState('')
-  const [editingBoss, setEditingBoss] = useState(false)
-  const [editBossText, setEditBossText] = useState('')
   const morningGrouped = byTimingGrouped(todoDefinitions, 'morning')
   // カテゴリ別タスクアイテム（空でないカテゴリのみ利用）
   const ALL_MORNING_ITEMS: TaskFieldItem[] = HABIT_CATEGORIES.flatMap(cat =>
@@ -409,11 +406,6 @@ export const MorningTab = ({
     })
   }
 
-  const handleBossEditSave = () => {
-    if (editBossText.trim()) onBossSet?.(editBossText.trim())
-    setEditingBoss(false)
-  }
-
   const generateReport = () => {
     const taskLines = ALL_MORNING_ITEMS.map(
       i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}${i.isMust ? ' [MUST]' : ''}`
@@ -479,63 +471,6 @@ export const MorningTab = ({
         </div>
       )}
 
-      <div
-        className={[
-          'mx-4 mb-4 mt-4 rounded-2xl border px-4 py-4',
-          bossCompleted
-            ? 'border-[#34d399]/30 bg-[#34d399]/6'
-            : boss
-              ? 'border-[#7dd3fc]/20 bg-[#7dd3fc]/5'
-              : 'border-white/[0.08] bg-white/[0.02]',
-        ].join(' ')}
-      >
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <span className={['text-[10px] font-semibold uppercase tracking-[0.24em]', bossCompleted ? 'text-[#7ef0be]' : 'text-[#aee5ff]'].join(' ')}>
-            {bossCompleted ? 'Primary target closed' : 'Primary target'}
-          </span>
-          {!isReadOnly && (
-            <div className="flex items-center gap-2">
-              {boss && !editingBoss && (
-                <button
-                  type="button"
-                  onClick={onBossToggle}
-                  className="text-[10px] uppercase tracking-[0.16em] text-white/30 hover:text-white/55"
-                >
-                  {bossCompleted ? 'Reopen' : 'Mark complete'}
-                </button>
-              )}
-              {!bossCompleted && (
-                <button
-                  type="button"
-                  onClick={() => { setEditingBoss(true); setEditBossText(boss ?? '') }}
-                  className="text-[10px] uppercase tracking-[0.16em] text-[#7dd3fc]/60 hover:text-[#7dd3fc]"
-                >
-                  {boss ? 'Edit' : 'Set target'}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        {editingBoss ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={editBossText}
-              onChange={e => setEditBossText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleBossEditSave(); if (e.key === 'Escape') setEditingBoss(false) }}
-              autoFocus
-              className="flex-1 rounded-xl border border-[#7dd3fc]/30 bg-[#0b1320] px-3 py-2 text-sm text-white/88 outline-none"
-              placeholder="今日の最重要タスクを入力..."
-            />
-            <button type="button" onClick={handleBossEditSave} className="rounded-full border border-[#7dd3fc]/30 bg-[#7dd3fc]/12 px-3 py-1.5 text-[11px] font-semibold text-[#aee5ff]">Save</button>
-            <button type="button" onClick={() => setEditingBoss(false)} className="text-[11px] text-white/35 hover:text-white/55">Cancel</button>
-          </div>
-        ) : boss ? (
-          <p className={['text-sm font-medium', bossCompleted ? 'text-white/38 line-through' : 'text-white/88'].join(' ')}>{boss}</p>
-        ) : (
-          <p className="text-sm italic text-white/42">今日の最重要タスクを設定してください。</p>
-        )}
-      </div>
 
       {/* F-04: Task checklist moved above journal card */}
       <div className="mx-4 mt-4 rounded-[28px] border border-white/[0.08] bg-[#0b1320]/90 px-4 py-4">

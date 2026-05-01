@@ -225,24 +225,40 @@ const WeightTrendChart = () => {
     [data]
   )
 
+  const weightTarget = useMemo(() => {
+    try {
+      const v = localStorage.getItem('settings:weight-target')
+      return v !== null ? (JSON.parse(v) as number) : null
+    } catch { return null }
+  }, [])
+
   if (points.length < 2) return null
 
-  const minKg = Math.min(...points.map(p => p.kg))
-  const maxKg = Math.max(...points.map(p => p.kg))
+  const allKgs = [...points.map(p => p.kg), ...(weightTarget !== null ? [weightTarget] : [])]
+  const minKg = Math.min(...allKgs) - 0.5
+  const maxKg = Math.max(...allKgs) + 0.5
   const range = maxKg - minKg || 1
-  const W = 300, H = 64, PAD = 6
+  const W = 300, H = 100, PAD_X = 6, PAD_Y = 8, BOTTOM = 18
 
-  const x = (idx: number) => PAD + (idx / 29) * (W - PAD * 2)
-  const y = (kg: number) => H - PAD - ((kg - minKg) / range) * (H - PAD * 2)
+  const x = (idx: number) => PAD_X + (idx / 29) * (W - PAD_X * 2)
+  const y = (kg: number) => PAD_Y + ((maxKg - kg) / range) * (H - PAD_Y - BOTTOM)
 
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.index)} ${y(p.kg)}`).join(' ')
 
   const latest = points[points.length - 1]
   const recent7 = points.filter(p => p.index >= 23)
   const avg7 = recent7.length > 0 ? recent7.reduce((s, p) => s + p.kg, 0) / recent7.length : null
-  const trend = points.length >= 2
-    ? points[points.length - 1].kg - points[0].kg
-    : 0
+  const trend = points[points.length - 1].kg - points[0].kg
+  const gap = weightTarget !== null ? latest.kg - weightTarget : null
+
+  // X軸ラベル用に等間隔で日付を選ぶ（最大5箇所）
+  const labelIndices = [0, 7, 14, 21, 29]
+  const xLabels = labelIndices.map(idx => {
+    const pt = data[idx]
+    if (!pt?.date) return null
+    const d = new Date(pt.date)
+    return { idx, label: `${d.getMonth() + 1}/${d.getDate()}` }
+  }).filter(Boolean) as { idx: number; label: string }[]
 
   return (
     <div className="rounded-[24px] border border-white/[0.06] bg-[#111827]/75 p-4">
@@ -250,13 +266,32 @@ const WeightTrendChart = () => {
         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Weight trend</span>
         <span className="text-[11px] text-white/28">past 30 days</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 110 }}>
+        {/* 目標ライン */}
+        {weightTarget !== null && (
+          <>
+            <line
+              x1={PAD_X} y1={y(weightTarget)} x2={W - PAD_X} y2={y(weightTarget)}
+              stroke="#22c55e" strokeWidth="1" strokeDasharray="4 3" opacity="0.5"
+            />
+            <text x={W - PAD_X + 2} y={y(weightTarget) + 4} fontSize="7" fill="#22c55e" opacity="0.7">
+              目標
+            </text>
+          </>
+        )}
+        {/* 実績ライン */}
         <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         {points.map(p => (
           <circle key={p.index} cx={x(p.index)} cy={y(p.kg)} r="2" fill="#38bdf8" />
         ))}
+        {/* X軸日付ラベル */}
+        {xLabels.map(({ idx, label }) => (
+          <text key={idx} x={x(idx)} y={H - 2} fontSize="7" fill="rgba(255,255,255,0.28)" textAnchor="middle">
+            {label}
+          </text>
+        ))}
       </svg>
-      <div className="mt-2 flex items-center gap-4">
+      <div className="mt-2 flex flex-wrap items-center gap-3">
         <div>
           <p className="text-[10px] text-white/30">最新</p>
           <p className="text-sm font-bold text-[#38bdf8]">{latest.kg.toFixed(1)} kg</p>
@@ -273,9 +308,17 @@ const WeightTrendChart = () => {
             {trend > 0 ? '+' : ''}{trend.toFixed(1)} kg
           </p>
         </div>
+        {weightTarget !== null && (
+          <div>
+            <p className="text-[10px] text-white/30">目標まで</p>
+            <p className={['text-sm font-semibold', gap !== null && gap <= 0 ? 'text-[#22c55e]' : 'text-[#f87171]'].join(' ')}>
+              {gap !== null ? (gap > 0 ? `あと ${gap.toFixed(1)} kg` : `達成 ${Math.abs(gap).toFixed(1)} kg 下`) : '—'}
+            </p>
+          </div>
+        )}
         <div>
-          <p className="text-[10px] text-white/30">範囲</p>
-          <p className="text-sm font-semibold text-white/50">{minKg.toFixed(1)}–{maxKg.toFixed(1)}</p>
+          <p className="text-[10px] text-white/30">目標値</p>
+          <p className="text-sm font-semibold text-[#22c55e]/70">{weightTarget !== null ? `${weightTarget} kg` : '未設定'}</p>
         </div>
       </div>
     </div>
