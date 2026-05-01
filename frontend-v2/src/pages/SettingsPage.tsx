@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchHealthToken, regenerateHealthToken } from '@/lib/api'
 import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 import { AiMark } from '@/components/ui/AiMark'
 import { useUserContext } from '@/lib/user-context'
+import { supabase } from '@/lib/supabase'
 import type { AppLang } from '@/lib/lang'
 
 const TodoManager = () => {
@@ -360,11 +361,16 @@ const GRANULARITY_OPTIONS = [
 const ProfileSettings = () => {
   const [ctx, updateCtx] = useUserContext()
   const [displayName, setDisplayName] = useState(ctx?.display_name ?? '')
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const granularity = ctx?.granularity ?? 'adult'
+  const isComposing = useRef(false)
+  const isFocused = useRef(false)
 
-  // ctx がロードされたら表示名を同期
+  // ctx ロード後に同期（フォーカス中は上書きしない — IME 二重入力防止）
   useEffect(() => {
-    if (ctx?.display_name !== undefined) setDisplayName(ctx.display_name)
+    if (!isFocused.current && ctx?.display_name !== undefined) {
+      setDisplayName(ctx.display_name)
+    }
   }, [ctx?.display_name])
 
   const handleChange = (v: string) => {
@@ -373,9 +379,53 @@ const ProfileSettings = () => {
   const saveDisplayName = () => {
     void updateCtx({ display_name: displayName.trim() })
   }
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarUploading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `${user.id}/${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+      if (error) return
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+      await updateCtx({ avatar_url: data.publicUrl })
+    } finally {
+      setAvatarUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const currentAvatar = ctx?.avatar_url
+
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">プロフィール</p>
+
+      {/* アバター */}
+      <div className="mt-3 flex items-center gap-3">
+        <div className="relative">
+          {currentAvatar ? (
+            <img src={currentAvatar} alt="avatar" className="h-12 w-12 rounded-full object-cover" />
+          ) : (
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7dd3fc]/20 text-base font-bold text-[#7dd3fc]">
+              {(ctx?.display_name?.[0] ?? '?').toUpperCase()}
+            </div>
+          )}
+        </div>
+        <label className={['cursor-pointer rounded-full border border-white/[0.1] px-3 py-1.5 text-[11px] text-white/50 transition-colors hover:border-white/25 hover:text-white/70', avatarUploading ? 'opacity-40 pointer-events-none' : ''].join(' ')}>
+          {avatarUploading ? '...' : '画像を変更'}
+          <input type="file" accept="image/*" className="hidden" onChange={e => void handleAvatarChange(e)} />
+        </label>
+        {currentAvatar && (
+          <button type="button" onClick={() => void updateCtx({ avatar_url: '' })} className="text-[11px] text-white/25 hover:text-white/50">
+            削除
+          </button>
+        )}
+      </div>
 
       {/* 表示名 */}
       <div className="mt-3">
@@ -384,8 +434,11 @@ const ProfileSettings = () => {
           type="text"
           value={displayName}
           onChange={e => setDisplayName(e.target.value)}
-          onBlur={saveDisplayName}
-          onKeyDown={e => { if (e.key === 'Enter') { saveDisplayName(); (e.target as HTMLInputElement).blur() } }}
+          onFocus={() => { isFocused.current = true }}
+          onBlur={() => { isFocused.current = false; if (!isComposing.current) saveDisplayName() }}
+          onCompositionStart={() => { isComposing.current = true }}
+          onCompositionEnd={() => { isComposing.current = false }}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing.current) { saveDisplayName(); (e.target as HTMLInputElement).blur() } }}
           placeholder="表示名を入力..."
           className="w-full rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"
         />

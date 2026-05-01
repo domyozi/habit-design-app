@@ -82,6 +82,7 @@ const DesktopRail = ({
   lang,
   userEmail,
   displayName,
+  avatarUrl,
   healthConnected,
   onSignOut,
 }: {
@@ -95,6 +96,7 @@ const DesktopRail = ({
   lang?: import('@/lib/lang').AppLang
   userEmail?: string
   displayName?: string
+  avatarUrl?: string
   onSignOut?: () => void
   healthConnected?: boolean
 }) => {
@@ -177,9 +179,13 @@ const DesktopRail = ({
             onClick={() => setUserMenuOpen(p => !p)}
             className="flex w-full items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:border-white/[0.12] hover:bg-white/[0.06]"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#7dd3fc]/20 text-xs font-bold text-[#7dd3fc]">
-              {initial}
-            </span>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="avatar" className="h-7 w-7 shrink-0 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#7dd3fc]/20 text-xs font-bold text-[#7dd3fc]">
+                {initial}
+              </span>
+            )}
             <span className="flex-1 truncate text-xs text-white/50">{nameLabel ?? userEmail ?? 'アカウント'}</span>
             <span className="text-[10px] text-white/30">⋯</span>
           </button>
@@ -505,6 +511,7 @@ function MainApp() {
           lang={(userContext?.lang ?? localStorage.getItem('settings:lang') ?? 'ja') as import('@/lib/lang').AppLang}
           userEmail={session?.user?.email}
           displayName={userContext?.display_name || undefined}
+          avatarUrl={userContext?.avatar_url || (session?.user?.user_metadata?.avatar_url as string | undefined)}
           onSignOut={signOut}
           healthConnected={healthConnected}
         />

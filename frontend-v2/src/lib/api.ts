@@ -609,6 +609,7 @@ export interface UserContext {
   lang?: 'ja' | 'en'
   granularity?: string
   display_name?: string
+  avatar_url?: string
 }
 
 /**
