@@ -81,6 +81,7 @@ const DesktopRail = ({
   eveningDone,
   lang,
   userEmail,
+  displayName,
   healthConnected,
   onSignOut,
 }: {
@@ -93,12 +94,14 @@ const DesktopRail = ({
   eveningDone?: boolean
   lang?: import('@/lib/lang').AppLang
   userEmail?: string
+  displayName?: string
   onSignOut?: () => void
   healthConnected?: boolean
 }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const navItems = getNavItems(lang ?? 'ja').filter(i => i.id !== 'health' || healthConnected)
-  const initial = userEmail?.[0]?.toUpperCase() ?? '?'
+  const nameLabel = displayName?.trim() || null
+  const initial = nameLabel?.[0]?.toUpperCase() ?? userEmail?.[0]?.toUpperCase() ?? '?'
 
   // 収納時は 0px 幅の placeholder のみ（フローティングタブは App 側で管理）
   if (collapsed) {
@@ -155,8 +158,18 @@ const DesktopRail = ({
         })}
       </div>
 
-      {/* ── フッター: ユーザーメニュー + 収納ボタン ─── */}
+      {/* ── フッター: 収納ボタン + ユーザーメニュー ─── */}
       <div className="border-t border-white/[0.06] px-3 py-3 space-y-2">
+        {/* 収納ボタン */}
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] py-2.5 text-xs text-white/36 transition-colors hover:border-white/[0.14] hover:text-white/70"
+        >
+          <span>‹</span>
+          <span>サイドバーを収納</span>
+        </button>
+
         {/* ユーザーメニュー */}
         <div className="relative">
           <button
@@ -167,7 +180,7 @@ const DesktopRail = ({
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#7dd3fc]/20 text-xs font-bold text-[#7dd3fc]">
               {initial}
             </span>
-            <span className="flex-1 truncate text-xs text-white/50">{userEmail ?? 'アカウント'}</span>
+            <span className="flex-1 truncate text-xs text-white/50">{nameLabel ?? userEmail ?? 'アカウント'}</span>
             <span className="text-[10px] text-white/30">⋯</span>
           </button>
 
@@ -195,16 +208,6 @@ const DesktopRail = ({
             </div>
           )}
         </div>
-
-        {/* 収納ボタン */}
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] py-2.5 text-xs text-white/36 transition-colors hover:border-white/[0.14] hover:text-white/70"
-        >
-          <span>‹</span>
-          <span>サイドバーを収納</span>
-        </button>
       </div>
     </aside>
   )
@@ -472,6 +475,7 @@ function MainApp() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage<boolean>('ui:sidebar-collapsed', false)
   const [railCollapsed, setRailCollapsed] = useLocalStorage<boolean>('ui:rail-collapsed', false)
+  const [displayName] = useLocalStorage<string>('settings:display_name', '')
   const [pendingTarget, setPendingTarget] = useState<string | null>(null)
   const [pendingTasks, setPendingTasks] = useState<JournalBriefResult['tasks']>([])
 
@@ -501,6 +505,7 @@ function MainApp() {
           eveningDone={eveningDone}
           lang={(userContext?.lang ?? localStorage.getItem('settings:lang') ?? 'ja') as import('@/lib/lang').AppLang}
           userEmail={session?.user?.email}
+          displayName={displayName || undefined}
           onSignOut={signOut}
           healthConnected={healthConnected}
         />

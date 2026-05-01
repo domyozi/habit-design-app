@@ -359,17 +359,36 @@ const GRANULARITY_OPTIONS = [
 
 const ProfileSettings = () => {
   const [ctx, updateCtx] = useUserContext()
+  const [displayName, setDisplayName] = useState(() => localStorage.getItem('settings:display_name') ?? '')
   // F-17: use API; fall back to localStorage for backward compat
   const granularity = ctx?.granularity ?? localStorage.getItem('settings:profile:granularity') ?? 'adult'
   const handleChange = (v: string) => {
     localStorage.setItem('settings:profile:granularity', v)
     void updateCtx({ granularity: v })
   }
+  const saveDisplayName = () => {
+    localStorage.setItem('settings:display_name', displayName.trim())
+  }
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 px-4 py-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">プロフィール</p>
-      <p className="mt-1 text-[11px] text-white/38">マンダラチャートのアクションの難易度・語調が変わります</p>
-      <div className="mt-3 flex gap-2">
+
+      {/* 表示名 */}
+      <div className="mt-3">
+        <p className="mb-1.5 text-[11px] text-white/38">表示名</p>
+        <input
+          type="text"
+          value={displayName}
+          onChange={e => setDisplayName(e.target.value)}
+          onBlur={saveDisplayName}
+          onKeyDown={e => { if (e.key === 'Enter') { saveDisplayName(); (e.target as HTMLInputElement).blur() } }}
+          placeholder="表示名を入力..."
+          className="w-full rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"
+        />
+      </div>
+
+      <p className="mt-3 text-[11px] text-white/38">マンダラチャートのアクションの難易度・語調が変わります</p>
+      <div className="mt-2 flex gap-2">
         {GRANULARITY_OPTIONS.map(opt => (
           <button
             key={opt.value}
@@ -652,61 +671,17 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   </div>
 )
 
-// ─── F-16: iOS Shortcuts JWT トークン表示 UI ─────────────────
-
-const JwtTokenSection = () => {
-  const [token, setToken] = useState<string>('')
-  const [tokenCopied, setTokenCopied] = useState(false)
-
-  useEffect(() => {
-    const stored = localStorage.getItem('auth:token') ?? ''
-    setToken(stored)
-  }, [])
-
-  const handleCopyToken = async () => {
-    if (!token) return
-    try {
-      await navigator.clipboard.writeText(token)
-      setTokenCopied(true)
-      setTimeout(() => setTokenCopied(false), 2000)
-    } catch {
-      // クリップボードアクセス失敗時は無視
-    }
-  }
-
-  if (!token) return null
-
-  return (
-    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">iOS Shortcuts 連携 — JWT トークン</p>
-      <p className="text-[11px] text-white/42">
-        iOS ショートカットの Authorization ヘッダーに使用するアクセストークンです。
-      </p>
-      <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2">
-        <span className="flex-1 truncate text-[11px] font-mono text-white/60">
-          {token.length > 40 ? `${token.slice(0, 20)}...${token.slice(-10)}` : token}
-        </span>
-        <button
-          type="button"
-          onClick={() => void handleCopyToken()}
-          className={[
-            'shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors',
-            tokenCopied
-              ? 'border-[#22c55e]/30 bg-[#22c55e]/10 text-[#4ade80]'
-              : 'border-white/10 text-white/42 hover:border-white/25 hover:text-white/70',
-          ].join(' ')}
-        >
-          {tokenCopied ? 'Copied' : 'コピー'}
-        </button>
-      </div>
-    </div>
-  )
+const maskToken = (token: string | null | undefined) => {
+  if (!token) return '読込中...'
+  if (token.length <= 12) return '••••••••'
+  return `${token.slice(0, 6)}••••••••••••${token.slice(-4)}`
 }
 
 // ─── Apple Health 連携設定 ──────────────────────────────────
 
 const IntegrationsSettings = () => {
   const [token, setToken] = useState<string | null>(null)
+  const [configured, setConfigured] = useState(false)
   const [tokenLoading, setTokenLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showSteps, setShowSteps] = useState(false)
@@ -717,7 +692,8 @@ const IntegrationsSettings = () => {
   const loadToken = useCallback(async () => {
     try {
       const t = await fetchHealthToken()
-      setToken(t.token)
+      setConfigured(t.configured)
+      if (t.token) setToken(t.token)
     } catch { /* 未ログイン時は無視 */ }
   }, [])
 
@@ -735,29 +711,32 @@ const IntegrationsSettings = () => {
     setTokenLoading(true)
     try {
       const t = await regenerateHealthToken()
-      setToken(t.token)
+      setConfigured(t.configured)
+      setToken(t.token ?? null)
     } finally {
       setTokenLoading(false)
     }
   }
 
+  const tokenLabel = token ? maskToken(token) : configured ? '設定済み（再生成時のみ表示）' : '未設定'
+
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#34d399]/80">Apple Health 連携</p>
-        {token && <span className="rounded-full bg-[#34d399]/15 px-2 py-0.5 text-[9px] text-[#34d399]">設定済み</span>}
+        {configured && <span className="rounded-full bg-[#34d399]/15 px-2 py-0.5 text-[9px] text-[#34d399]">設定済み</span>}
       </div>
       <p className="text-[11px] text-white/42">
-        iOSショートカットからApple Healthのデータを自動送信できます。トークンをコピーしてショートカットに設定してください。
+        iOSショートカットからApple Healthのデータを自動送信できます。トークンは新規発行または再生成した直後だけ表示されます。
       </p>
 
       {/* Token */}
       <div>
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">あなたのトークン</p>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2 text-[11px] font-mono text-white/60 truncate">
-            {token ?? '読込中...'}
-          </code>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/36">あなたのトークン</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b1320] px-3 py-2 text-[11px] font-mono text-white/60 truncate">
+              {tokenLabel}
+            </code>
           <button
             type="button"
             onClick={() => void handleCopy()}
@@ -795,7 +774,7 @@ const IntegrationsSettings = () => {
             '「URLの内容を取得」アクションを追加',
             `URL: ${batchUrl}`,
             'メソッド: POST',
-            `ヘッダー: X-Shortcuts-Token = ${token ?? '{トークン}'}`,
+            `ヘッダー: X-Shortcuts-Token = ${token ?? '再生成後に表示されるトークン'}`,
             '本文(JSON): {"metrics":[{"metric":"steps","value":歩数,"unit":"count"},{"metric":"weight","value":体重,"unit":"kg"},…]}',
             'Apple Health から各値を変数で読み取り JSON に組み込む',
           ].map((step, i) => (
@@ -1003,7 +982,6 @@ export const SettingsPage = () => {
           <LangSettings />
           <ProfileSettings />
           <IntegrationsSettings />
-          <JwtTokenSection />
           <ApiKeySettings />
         </div>
       )}
