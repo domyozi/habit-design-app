@@ -53,6 +53,7 @@ const TodoManager = () => {
       timing: 'morning',
       isMust: false,
       is_active: true,
+      monthly_target: 20,
       field_type: draft.field_type,
       field_options: NUMERIC_FIELD_TYPES.has(draft.field_type) && unit
         ? { unit }
@@ -214,7 +215,7 @@ const TodoManager = () => {
                                     max="31"
                                     value={ed.monthly_target}
                                     onChange={e => setEditing(prev => ({ ...prev, [item.id]: { ...prev[item.id], monthly_target: e.target.value } }))}
-                                    placeholder="–"
+                                    placeholder="20"
                                     className="w-14 rounded-lg border border-white/[0.08] bg-[#08111c] px-2 py-1 text-[10px] text-white/55 focus:outline-none"
                                   />
                                   <span className="text-[10px] text-white/25">回/月</span>
