@@ -215,14 +215,14 @@ const ColorPicker = ({
         )}
       </button>
       {open && (
-        <div className="absolute left-0 top-8 z-50 flex flex-col gap-1.5 rounded-xl border border-white/[0.14] bg-[#0d1825]/96 p-2 shadow-2xl backdrop-blur-xl">
-          <div className="grid grid-cols-4 gap-1">
+        <div className="absolute left-0 top-8 z-50 rounded-xl border border-white/[0.14] bg-[#0d1825]/96 p-2 shadow-2xl backdrop-blur-xl" style={{ width: 120 }}>
+          <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             {colors.map(c => (
               <button
                 key={c}
                 type="button"
                 onMouseDown={e => { e.preventDefault(); onSelect(c); setOpen(false) }}
-                className="h-5 w-5 rounded border border-white/10 transition-transform hover:scale-110"
+                className="aspect-square w-full rounded border border-white/10 transition-transform hover:scale-110"
                 style={{ backgroundColor: c }}
               />
             ))}
@@ -230,7 +230,7 @@ const ColorPicker = ({
           <button
             type="button"
             onMouseDown={e => { e.preventDefault(); onClear(); setOpen(false) }}
-            className="mt-0.5 text-[10px] text-white/40 hover:text-white/70"
+            className="mt-1.5 w-full text-center text-[10px] text-white/40 hover:text-white/70"
           >
             クリア
           </button>

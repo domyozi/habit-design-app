@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react'
 import { CalendarPanel } from '@/components/calendar/CalendarPanel'
-import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, useTodayStorage, todayKey, useOpsStorage, type OpsTask } from '@/lib/storage'
+import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, todayKey } from '@/lib/storage'
 import { useTodoDefinitions } from '@/lib/todos'
 import { useAuth } from '@/hooks/useAuth'
 import { AuthPage } from '@/pages/AuthPage'
 import { PrivacyPage } from '@/pages/PrivacyPage'
-import { Header } from '@/components/ui/Header'
 import { BrandMark } from '@/components/ui/BrandMark'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { MorningTab } from '@/components/tabs/MorningTab'
@@ -20,10 +19,9 @@ const HealthTab     = lazy(() => import('@/components/tabs/HealthTab').then(m =>
 import { DateNav } from '@/components/ui/DateNav'
 import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
-import { PrimaryTargetEditor, type TaskApplyMode } from '@/components/ui/PrimaryTargetEditor'
 import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSnapshot, buildSettingsCoachSnapshot, type CoachAction } from '@/lib/coach'
 import { useUserContextRoot, UserContextCtx } from '@/lib/user-context'
-import { saveJournalEntry, fetchHealthSummary } from '@/lib/api'
+import { fetchHealthSummary } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
 import { getNavItems } from '@/lib/lang'
 import type { JournalBriefResult } from '@/lib/ai'
@@ -247,14 +245,11 @@ function MainApp() {
   const [healthConnected, setHealthConnected] = useState(false)
   const { boss, setBoss, toggleCompleted } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
-  const [currentOps, setOps] = useOpsStorage()
   const [userContext, updateUserContext] = useUserContextRoot()
   const [savedAiHabits] = useLocalStorage<unknown>('settings:ai:habits', null)
   const [goals] = useLocalStorage<Array<{ priority?: string; title?: string }>>('wannabe:goals', [])
   const [morningChecked, setMorningChecked] = useDailyStorage<string[]>('morning', 'checked', [])
   const [eveningChecked, setEveningChecked] = useDailyStorage<string[]>('evening', 'checked', [])
-  const [morningJournal] = useTodayStorage<string>('morning:journal', '')
-  const [showJournalEditor, setShowJournalEditor] = useState(false)
   const [targets] = useMonthlyTargets(
     Object.fromEntries(WORKSPACE_HABITS.map(habit => [habit.id, 0]))
   )
@@ -415,53 +410,11 @@ function MainApp() {
     }
   }
 
-  const handleJournalApply = ({ target, tasks, feedback, taskMode }: { target: string; tasks: JournalBriefResult['tasks']; feedback?: string; taskMode?: TaskApplyMode }) => {
-    // user_context に goal_summary を自動更新
-    if (target) {
-      void updateUserContext({ goal_summary: target }).catch(() => {/* silent */})
-    }
-
-    // DB に非同期保存（失敗しても UI には影響させない）
-    void saveJournalEntry({
-      entry_date: todayKey(),
-      raw_input: morningJournal,
-      content: { primary_target: target, feedback: feedback ?? '', tasks },
-    }).catch(() => {/* silent */})
-
-    const applyTasks = (taskList: JournalBriefResult['tasks']) => {
-      if (taskMode === 'today-only') {
-        if (taskList.length === 0) return
-        const existingTitles = new Set(currentOps.map(t => t.title.toLowerCase()))
-        const newOps: OpsTask[] = taskList
-          .filter(t => !existingTitles.has(t.label.toLowerCase()))
-          .map(t => ({
-            id: `ops-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            title: t.label,
-            done: false,
-            createdAt: new Date().toISOString(),
-          }))
-        setOps([...currentOps, ...newOps])
-      } else {
-        applyJournalTasks(taskList)
-      }
-    }
-
-    if (target && bossValue && target !== bossValue) {
-      setPendingTarget(target)
-      setPendingTasks(tasks)
-    } else {
-      if (target) setBoss(target)
-      applyTasks(tasks)
-      setShowJournalEditor(false)
-    }
-  }
-
   const confirmPendingTarget = (accept: boolean) => {
     if (accept && pendingTarget) setBoss(pendingTarget)
     applyJournalTasks(pendingTasks)
     setPendingTarget(null)
     setPendingTasks([])
-    setShowJournalEditor(false)
   }
 
   const renderTabContent = () => (
@@ -507,7 +460,7 @@ function MainApp() {
       {tab === 'settings' && <SettingsPage />}
       {tab === 'notes'    && <NotesPage />}
       {tab === 'calendar' && (
-        <div className="h-[calc(100svh-125px)] overflow-hidden">
+        <div className="h-[calc(100svh-56px)] overflow-hidden">
           <CalendarPanel todoDefinitions={todoDefinitions} onClose={() => setTab('home')} mode="tab" />
         </div>
       )}
@@ -553,22 +506,6 @@ function MainApp() {
         />
 
         <div className="min-w-0 lg:border-r lg:border-white/[0.06]">
-          <Header
-            boss={bossValue}
-            bossCompleted={bossCompleted}
-            onBossClick={() => setTab('evening')}
-            onSetupClick={() => setShowJournalEditor(prev => !prev)}
-          />
-          {showJournalEditor && (
-            <PrimaryTargetEditor
-              journal={morningJournal}
-              currentGoal={bossValue}
-              identity={goals.find(g => g.priority === 'critical')?.title ?? goals.find(g => g.priority === 'high')?.title ?? ''}
-              existingTaskLabels={todoDefinitions.filter(t => t.is_active).map(t => t.label)}
-              onApply={handleJournalApply}
-              onClose={() => setShowJournalEditor(false)}
-            />
-          )}
           {pendingTarget && (
             <div className="mx-4 mb-2 rounded-[20px] border border-[#7dd3fc]/20 bg-[#08111c]/95 px-5 py-4">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7dd3fc]">Primary Target を更新しますか？</p>
@@ -601,7 +538,7 @@ function MainApp() {
             </div>
           )}
 
-          <div ref={contentRef} className={['overflow-y-auto', isDesktop ? 'h-[calc(100svh-125px)]' : 'pb-20'].join(' ')}>
+          <div ref={contentRef} className={['overflow-y-auto', isDesktop ? 'h-[calc(100svh-56px)]' : 'pb-20'].join(' ')}>
             {renderTabContent()}
             {!isDesktop && tab !== 'morning' && tab !== 'evening' && (
               <div className="px-4 pb-24">

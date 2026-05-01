@@ -9,8 +9,7 @@ export const Header = ({ boss, bossCompleted, onBossClick, onSetupClick }: Heade
   <header className="border-b border-[#9fb4d1]/10 bg-[#07111d]/90 px-4 py-3 backdrop-blur-xl" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
     <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#7dd3fc]/18 bg-[#071828]/80 px-3 py-2.5">
       <div>
-        <p className="text-[10px] font-semibold tracking-[0.12em] text-[#8da4c3]">Primary target</p>
-        <p className={['mt-1 text-sm', bossCompleted ? 'text-white/45 line-through' : 'text-white/85'].join(' ')}>
+        <p className={['text-sm', bossCompleted ? 'text-white/45 line-through' : 'text-white/85'].join(' ')}>
           {boss ?? '未設定'}
         </p>
       </div>
