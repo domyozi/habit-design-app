@@ -217,7 +217,7 @@ input:focus, textarea:focus, select:focus {
   flex: 1;
   color: rgba(255,255,255,0.72);
 }
-.tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
+.tiptap ul[data-type="taskList"] li[data-checked="true"] > div > p {
   color: rgba(255,255,255,0.35);
   text-decoration: line-through;
 }
