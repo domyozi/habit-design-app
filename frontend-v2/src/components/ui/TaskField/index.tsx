@@ -24,6 +24,8 @@ interface TaskFieldRowProps {
   item: TaskFieldItem
   checked: boolean
   onToggle: () => void
+  skipped?: boolean
+  onSkip?: () => void
   value: string
   onChange: (v: string) => void
   aiFeedback?: string
@@ -36,6 +38,8 @@ export const TaskFieldRow = ({
   item,
   checked,
   onToggle,
+  skipped,
+  onSkip,
   value,
   onChange,
   aiFeedback,
@@ -125,6 +129,9 @@ export const TaskFieldRow = ({
           item={item}
           checked={checked}
           onToggle={onToggle}
+          skipped={skipped}
+          onSkip={onSkip}
+          isReadOnly={isReadOnly}
           dotColor={dotColor}
         />
       )

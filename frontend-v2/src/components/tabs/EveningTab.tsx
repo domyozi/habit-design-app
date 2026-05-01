@@ -68,6 +68,7 @@ export const EveningTab = ({
   const PREP_ITEMS: TaskFieldItem[] = []
 
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('evening', 'checked', [], dateKey)
+  const [skippedArr, setSkippedArr] = useDailyStorage<string[]>('evening', 'skipped', [], dateKey)
   const [fieldValues, setFieldValues] = useDailyStorage<Record<string, string>>('evening', 'field_values', {}, dateKey)
   const [aiFeedbacks, setAiFeedbacks] = useDailyStorage<Record<string, string>>('evening', 'ai_feedback', {}, dateKey)
   const checked = new Set(checkedArr)
@@ -112,9 +113,20 @@ export const EveningTab = ({
 
   const toggle = (id: string) => {
     if (isReadOnly) return
+    setSkippedArr(prev => prev.filter(i => i !== id))
     setCheckedArr(prev => {
       const s = new Set(prev)
       if (s.has(id)) { s.delete(id) } else { s.add(id) }
+      return Array.from(s)
+    })
+  }
+
+  const handleSkipEvening = (id: string) => {
+    if (isReadOnly) return
+    setCheckedArr(prev => prev.filter(i => i !== id))
+    setSkippedArr(prev => {
+      const s = new Set(prev)
+      s.has(id) ? s.delete(id) : s.add(id)
       return Array.from(s)
     })
   }
@@ -268,6 +280,8 @@ export const EveningTab = ({
                     item={item}
                     checked={checkedArr.includes(item.id)}
                     onToggle={() => toggle(item.id)}
+                    skipped={skippedArr.includes(item.id)}
+                    onSkip={() => handleSkipEvening(item.id)}
                     value={fieldValues[item.id] ?? ''}
                     onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
                     aiFeedback={aiFeedbacks[item.id]}

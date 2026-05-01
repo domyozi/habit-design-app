@@ -264,9 +264,20 @@ export const MorningTab = ({
   )
   // 後方互換: MUST/ROUTINE の区別を isMust で再現
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('morning', 'checked', [], dateKey)
+  const [skippedArr, setSkippedArr] = useDailyStorage<string[]>('morning', 'skipped', [], dateKey)
   const [fieldValues, setFieldValues] = useDailyStorage<Record<string, string>>('morning', 'field_values', {}, dateKey)
   const [aiFeedbacks, setAiFeedbacks] = useDailyStorage<Record<string, string>>('morning', 'ai_feedback', {}, dateKey)
   const checked = new Set(checkedArr)
+
+  const handleSkipMorning = (id: string) => {
+    if (isReadOnly) return
+    setCheckedArr(prev => prev.filter(i => i !== id))
+    setSkippedArr(prev => {
+      const s = new Set(prev)
+      s.has(id) ? s.delete(id) : s.add(id)
+      return Array.from(s)
+    })
+  }
   const [weight, setWeight] = useDailyStorage<string>('morning', 'weight', '', dateKey)
   const [condition, setCondition] = useDailyStorage<number>('morning', 'condition', 0, dateKey)
   const [journal, setJournal] = useDailyStorage<string>('morning', 'journal', '', dateKey)
@@ -554,10 +565,13 @@ export const MorningTab = ({
                       checked={checkedArr.includes(item.id)}
                       onToggle={() => {
                         if (isReadOnly) return
+                        setSkippedArr(prev => prev.filter(i => i !== item.id))
                         const s = new Set(checkedArr)
                         s.has(item.id) ? s.delete(item.id) : s.add(item.id)
                         setCheckedArr([...s])
                       }}
+                      skipped={skippedArr.includes(item.id)}
+                      onSkip={() => handleSkipMorning(item.id)}
                       value={fieldValues[item.id] ?? ''}
                       onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
                       aiFeedback={aiFeedbacks[item.id]}
