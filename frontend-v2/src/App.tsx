@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, lazy, Suspense } from 'react'
 import { CalendarPanel } from '@/components/calendar/CalendarPanel'
-import { countMonthlyChecks, useBossStorage, useDailyStorage, useLocalStorage, useMonthlyTargets, todayKey } from '@/lib/storage'
+import { useBossStorage, useDailyStorage, useLocalStorage, todayKey } from '@/lib/storage'
 import { useTodoDefinitions } from '@/lib/todos'
 import { useAuth } from '@/hooks/useAuth'
 import { useUserProfile } from '@/hooks/useUserProfile'
@@ -19,22 +19,13 @@ const NotesPage     = lazy(() => import('@/pages/NotesPage').then(m => ({ defaul
 const NotesFullPage = lazy(() => import('@/pages/NotesFullPage').then(m => ({ default: m.NotesFullPage })))
 const HealthTab     = lazy(() => import('@/components/tabs/HealthTab').then(m => ({ default: m.HealthTab })))
 import { DateNav } from '@/components/ui/DateNav'
-import { CoachPanel } from '@/components/ai/CoachPanel'
 import { TaskListPanel } from '@/components/ai/TaskListPanel'
-import { buildHomeCoachSnapshot, buildIdentityCoachSnapshot, buildMonthlyCoachSnapshot, buildSettingsCoachSnapshot, type CoachAction } from '@/lib/coach'
 import { useUserContextRoot, UserContextCtx } from '@/lib/user-context'
 import { fetchHealthSummary } from '@/lib/api'
 import { createTodoId } from '@/lib/todos'
 import { getNavItems } from '@/lib/lang'
 import type { JournalBriefResult } from '@/lib/ai'
 import type { TabId } from '@/types'
-
-const WORKSPACE_HABITS = [
-  { id: 'early-rise', label: '早起き' },
-  { id: 'training', label: '筋トレ' },
-  { id: 'english', label: '英語' },
-  { id: 'cardio', label: '有酸素' },
-] as const
 
 const MenuGlyph = ({ color }: { color: string }) => (
   <span
@@ -257,13 +248,8 @@ function MainApp() {
   const { boss, setBoss, toggleCompleted } = useBossStorage()
   const [todoDefinitions, setTodoDefinitions] = useTodoDefinitions()
   const [userContext, updateUserContext] = useUserContextRoot()
-  const [savedAiHabits] = useLocalStorage<unknown>('settings:ai:habits', null)
-  const [goals] = useLocalStorage<Array<{ priority?: string; title?: string }>>('wannabe:goals', [])
   const [morningChecked, setMorningChecked] = useDailyStorage<string[]>('morning', 'checked', [])
   const [eveningChecked, setEveningChecked] = useDailyStorage<string[]>('evening', 'checked', [])
-  const [targets] = useMonthlyTargets(
-    Object.fromEntries(WORKSPACE_HABITS.map(habit => [habit.id, 0]))
-  )
   const [morningDoneBanner, setMorningDoneBanner] = useState(false)
   const [eveningDoneBanner, setEveningDoneBanner] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -316,63 +302,7 @@ function MainApp() {
 
   const bossValue = boss?.value ?? null
   const bossCompleted = boss?.completed ?? false
-  const monthlyCounts = useMemo(() => countMonthlyChecks('morning:checked'), [])
-  const activeTodoCount = todoDefinitions.filter(todo => todo.is_active).length
-  const inactiveTodoCount = todoDefinitions.filter(todo => !todo.is_active).length
-  const activeGoalCount = goals.filter(goal => goal.priority !== 'done').length
-  const criticalGoalCount = goals.filter(goal => goal.priority === 'critical').length
   const todayTotal = todoDefinitions.filter(todo => todo.is_active && todo.timing === 'morning').length
-  const completionRate = todayTotal > 0 ? Math.round((morningChecked.length / todayTotal) * 100) : 0
-  const monthlyHabitData = WORKSPACE_HABITS.map(habit => ({
-    ...habit,
-    actual: monthlyCounts[habit.id] ?? 0,
-    target: targets[habit.id] ?? 0,
-  }))
-  const topWins = [...monthlyHabitData]
-    .sort((a, b) => (b.actual / Math.max(b.target, 1)) - (a.actual / Math.max(a.target, 1)))
-    .slice(0, 2)
-  const underTarget = monthlyHabitData
-    .filter(habit => habit.target > 0 && habit.actual < habit.target)
-    .sort((a, b) => ((a.actual / a.target) - (b.actual / b.target)))
-    .slice(0, 2)
-
-  const coachSnapshot = (() => {
-    if (tab === 'home' || tab === 'morning' || tab === 'evening') {
-      return buildHomeCoachSnapshot({
-        completionRate,
-        todayDone: morningChecked.length,
-        todayTotal,
-        hasBoss: Boolean(bossValue),
-        bossCompleted,
-        eveningCheckedCount: eveningChecked.length,
-        userContext,
-      })
-    }
-    if (tab === 'monthly' || tab === 'report') {
-      return buildMonthlyCoachSnapshot({ topWins, underTarget, activeGoalCount, userContext })
-    }
-    if (tab === 'settings') {
-      return buildSettingsCoachSnapshot({
-        activeTodoCount,
-        inactiveTodoCount,
-        hasSavedSuggestion: Boolean(savedAiHabits),
-        userContext,
-      })
-    }
-    if (tab === 'wanna-be') {
-      return buildIdentityCoachSnapshot({
-        criticalCount: criticalGoalCount,
-        activeCount: activeGoalCount,
-        userContext,
-      })
-    }
-    return buildSettingsCoachSnapshot({
-      activeTodoCount,
-      inactiveTodoCount,
-      hasSavedSuggestion: Boolean(savedAiHabits),
-      userContext,
-    })
-  })()
 
   // HomePage の onNavigate: date を渡すと viewDate も同時にセット（昨日カード用）
   const handleHomeNavigate = (id: TabId, date?: string) => {
@@ -395,12 +325,6 @@ function MainApp() {
   const navActive: TabId = (['monthly', 'wanna-be', 'report', 'settings'] as TabId[]).includes(tab)
     ? 'more'
     : tab
-
-  const handleCoachAction = (action: CoachAction) => {
-    if (!action.tab) return
-    setViewDate(todayKey())
-    setTab(action.tab)
-  }
 
   const applyJournalTasks = (tasks: JournalBriefResult['tasks']) => {
     if (tasks.length > 0) {
@@ -553,11 +477,6 @@ function MainApp() {
 
           <div ref={contentRef} className={['overflow-y-auto', isDesktop ? 'h-[calc(100svh-56px)]' : 'pb-20'].join(' ')}>
             {renderTabContent()}
-            {!isDesktop && tab !== 'morning' && tab !== 'evening' && (
-              <div className="px-4 pb-24">
-                <CoachPanel snapshot={coachSnapshot} onAction={handleCoachAction} />
-              </div>
-            )}
           </div>
         </div>
 
@@ -578,7 +497,6 @@ function MainApp() {
                   <span>›</span>
                 </button>
               </div>
-              <CoachPanel snapshot={coachSnapshot} onAction={handleCoachAction} />
               <TaskListPanel
                 todoDefinitions={todoDefinitions}
                 morningChecked={morningChecked}
