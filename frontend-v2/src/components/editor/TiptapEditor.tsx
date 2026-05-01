@@ -452,7 +452,7 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '„Å
       Underline,
       Link.configure({ openOnClick: false }),
       TaskList,
-      TaskItem.configure({ nested: true }).extend({
+      TaskItem.extend({
         addKeyboardShortcuts() {
           return {
             'Mod-Space': () => this.editor.commands.command(({ tr, state }) => {
@@ -471,7 +471,7 @@ export function TiptapEditor({ content, onChange, onCharCount, placeholder = '„Å
             }),
           }
         },
-      }),
+      }).configure({ nested: true }),
       ResizableImage.configure({ inline: true, allowBase64: true }),
       CodeBlockLowlight.configure({ lowlight }),
       CharacterCount,
