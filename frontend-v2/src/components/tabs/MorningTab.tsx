@@ -380,6 +380,8 @@ export const MorningTab = ({
               }
             }
           })()
+          // バックグラウンドで習慣候補抽出（失敗してもサイレント）
+          void import('@/lib/api').then(api => api.extractHabitSuggestions(journal, 'morning', dateKey).catch(() => {}))
         },
       )
     } catch (e) {

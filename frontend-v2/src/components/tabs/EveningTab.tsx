@@ -239,6 +239,8 @@ export const EveningTab = ({
               }
             }
           })()
+          // バックグラウンドで習慣候補抽出（サイレント）
+          void import('@/lib/api').then(api => api.extractHabitSuggestions(notes, 'evening', dateKey).catch(() => {}))
           onComplete?.()
         },
         todayMorningCtx,

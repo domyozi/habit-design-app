@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchHealthToken, regenerateHealthToken } from '@/lib/api'
+import {
+  fetchHealthToken,
+  regenerateHealthToken,
+  fetchHabitSuggestions,
+  createHabitSuggestion,
+  updateHabitSuggestionStatus,
+  type HabitSuggestion,
+} from '@/lib/api'
 import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
 import { AiMark } from '@/components/ui/AiMark'
@@ -1002,6 +1009,131 @@ const MemoryView = () => {
   )
 }
 
+// ─── 習慣候補パネル ───────────────────────────────────────────
+const HabitSuggestionsPanel = () => {
+  const [, setTodos] = useTodoDefinitions()
+  const [pending, setPending] = useState<HabitSuggestion[]>([])
+  const [loading, setLoading] = useState(false)
+  const [draft, setDraft] = useState('')
+  const isComposing = useRef(false)
+
+  const reload = useCallback(async () => {
+    try {
+      const list = await fetchHabitSuggestions('pending')
+      setPending(list)
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { void reload() }, [reload])
+
+  const handleAccept = async (s: HabitSuggestion) => {
+    // TodoDefinition に追加（section='habit'）
+    setTodos(prev => {
+      // 同名の habit が既に存在する場合はスキップ
+      if (prev.some(t => t.label.trim() === s.label.trim() && t.section === 'habit' && t.is_active)) return prev
+      const newTodo: TodoDefinition = {
+        id: createTodoId(s.label),
+        label: s.label,
+        section: 'habit',
+        timing: 'morning',
+        isMust: true,
+        is_active: true,
+      }
+      return [...prev, newTodo]
+    })
+    try {
+      await updateHabitSuggestionStatus(s.id, 'accepted')
+    } catch { /* ignore */ }
+    setPending(prev => prev.filter(p => p.id !== s.id))
+  }
+
+  const handleReject = async (s: HabitSuggestion) => {
+    try {
+      await updateHabitSuggestionStatus(s.id, 'rejected')
+    } catch { /* ignore */ }
+    setPending(prev => prev.filter(p => p.id !== s.id))
+  }
+
+  const handleManualAdd = async () => {
+    const label = draft.trim()
+    if (!label) return
+    setLoading(true)
+    try {
+      const created = await createHabitSuggestion(label, 'manual')
+      setPending(prev => [created, ...prev])
+      setDraft('')
+    } catch { /* ignore */ } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">習慣候補</p>
+        <p className="mt-1 text-[11px] text-white/38">
+          ジャーナルから抽出された習慣化候補。採用すると Habit カテゴリに追加されます。
+        </p>
+      </div>
+
+      {/* 候補リスト */}
+      {pending.length > 0 ? (
+        <div className="space-y-2">
+          {pending.map(s => (
+            <div key={s.id} className="flex items-center gap-2 rounded-2xl border border-[#ff6b35]/20 bg-[#ff6b35]/5 px-3 py-2">
+              <span className="flex-1 text-sm text-white/85">{s.label}</span>
+              {s.source && s.source !== 'manual' && (
+                <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-white/35">
+                  {s.source}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleAccept(s)}
+                className="shrink-0 rounded-full border border-[#22c55e]/35 bg-[#22c55e]/12 px-3 py-1 text-[11px] font-semibold text-[#4ade80]"
+              >
+                ✓ 採用
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReject(s)}
+                className="shrink-0 rounded-full border border-white/[0.1] px-3 py-1 text-[11px] text-white/40 hover:text-white/70"
+              >
+                × 不要
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-2xl border border-dashed border-white/[0.08] px-3 py-4 text-center text-[11px] text-white/30">
+          現在の候補はありません。ジャーナル保存時に自動抽出されます。
+        </p>
+      )}
+
+      {/* 手動追加 */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onCompositionStart={() => { isComposing.current = true }}
+          onCompositionEnd={() => { isComposing.current = false }}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing.current) void handleManualAdd() }}
+          placeholder="自分で習慣候補を追加..."
+          className="flex-1 rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"
+          disabled={loading}
+        />
+        <button
+          type="button"
+          onClick={() => void handleManualAdd()}
+          disabled={loading || !draft.trim()}
+          className="shrink-0 rounded-full border border-[#ff6b35]/30 bg-[#ff6b35]/12 px-4 py-2 text-xs font-semibold text-[#ff9a6b] disabled:opacity-30"
+        >
+          + 追加
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState<'tasks' | 'ai' | 'memory'>('tasks')
 
@@ -1031,6 +1163,9 @@ export const SettingsPage = () => {
       {activeTab === 'tasks' && (
         <>
           <div className="px-4 pt-4 pb-2">
+            <HabitSuggestionsPanel />
+          </div>
+          <div className="px-4 pt-2 pb-2">
             <AiTaskCreator />
           </div>
           <TodoManager />

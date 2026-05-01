@@ -627,6 +627,43 @@ export const patchUserContext = (patch: Partial<UserContext>): Promise<UserConte
   apiPatch<UserContext>('/api/user-context', patch)
 
 // ============================================================
+// Habit Suggestions API クライアント
+// ============================================================
+
+export type HabitSuggestionStatus = 'pending' | 'accepted' | 'rejected'
+
+export interface HabitSuggestion {
+  id: string
+  label: string
+  status: HabitSuggestionStatus
+  source: string | null
+  source_date: string | null
+  created_at: string
+}
+
+export const fetchHabitSuggestions = (status?: HabitSuggestionStatus): Promise<HabitSuggestion[]> =>
+  apiGet<HabitSuggestion[]>(`/api/habit-suggestions${status ? `?status=${status}` : ''}`)
+
+export const createHabitSuggestion = (label: string, source: string = 'manual'): Promise<HabitSuggestion> =>
+  apiPost<HabitSuggestion>('/api/habit-suggestions', { label, source })
+
+export const extractHabitSuggestions = (
+  journal_text: string,
+  source: 'morning' | 'evening' | 'manual' = 'manual',
+  source_date?: string,
+): Promise<HabitSuggestion[]> =>
+  apiPost<HabitSuggestion[]>('/api/habit-suggestions/extract', { journal_text, source, source_date })
+
+export const updateHabitSuggestionStatus = (
+  id: string,
+  status: HabitSuggestionStatus,
+): Promise<HabitSuggestion> =>
+  apiPatch<HabitSuggestion>(`/api/habit-suggestions/${id}`, { status })
+
+export const deleteHabitSuggestion = (id: string): Promise<{ ok: boolean }> =>
+  apiDelete<{ ok: boolean }>(`/api/habit-suggestions/${id}`)
+
+// ============================================================
 // Integrations API クライアント（iOS Shortcuts Webhook）
 // ============================================================
 
