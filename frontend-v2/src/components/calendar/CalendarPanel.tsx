@@ -5,11 +5,12 @@ import type { TodoDefinition, HabitCategory } from '@/lib/todos'
 import { HABIT_CATEGORIES } from '@/lib/todos'
 
 const SECTION_ACCENT: Record<HabitCategory, string> = {
-  identity: '#ff6b35',
+  habit:  '#ff6b35',
   growth: '#22c55e',
-  body: '#38bdf8',
-  mind: '#a78bfa',
+  body:   '#38bdf8',
+  mind:   '#a78bfa',
   system: '#f59e0b',
+  task:   '#94a3b8',
 }
 
 type ViewRange = 1 | 3 | 7

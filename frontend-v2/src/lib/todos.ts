@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { fetchTodoDefinitions, saveTodoDefinitions } from '@/lib/api'
 
-export type HabitCategory = 'identity' | 'growth' | 'body' | 'mind' | 'system'
+export type HabitCategory = 'habit' | 'growth' | 'body' | 'mind' | 'system' | 'task'
 export type HabitTiming   = 'morning' | 'evening' | 'anytime'
 
 // TodoSection は後方互換のために型エイリアスとして残す
@@ -41,14 +41,12 @@ export interface TodoDefinition {
 }
 
 export const DEFAULT_TODO_DEFINITIONS: TodoDefinition[] = [
-  // Identity + morning
-  { id: 'early-rise', label: '早起き（5時台起床）', section: 'identity', timing: 'morning', isMust: true, is_active: true },
-  { id: 'training',   label: '筋トレ',               section: 'identity', timing: 'morning', isMust: true, is_active: true },
-  // Growth + morning
-  { id: 'english',    label: '英語学習',              section: 'growth', timing: 'morning', isMust: true, is_active: true },
-  { id: 'side-proj',  label: '副業推進',              section: 'growth', timing: 'morning', isMust: true, is_active: true },
-  // Body + morning
-  { id: 'cardio',     label: '有酸素運動',            section: 'body', timing: 'morning', isMust: true, is_active: true },
+  // Habit + morning（早起き / 筋トレ / 英語 / 副業 / 有酸素 が習慣化対象）
+  { id: 'early-rise', label: '早起き（5時台起床）', section: 'habit', timing: 'morning', isMust: true, is_active: true },
+  { id: 'training',   label: '筋トレ',               section: 'habit', timing: 'morning', isMust: true, is_active: true },
+  { id: 'english',    label: '英語学習',              section: 'habit', timing: 'morning', isMust: true, is_active: true },
+  { id: 'side-proj',  label: '副業推進',              section: 'habit', timing: 'morning', isMust: true, is_active: true },
+  { id: 'cardio',     label: '有酸素運動',            section: 'habit', timing: 'morning', isMust: true, is_active: true },
   { id: 'weight',     label: '体重測定',              section: 'body', timing: 'morning', minutes: 3, is_active: true },
   { id: 'shower',     label: 'シャワー',              section: 'body', timing: 'morning', minutes: 15, is_active: true },
   // Mind + morning
@@ -74,11 +72,12 @@ export const DEFAULT_TODO_DEFINITIONS: TodoDefinition[] = [
 ]
 
 export const HABIT_CATEGORIES: Array<{ id: HabitCategory; label: string; accent: string; desc: string }> = [
-  { id: 'identity', label: 'Identity', accent: '#ff6b35', desc: 'アイデンティティ核' },
+  { id: 'habit',    label: 'Habit',    accent: '#ff6b35', desc: '習慣化対象' },
   { id: 'growth',   label: 'Growth',   accent: '#22c55e', desc: '成長エンジン' },
   { id: 'body',     label: 'Body',     accent: '#38bdf8', desc: '身体メンテ' },
   { id: 'mind',     label: 'Mind',     accent: '#a78bfa', desc: '精神儀式' },
   { id: 'system',   label: 'System',   accent: '#f59e0b', desc: '計画・管理' },
+  { id: 'task',     label: 'Task',     accent: '#94a3b8', desc: '個別タスク' },
 ]
 
 export const HABIT_TIMINGS: Array<{ id: HabitTiming; label: string }> = [
@@ -90,25 +89,32 @@ export const HABIT_TIMINGS: Array<{ id: HabitTiming; label: string }> = [
 // 後方互換のために TODO_SECTIONS も残す（SettingsPage が参照するかもしれないため）
 export const TODO_SECTIONS = HABIT_CATEGORIES.map(c => ({ id: c.id as HabitCategory, label: `${c.label} — ${c.desc}`, accent: c.accent }))
 
+// 習慣化対象のデフォルト ID 集合（identity → habit 自動マイグレーション用）
+const DEFAULT_HABIT_IDS = new Set<string>(['early-rise', 'training', 'english', 'side-proj', 'cardio'])
+
 // 旧 section 値 → 新 HabitCategory のマッピング（localStorage に古いデータが残っている場合のフォールバック）
 const LEGACY_SECTION_MAP: Record<string, HabitCategory> = {
-  'morning-must': 'identity',
+  'morning-must': 'habit',
   'morning-routine': 'system',
   'evening-reflection': 'system',
   'evening-prep': 'system',
 }
 
-const VALID_CATEGORIES = new Set<string>(['identity', 'growth', 'body', 'mind', 'system'])
+const VALID_CATEGORIES = new Set<string>(['habit', 'growth', 'body', 'mind', 'system', 'task'])
 
-const resolveCategory = (section: string): HabitCategory =>
-  VALID_CATEGORIES.has(section)
-    ? (section as HabitCategory)
-    : (LEGACY_SECTION_MAP[section] ?? 'system')
+const resolveCategory = (section: string, id?: string): HabitCategory => {
+  // 旧 'identity' データのマイグレーション: ID が習慣デフォルトに含まれれば habit、それ以外は task
+  if (section === 'identity') {
+    return id && DEFAULT_HABIT_IDS.has(id) ? 'habit' : 'task'
+  }
+  if (VALID_CATEGORIES.has(section)) return section as HabitCategory
+  return LEGACY_SECTION_MAP[section] ?? 'system'
+}
 
 export const normalizeTodoDefinitions = (todos: TodoDefinition[]) =>
   todos.map(todo => ({
     ...todo,
-    section: resolveCategory(todo.section) as HabitCategory,
+    section: resolveCategory(todo.section, todo.id) as HabitCategory,
     timing: todo.timing ?? 'morning',
     is_active: todo.is_active ?? true,
   }))
@@ -206,9 +212,9 @@ export const byTiming = (todos: TodoDefinition[], timing: HabitTiming) =>
 // byTiming をカテゴリでグループ化
 export const byTimingGrouped = (todos: TodoDefinition[], timing: HabitTiming): Record<HabitCategory, TodoDefinition[]> => {
   const filtered = byTiming(todos, timing)
-  const result: Record<HabitCategory, TodoDefinition[]> = { identity: [], growth: [], body: [], mind: [], system: [] }
+  const result: Record<HabitCategory, TodoDefinition[]> = { habit: [], growth: [], body: [], mind: [], system: [], task: [] }
   for (const todo of filtered) {
-    result[resolveCategory(todo.section)].push(todo)
+    result[resolveCategory(todo.section, todo.id)].push(todo)
   }
   return result
 }

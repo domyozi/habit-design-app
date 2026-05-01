@@ -409,7 +409,7 @@ function MainApp() {
           .map(t => ({
             id: createTodoId(t.label),
             label: t.label,
-            section: (t.section === 'morning-must' ? 'identity' : 'system') as import('@/lib/todos').HabitCategory,
+            section: (t.section === 'morning-must' ? 'habit' : 'system') as import('@/lib/todos').HabitCategory,
             timing: 'morning' as import('@/lib/todos').HabitTiming,
             isMust: t.section === 'morning-must',
             is_active: true,
