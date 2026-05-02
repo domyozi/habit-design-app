@@ -84,12 +84,24 @@ export interface Habit {
   target_time: string | null; // 🔵 time_before/after で使用（HH:MM:SS）
   unit: string | null; // 🟡 表示用単位 ('分'/'歩'/'kg'/'時刻' 等)
   aggregation: HabitAggregation; // 🔵 同日複数ログの集約関数
+  // AI-native フィールド（add_habit_proof_xp マイグレーションで追加）
+  proof_type: HabitProofType; // 🔵 証明方法。既定 'none'
+  source_kind: string; // 🔵 記録ソース（manual / apple-watch / nike-run / strava / health-app / photo / calendar 等）。既定 'manual'
+  xp_base: number; // 🔵 1 回達成あたりの基本 XP。既定 10
   created_at: string; // 🔵 共通パターン
   updated_at: string; // 🔵 共通パターン
   // JOIN フィールド（APIレスポンス用）
   goal?: Goal; // 🔵 REQ-205: Wanna Be接続表示用
   today_log?: HabitLog | null; // 🔵 ダッシュボード用今日のログ
 }
+
+/**
+ * 証明方法
+ *   none  : 手動チェックのみ（既定）
+ *   photo : 写真アップロードで証明（XP × 1.5）
+ *   auto  : 外部デバイス自動取込（XP × 1.3）
+ */
+export type HabitProofType = 'none' | 'photo' | 'auto';
 
 /**
  * 習慣の頻度
@@ -141,6 +153,9 @@ export interface HabitLog {
   input_method: HabitInputMethod | null; // 🟡 入力方法
   numeric_value: number | null; // 🔵 量的タイプ用の実測値
   time_value: string | null; // 🔵 時刻タイプ用の実測時刻（HH:MM:SS）
+  // AI-native フィールド（add_habit_proof_xp マイグレーションで追加）
+  proof_url: string | null; // 🔵 写真証明 URL（Supabase Storage habit-proofs バケット内 path）
+  xp_earned: number; // 🔵 当該ログで付与された XP。既定 0
   created_at: string; // 🔵 共通パターン
   // JOIN フィールド
   failure_reason?: FailureReason | null; // 🔵 REQ-406
@@ -279,6 +294,10 @@ export interface CreateHabitRequest {
   target_time?: string; // HH:MM or HH:MM:SS
   unit?: string;
   aggregation?: HabitAggregation; // 未指定なら metric_type から推論
+  // AI-native（任意・add_habit_proof_xp マイグレーション以降）
+  proof_type?: HabitProofType; // 既定 'none'
+  source_kind?: string; // 既定 'manual'
+  xp_base?: number; // 既定 10
 }
 
 /**
@@ -297,6 +316,10 @@ export interface UpdateHabitRequest {
   target_time?: string;
   unit?: string;
   aggregation?: HabitAggregation;
+  // AI-native（任意・manual_edit でのみ更新される想定）
+  proof_type?: HabitProofType;
+  source_kind?: string;
+  xp_base?: number;
 }
 
 /**
@@ -311,6 +334,8 @@ export interface UpdateHabitLogRequest {
   // 量・時刻系（metric_type に応じて値を渡す）
   numeric_value?: number;
   time_value?: string; // HH:MM or HH:MM:SS
+  // AI-native（任意）: 写真証明 URL（Supabase Storage habit-proofs バケット内 path）
+  proof_url?: string;
 }
 
 /**
