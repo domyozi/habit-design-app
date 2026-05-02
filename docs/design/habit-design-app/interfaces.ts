@@ -77,6 +77,13 @@ export interface Habit {
   current_streak: number; // 🔵 REQ-502: 現在のストリーク
   longest_streak: number; // 🟡 最長ストリーク
   is_active: boolean; // 🔵 REQ-304: ソフト削除
+  // 量・時刻系フィールド（add_habit_metrics マイグレーションで追加）
+  metric_type: HabitMetricType; // 🔵 達成判定の種類。既定 'binary'
+  target_value: number | null; // 🔵 numeric_min/max/duration/range で使用
+  target_value_max: number | null; // 🔵 range で使用（上限）
+  target_time: string | null; // 🔵 time_before/after で使用（HH:MM:SS）
+  unit: string | null; // 🟡 表示用単位 ('分'/'歩'/'kg'/'時刻' 等)
+  aggregation: HabitAggregation; // 🔵 同日複数ログの集約関数
   created_at: string; // 🔵 共通パターン
   updated_at: string; // 🔵 共通パターン
   // JOIN フィールド（APIレスポンス用）
@@ -91,6 +98,36 @@ export interface Habit {
 export type HabitFrequency = 'daily' | 'weekdays' | 'weekends' | 'custom';
 
 /**
+ * 習慣の指標タイプ
+ *   binary       : completed=true で達成（従来挙動）
+ *   numeric_min  : numeric_value >= target_value で達成（読書 ≥ 15分 等）
+ *   numeric_max  : numeric_value <= target_value で達成（コーヒー ≤ 2杯 等）
+ *   duration     : numeric_min と同等。unit='分' 想定のエイリアス
+ *   range        : target_value <= numeric_value <= target_value_max
+ *   time_before  : time_value <= target_time（起床 ≤ 07:00 等）
+ *   time_after   : time_value >= target_time
+ */
+export type HabitMetricType =
+  | 'binary'
+  | 'numeric_min'
+  | 'numeric_max'
+  | 'duration'
+  | 'range'
+  | 'time_before'
+  | 'time_after';
+
+/**
+ * 同日複数ログを集約する関数（HealthKit 自動取得などで使用）
+ */
+export type HabitAggregation = 'exists' | 'sum' | 'max' | 'first' | 'avg';
+
+/**
+ * 習慣ログの入力経路
+ *   shortcut は iOS Shortcuts / HealthKit 自動取得用
+ */
+export type HabitInputMethod = 'manual' | 'voice' | 'auto' | 'shortcut';
+
+/**
  * 習慣ログ（日次達成記録）
  * 🔵 REQ-501/502・DBスキーマ habit_logs より
  */
@@ -99,9 +136,11 @@ export interface HabitLog {
   habit_id: string; // 🔵 習慣紐付け
   user_id: string; // 🔵 RLS用
   log_date: string; // 🔵 記録日（YYYY-MM-DD）
-  completed: boolean; // 🔵 REQ-501: 達成/未達成
+  completed: boolean; // 🔵 REQ-501: 達成/未達成（binary タイプで使用）
   completed_at: string | null; // 🟡 達成時刻
-  input_method: 'manual' | 'voice' | 'auto' | null; // 🟡 入力方法
+  input_method: HabitInputMethod | null; // 🟡 入力方法
+  numeric_value: number | null; // 🔵 量的タイプ用の実測値
+  time_value: string | null; // 🔵 時刻タイプ用の実測時刻（HH:MM:SS）
   created_at: string; // 🔵 共通パターン
   // JOIN フィールド
   failure_reason?: FailureReason | null; // 🔵 REQ-406
@@ -233,6 +272,13 @@ export interface CreateHabitRequest {
   frequency?: HabitFrequency; // 🟡 頻度
   scheduled_time?: string; // 🔵 REQ-305: 実行時刻
   display_order?: number; // 🟡 表示順
+  // 量・時刻系（add_habit_metrics マイグレーション以降）
+  metric_type?: HabitMetricType; // 既定 'binary'
+  target_value?: number;
+  target_value_max?: number;
+  target_time?: string; // HH:MM or HH:MM:SS
+  unit?: string;
+  aggregation?: HabitAggregation; // 未指定なら metric_type から推論
 }
 
 /**
@@ -244,6 +290,13 @@ export interface UpdateHabitRequest {
   title?: string; // 🔵 manual_edit用
   scheduled_time?: string; // 🔵 change_time用
   goal_id?: string; // 🟡 manual_edit用
+  // 量・時刻系（manual_edit でのみ更新する想定）
+  metric_type?: HabitMetricType;
+  target_value?: number;
+  target_value_max?: number;
+  target_time?: string;
+  unit?: string;
+  aggregation?: HabitAggregation;
 }
 
 /**
@@ -252,9 +305,12 @@ export interface UpdateHabitRequest {
  */
 export interface UpdateHabitLogRequest {
   date: string; // 🔵 記録日（YYYY-MM-DD）
-  completed: boolean; // 🔵 達成/未達成
+  completed: boolean; // 🔵 達成/未達成（binary タイプで使用）
   failure_reason?: string; // 🔵 REQ-406: 未達成理由
-  input_method?: 'manual' | 'voice'; // 🟡 入力方法
+  input_method?: 'manual' | 'voice' | 'shortcut'; // 🟡 入力方法
+  // 量・時刻系（metric_type に応じて値を渡す）
+  numeric_value?: number;
+  time_value?: string; // HH:MM or HH:MM:SS
 }
 
 /**

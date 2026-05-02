@@ -71,6 +71,24 @@ class AIAction(BaseModel):
 # 習慣の頻度
 HabitFrequency = Literal["daily", "weekdays", "weekends", "custom"]
 
+# 習慣の指標タイプ
+#   binary       : completed=true で達成（従来挙動）
+#   numeric_min  : numeric_value >= target_value で達成（読書時間 ≥ 15分 等）
+#   numeric_max  : numeric_value <= target_value で達成（コーヒー杯数 ≤ 2 等）
+#   duration     : numeric_min と同等。unit='分' を意味付けするためのエイリアス
+#   range        : target_value <= numeric_value <= target_value_max
+#   time_before  : time_value <= target_time（起床時刻 ≤ 07:00 等）
+#   time_after   : time_value >= target_time（コーヒー時刻 ≥ 09:00 等）
+HabitMetricType = Literal[
+    "binary", "numeric_min", "numeric_max", "duration", "range", "time_before", "time_after"
+]
+
+# 同日複数ログを集約する関数（HealthKit 自動取得など、将来の用途）
+HabitAggregation = Literal["exists", "sum", "max", "first", "avg"]
+
+# 習慣ログの入力経路。'shortcut' は iOS Shortcuts / HealthKit 自動取得用。
+HabitInputMethod = Literal["manual", "voice", "auto", "shortcut"]
+
 # =============================================
 # ドメインモデル（レスポンス用）
 # =============================================
@@ -143,6 +161,12 @@ class Habit(BaseModel):
     longest_streak: int = 0
     is_active: bool = True
     wanna_be_connection_text: Optional[str] = None
+    metric_type: HabitMetricType = "binary"
+    target_value: Optional[float] = None
+    target_value_max: Optional[float] = None
+    target_time: Optional[str] = None  # HH:MM:SS or HH:MM
+    unit: Optional[str] = None
+    aggregation: HabitAggregation = "exists"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -159,7 +183,9 @@ class HabitLog(BaseModel):
     log_date: str  # YYYY-MM-DD
     completed: bool
     completed_at: Optional[datetime] = None
-    input_method: Optional[Literal["manual", "voice", "auto"]] = None
+    input_method: Optional[HabitInputMethod] = None
+    numeric_value: Optional[float] = None
+    time_value: Optional[str] = None  # HH:MM:SS
     created_at: Optional[datetime] = None
 
 
@@ -356,6 +382,13 @@ class CreateHabitRequest(BaseModel):
     scheduled_time: Optional[str] = None
     display_order: Optional[int] = None
     wanna_be_connection_text: Optional[str] = None
+    # 量・時刻系
+    metric_type: HabitMetricType = "binary"
+    target_value: Optional[float] = None
+    target_value_max: Optional[float] = None
+    target_time: Optional[str] = None
+    unit: Optional[str] = None
+    aggregation: Optional[HabitAggregation] = None  # 未指定なら metric_type から推論
 
 
 class UpdateHabitRequest(BaseModel):
@@ -370,6 +403,13 @@ class UpdateHabitRequest(BaseModel):
     title: Optional[str] = None
     scheduled_time: Optional[str] = None
     goal_id: Optional[str] = None
+    # 量・時刻系（manual_edit でのみ更新される想定）
+    metric_type: Optional[HabitMetricType] = None
+    target_value: Optional[float] = None
+    target_value_max: Optional[float] = None
+    target_time: Optional[str] = None
+    unit: Optional[str] = None
+    aggregation: Optional[HabitAggregation] = None
 
 
 class UpdateHabitLogRequest(BaseModel):
@@ -381,7 +421,10 @@ class UpdateHabitLogRequest(BaseModel):
     date: str  # YYYY-MM-DD
     completed: bool
     failure_reason: Optional[str] = None
-    input_method: Optional[Literal["manual", "voice"]] = None
+    input_method: Optional[Literal["manual", "voice", "shortcut"]] = None
+    # 量・時刻系（metric_type に応じて値を渡す）
+    numeric_value: Optional[float] = None
+    time_value: Optional[str] = None  # HH:MM or HH:MM:SS
 
 
 class VoiceInputRequest(BaseModel):

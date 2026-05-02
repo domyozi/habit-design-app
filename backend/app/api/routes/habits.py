@@ -21,7 +21,7 @@ TASK-0008: 習慣ログ・ストリーク計算・バッジ付与API実装
 """
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
 
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
@@ -44,6 +44,15 @@ router = APIRouter()
 ALLOWED_ACTIONS = {"change_time", "add_habit", "remove_habit", "manual_edit"}
 
 
+def _default_aggregation(metric_type: str) -> str:
+    """metric_type に応じた aggregation の既定値。"""
+    if metric_type in ("numeric_min", "numeric_max", "duration", "range"):
+        return "sum"
+    if metric_type in ("time_before", "time_after"):
+        return "first"
+    return "exists"
+
+
 def _get_habit_or_raise(supabase, habit_id: str, user_id: str) -> dict:
     """
     【所有者確認ヘルパー】: 習慣を取得し、存在・所有権を確認する
@@ -64,6 +73,20 @@ def _get_habit_or_raise(supabase, habit_id: str, user_id: str) -> dict:
     if result.data["user_id"] != user_id:
         raise ForbiddenError()
     return result.data
+
+
+def _ensure_owned_goal(supabase, goal_id: str, user_id: str) -> None:
+    result = (
+        supabase.table("goals")
+        .select("id")
+        .eq("id", goal_id)
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=422, detail="goal_id is unknown or unauthorized")
 
 
 @router.get("/habits")
@@ -136,8 +159,10 @@ async def create_habit(
         "user_id": user_id,
         "title": request.title,
         "frequency": request.frequency,
+        "metric_type": request.metric_type,
     }
     if request.goal_id is not None:
+        _ensure_owned_goal(supabase, request.goal_id, user_id)
         new_habit["goal_id"] = request.goal_id
     if request.description is not None:
         new_habit["description"] = request.description
@@ -147,6 +172,19 @@ async def create_habit(
         new_habit["display_order"] = request.display_order
     if request.wanna_be_connection_text is not None:
         new_habit["wanna_be_connection_text"] = request.wanna_be_connection_text
+    if request.target_value is not None:
+        new_habit["target_value"] = request.target_value
+    if request.target_value_max is not None:
+        new_habit["target_value_max"] = request.target_value_max
+    if request.target_time is not None:
+        new_habit["target_time"] = request.target_time
+    if request.unit is not None:
+        new_habit["unit"] = request.unit
+    if request.aggregation is not None:
+        new_habit["aggregation"] = request.aggregation
+    else:
+        # metric_type から aggregation 既定値を推論
+        new_habit["aggregation"] = _default_aggregation(request.metric_type)
 
     result = supabase.table("habits").insert(new_habit).execute()
     created = result.data[0] if result.data else {}
@@ -191,6 +229,7 @@ async def update_habit(
         supabase.table("habits")
         .update(update_data)
         .eq("id", habit_id)
+        .eq("user_id", user_id)
         .execute()
     )
     updated = result.data[0] if result.data else existing.data
@@ -215,7 +254,7 @@ async def delete_habit(
     _get_habit_or_raise(supabase, habit_id, user_id)
 
     # 【論理削除】: is_active=false に更新（物理削除しない）
-    supabase.table("habits").update({"is_active": False}).eq("id", habit_id).execute()
+    supabase.table("habits").update({"is_active": False}).eq("id", habit_id).eq("user_id", user_id).execute()
 
     return Response(status_code=204)
 
@@ -235,12 +274,12 @@ async def update_habit_log(
     """
     supabase = get_supabase()
 
-    # 【所有者確認】: 習慣の存在と所有権を確認
-    _get_habit_or_raise(supabase, habit_id, user_id)
+    # 【所有者確認 + メタデータ取得】: metric_type 等を後段の達成判定で使う
+    habit = _get_habit_or_raise(supabase, habit_id, user_id)
 
     log_date_str = request.date
 
-    # 【ログUPSERT】: 同日同習慣は上書き（EDGE-102: ユニーク制約 habit_id, log_date）
+    # 【ログ payload 構築】: 同日同習慣は upsert で上書き（EDGE-102）
     log_data: dict = {
         "habit_id": habit_id,
         "user_id": user_id,
@@ -249,7 +288,16 @@ async def update_habit_log(
     }
     if request.input_method:
         log_data["input_method"] = request.input_method
-    if request.completed:
+    if request.numeric_value is not None:
+        log_data["numeric_value"] = request.numeric_value
+    if request.time_value is not None:
+        log_data["time_value"] = request.time_value
+
+    # 【達成判定】: metric_type に応じて、binary は completed、量・時刻系は値ベースで判定
+    achieved = streak_service.is_achieved(habit, log_data)
+
+    # 【completed_at】: 達成時のみ刻む。binary 以外でも「閾値を満たした瞬間」の意味で記録する
+    if achieved:
         log_data["completed_at"] = datetime.now(timezone.utc).isoformat()
 
     result = (
@@ -262,19 +310,21 @@ async def update_habit_log(
     current_streak = 0
     badge_earned = None
 
-    if request.completed:
-        # 【ストリーク計算・更新】: completed=true の場合、連続日数を計算して更新
+    if achieved:
+        # 【ストリーク計算・更新】: 達成日として連続日数を計算して更新
         log_date = date.fromisoformat(log_date_str)
-        current_streak = streak_service.calculate_streak(supabase, habit_id, user_id, log_date)
-        streak_service.update_streak(supabase, habit_id, current_streak)
+        current_streak = streak_service.calculate_streak(
+            supabase, habit_id, user_id, log_date, habit_meta=habit
+        )
+        streak_service.update_streak(supabase, habit_id, current_streak, user_id)
 
         # 【バッジ付与チェック】: ストリーク条件を満たす未取得バッジを付与
         badge_earned = badge_service.check_and_award_badges(
             supabase, user_id, habit_id, current_streak
         )
     else:
-        # 【ストリークリセット】: completed=false の場合、current_streak を0にリセット（REQ-503）
-        supabase.table("habits").update({"current_streak": 0}).eq("id", habit_id).execute()
+        # 【ストリークリセット】: 未達成の場合、current_streak を0にリセット（REQ-503）
+        supabase.table("habits").update({"current_streak": 0}).eq("id", habit_id).eq("user_id", user_id).execute()
 
     return APIResponse(
         success=True,
@@ -309,6 +359,7 @@ async def create_failure_reason(
         .select("id")
         .eq("habit_id", habit_id)
         .eq("log_date", request.log_date)
+        .eq("user_id", user_id)
         .single()
         .execute()
     )

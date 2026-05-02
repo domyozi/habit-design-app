@@ -109,6 +109,8 @@ class TestUpdateHabitLog:
             mock_sb.table.return_value.upsert.return_value \
                 .execute.return_value.data = [log]
 
+            # 達成判定（binary 想定）
+            mock_streak.is_achieved.return_value = True
             # ストリーク計算
             mock_streak.calculate_streak.return_value = 2
             mock_streak.update_streak.return_value = None
@@ -157,6 +159,9 @@ class TestUpdateHabitLog:
             mock_sb.table.return_value.upsert.return_value \
                 .execute.return_value.data = [log]
 
+            # 達成判定: completed=false なので未達成
+            mock_streak.is_achieved.return_value = False
+
             response = client.patch(
                 f"/api/habits/{TEST_HABIT_ID}/log",
                 json={"date": TODAY, "completed": False},
@@ -197,6 +202,7 @@ class TestUpdateHabitLog:
             mock_sb.table.return_value.upsert.return_value \
                 .execute.return_value.data = [log]
 
+            mock_streak.is_achieved.return_value = True
             mock_streak.calculate_streak.return_value = 7
             mock_streak.update_streak.return_value = None
             mock_badge.check_and_award_badges.return_value = badge
@@ -213,18 +219,18 @@ class TestUpdateHabitLog:
         assert data["data"]["badge_earned"] is not None  # 【確認内容】: バッジあり 🔵
         assert data["data"]["badge_earned"]["badge_id"] == "streak_7"  # 【確認内容】: streak_7バッジ 🔵
 
-    def test_log_no_auth_returns_403(self, client):
+    def test_log_no_auth_returns_401(self, client):
         """
-        TC-010: 未認証で 403
+        TC-010: 未認証で 401
 
-        【期待される動作】: 403
+        【期待される動作】: 401
         🔵 信頼性レベル: NFR-101 より
         """
         response = client.patch(
             f"/api/habits/{TEST_HABIT_ID}/log",
             json={"date": TODAY, "completed": True},
         )
-        assert response.status_code == 403  # 【確認内容】: 未認証で403 🔵
+        assert response.status_code == 401  # 【確認内容】: 未認証で401 🔵
 
     def test_log_other_user_habit_returns_403(self, client, valid_token):
         """
@@ -288,8 +294,6 @@ class TestCreateFailureReason:
             # ログ検索（二回目のsingle呼び出し）
             # 注: モックの挙動を単純化するため、2回目の呼び出しで habit_log を返す
             call_count = {"n": 0}
-            original_single = mock_sb.table.return_value.select.return_value \
-                .eq.return_value.eq.return_value.single
 
             def side_effect_single():
                 mock_result = MagicMock()
@@ -300,8 +304,12 @@ class TestCreateFailureReason:
                 call_count["n"] += 1
                 return mock_result
 
-            mock_sb.table.return_value.select.return_value \
-                .eq.return_value.eq.return_value.single.side_effect = side_effect_single
+            two_eq_single = mock_sb.table.return_value.select.return_value \
+                .eq.return_value.eq.return_value.single
+            three_eq_single = mock_sb.table.return_value.select.return_value \
+                .eq.return_value.eq.return_value.eq.return_value.single
+            two_eq_single.side_effect = side_effect_single
+            three_eq_single.side_effect = side_effect_single
 
             # INSERT
             mock_sb.table.return_value.insert.return_value \
@@ -343,8 +351,12 @@ class TestCreateFailureReason:
                 call_count["n"] += 1
                 return mock_result
 
-            mock_sb.table.return_value.select.return_value \
-                .eq.return_value.eq.return_value.single.side_effect = side_effect_single
+            two_eq_single = mock_sb.table.return_value.select.return_value \
+                .eq.return_value.eq.return_value.single
+            three_eq_single = mock_sb.table.return_value.select.return_value \
+                .eq.return_value.eq.return_value.eq.return_value.single
+            two_eq_single.side_effect = side_effect_single
+            three_eq_single.side_effect = side_effect_single
 
             response = client.post(
                 f"/api/habits/{TEST_HABIT_ID}/failure-reason",
