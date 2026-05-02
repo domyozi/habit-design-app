@@ -1,5 +1,5 @@
 import type { Theme } from '@/lib/theme'
-import { APP, type Habit } from '@/lib/mockData'
+import type { Habit } from '@/lib/mockData'
 import { SOURCE_META } from '@/lib/habitTemplates'
 import { MonoLabel } from '@/components/today/MonoLabel'
 import { MiniGraph } from './MiniGraph'
@@ -7,7 +7,10 @@ import { TodayCell } from './TodayCell'
 
 interface Props {
   theme: Theme
+  habits: Habit[]
+  isLive: boolean
   onNewHabit: () => void
+  onDelete?: (habit: Habit) => void
 }
 
 const TYPE_GLYPH: Record<string, string> = {
@@ -23,7 +26,7 @@ const TYPE_GLYPH: Record<string, string> = {
   words: '◧',
 }
 
-const COLUMNS = '34px 1.7fr 1.4fr 1fr 80px 50px 70px'
+const COLUMNS = '34px 1.7fr 1.4fr 1fr 80px 50px 70px 26px'
 
 function goalText(h: Habit): string {
   const g = h.goal
@@ -33,11 +36,10 @@ function goalText(h: Habit): string {
   return `≥ ${g.value}${h.unit ?? ''}`
 }
 
-export function HabitsTable({ theme: t, onNewHabit }: Props) {
-  const a = APP
-  const coreHabits = a.habits.filter((h) => h.cat === 'core')
-  const microHabits = a.habits.filter((h) => h.cat === 'micro')
-  const autoCount = a.habits.filter((h) => SOURCE_META[h.source]?.auto).length
+export function HabitsTable({ theme: t, habits, isLive, onNewHabit, onDelete }: Props) {
+  const coreHabits = habits.filter((h) => h.cat === 'core')
+  const microHabits = habits.filter((h) => h.cat === 'micro')
+  const autoCount = habits.filter((h) => SOURCE_META[h.source]?.auto).length
 
   return (
     <div
@@ -69,7 +71,7 @@ export function HabitsTable({ theme: t, onNewHabit }: Props) {
               letterSpacing: '0.14em',
             }}
           >
-            {a.habits.length} 件 · 計測タイプ別 · 自動取込 {autoCount} 件
+            {habits.length} 件 · 計測タイプ別 · 自動取込 {autoCount} 件 · {isLive ? 'LIVE' : 'MOCK'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -130,6 +132,7 @@ export function HabitsTable({ theme: t, onNewHabit }: Props) {
         <div style={{ textAlign: 'right' }}>MO</div>
         <div style={{ textAlign: 'right' }}>STRK</div>
         <div style={{ textAlign: 'right' }}>SOURCE</div>
+        <div></div>
       </div>
 
       <div style={{ flex: 1, overflow: 'auto' }}>
@@ -246,6 +249,27 @@ export function HabitsTable({ theme: t, onNewHabit }: Props) {
                   {sm?.glyph}
                 </span>
               </div>
+              {onDelete && isLive ? (
+                <button
+                  onClick={() => onDelete(h)}
+                  title="削除"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    background: 'transparent',
+                    border: `1px solid ${t.ink12}`,
+                    color: t.ink50,
+                    fontFamily: t.mono,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              ) : (
+                <div />
+              )}
             </div>
           )
         })}
@@ -343,6 +367,27 @@ export function HabitsTable({ theme: t, onNewHabit }: Props) {
                   {sm?.glyph}
                 </span>
               </div>
+              {onDelete && isLive ? (
+                <button
+                  onClick={() => onDelete(h)}
+                  title="削除"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    background: 'transparent',
+                    border: `1px solid ${t.ink12}`,
+                    color: t.ink50,
+                    fontFamily: t.mono,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              ) : (
+                <div />
+              )}
             </div>
           )
         })}

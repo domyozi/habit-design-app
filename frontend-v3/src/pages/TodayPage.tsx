@@ -1,27 +1,137 @@
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Theme } from '@/lib/theme'
 import { APP } from '@/lib/mockData'
 import { MonoLabel } from '@/components/today/MonoLabel'
-import { fetchPrimaryTarget } from '@/lib/api'
+import {
+  fetchHabits,
+  fetchPrimaryTarget,
+  updateHabitLog,
+  upsertPrimaryTarget,
+} from '@/lib/api'
 import { useRemoteData } from '@/lib/useRemoteData'
+import type { BackendHabit, PrimaryTargetResponse } from '@/types/api'
 
 interface Props {
   theme: Theme
 }
+
+const todayDateStr = () => new Date().toISOString().slice(0, 10)
 
 export default function TodayPage({ theme: t }: Props) {
   const navigate = useNavigate()
   const a = APP
   const hour = t.hour
 
+  // ── Primary target (LIVE) ──
   const remotePT = useRemoteData(fetchPrimaryTarget, [])
-  const primaryTarget = remotePT.data
-    ? { value: remotePT.data.value, anchor: a.primaryTarget.anchor, minutes: a.primaryTarget.minutes }
-    : a.primaryTarget
-  const isMock = !remotePT.data && !remotePT.loading
+  const [editing, setEditing] = useState(false)
+  const [draftPT, setDraftPT] = useState('')
+  const [savedPT, setSavedPT] = useState<PrimaryTargetResponse | null>(null)
+  const [savingPT, setSavingPT] = useState(false)
 
-  const done = a.habits.filter((h) => h.streak > 0 && h.month >= h.target * 0.5).length
-  const total = a.habits.length
+  useEffect(() => {
+    if (remotePT.data) setSavedPT(remotePT.data)
+  }, [remotePT.data])
+
+  const ptValue = savedPT?.value ?? remotePT.data?.value ?? a.primaryTarget.value
+  const isMockPT = !remotePT.data && !remotePT.loading
+  const ptAnchor = a.primaryTarget.anchor
+  const ptMinutes = a.primaryTarget.minutes
+
+  const beginEditPT = () => {
+    setDraftPT(ptValue)
+    setEditing(true)
+  }
+  const savePT = async () => {
+    const value = draftPT.trim()
+    if (!value || value === ptValue) {
+      setEditing(false)
+      return
+    }
+    setSavingPT(true)
+    try {
+      const updated = await upsertPrimaryTarget({ value, set_date: todayDateStr() })
+      setSavedPT(updated)
+    } catch (err) {
+      console.error('[primary-target] save failed', err)
+    } finally {
+      setSavingPT(false)
+      setEditing(false)
+    }
+  }
+
+  // ── Habits (LIVE) ──
+  const remoteHabits = useRemoteData(fetchHabits, [])
+  const liveHabits = remoteHabits.data?.data ?? null
+  const isMockHabits = !liveHabits && !remoteHabits.loading
+
+  // Local view of today's completion to support optimistic updates.
+  const [completedById, setCompletedById] = useState<Record<string, boolean>>({})
+  useEffect(() => {
+    if (!liveHabits) return
+    const initial: Record<string, boolean> = {}
+    for (const h of liveHabits) {
+      const today = (h as BackendHabit & { today_log?: { completed: boolean } | null }).today_log
+      initial[h.id] = today?.completed ?? false
+    }
+    setCompletedById(initial)
+  }, [liveHabits])
+
+  const toggleHabit = async (habit: BackendHabit) => {
+    const next = !completedById[habit.id]
+    setCompletedById((prev) => ({ ...prev, [habit.id]: next }))
+    try {
+      await updateHabitLog(habit.id, {
+        date: todayDateStr(),
+        completed: next,
+        input_method: 'manual',
+      })
+    } catch (err) {
+      // revert
+      console.error('[habit-log] toggle failed', err)
+      setCompletedById((prev) => ({ ...prev, [habit.id]: !next }))
+    }
+  }
+
+  // Display data: prefer live, otherwise mock.
+  const todayHabitsView = useMemo(() => {
+    if (liveHabits) {
+      return liveHabits.map((h) => ({
+        id: h.id,
+        label: h.title,
+        completed: completedById[h.id] ?? false,
+      }))
+    }
+    return a.habits.slice(0, 6).map((h) => ({
+      id: h.id,
+      label: h.label,
+      completed: h.today.done,
+    }))
+  }, [liveHabits, completedById, a.habits])
+
+  const monthlyView = useMemo(() => {
+    if (liveHabits) {
+      // For a LIVE preview without per-day aggregation yet, fall back to streak/0 placeholders.
+      return liveHabits.slice(0, 5).map((h) => ({
+        id: h.id,
+        label: h.title,
+        month: h.current_streak,
+        target: 31,
+        best: h.longest_streak,
+      }))
+    }
+    return a.habits.slice(0, 5).map((h) => ({
+      id: h.id,
+      label: h.label,
+      month: h.month,
+      target: h.target,
+      best: h.best,
+    }))
+  }, [liveHabits, a.habits])
+
+  const doneToday = todayHabitsView.filter((h) => h.completed).length
+  const totalToday = todayHabitsView.length
 
   const ctaLine =
     t.phase === 'dawn' || t.phase === 'morning'
@@ -41,7 +151,7 @@ export default function TodayPage({ theme: t }: Props) {
         minHeight: 0,
       }}
     >
-      {/* CELL 1 — Primary target HERO + tasks (col 1, rows 1-3) */}
+      {/* CELL 1 — Primary target HERO + tasks */}
       <div
         style={{
           gridRow: '1 / 3',
@@ -52,16 +162,76 @@ export default function TodayPage({ theme: t }: Props) {
           overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            marginBottom: 12,
+          }}
+        >
           <MonoLabel theme={t}>PRIMARY TARGET · THE ONE THING</MonoLabel>
-          <span style={{ fontFamily: t.mono, fontSize: 10, color: t.accent, letterSpacing: '0.16em' }}>
-            ● {isMock ? 'MOCK' : 'LIVE'}
+          <span
+            style={{
+              fontFamily: t.mono,
+              fontSize: 10,
+              color: t.accent,
+              letterSpacing: '0.16em',
+            }}
+          >
+            ● {savingPT ? 'SAVING…' : isMockPT ? 'MOCK' : 'LIVE'}
           </span>
         </div>
 
-        <div style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.1 }}>
-          {primaryTarget.value}
-        </div>
+        {editing ? (
+          <textarea
+            autoFocus
+            value={draftPT}
+            onChange={(e) => setDraftPT(e.target.value)}
+            onBlur={savePT}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                savePT()
+              }
+              if (e.key === 'Escape') setEditing(false)
+            }}
+            style={{
+              fontSize: 34,
+              fontWeight: 600,
+              letterSpacing: '-0.025em',
+              lineHeight: 1.1,
+              fontFamily: t.sans,
+              color: t.ink,
+              border: `1px solid ${t.accent}`,
+              outline: 'none',
+              resize: 'none',
+              padding: '6px 8px',
+              background: t.paper,
+              minHeight: 72,
+              width: '100%',
+            }}
+          />
+        ) : (
+          <button
+            onClick={beginEditPT}
+            title="クリックして編集"
+            style={{
+              textAlign: 'left',
+              fontSize: 34,
+              fontWeight: 600,
+              letterSpacing: '-0.025em',
+              lineHeight: 1.1,
+              color: t.ink,
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'text',
+            }}
+          >
+            {ptValue}
+          </button>
+        )}
         <div
           style={{
             fontFamily: t.mono,
@@ -71,7 +241,7 @@ export default function TodayPage({ theme: t }: Props) {
             letterSpacing: '0.04em',
           }}
         >
-          ANCHOR → {primaryTarget.anchor} · {primaryTarget.minutes}M
+          ANCHOR → {ptAnchor} · {ptMinutes}M
         </div>
 
         {/* Time budget gauge */}
@@ -79,7 +249,7 @@ export default function TodayPage({ theme: t }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
             <MonoLabel theme={t}>Time budget · 09:00–11:00</MonoLabel>
             <span style={{ fontFamily: t.mono, fontSize: 11, color: t.ink70 }}>
-              0 / {primaryTarget.minutes}m
+              0 / {ptMinutes}m
             </span>
           </div>
           <div style={{ height: 28, border: `1px solid ${t.line}`, position: 'relative', display: 'flex' }}>
@@ -106,7 +276,7 @@ export default function TodayPage({ theme: t }: Props) {
           </div>
         </div>
 
-        {/* Today's tasks */}
+        {/* Today's tasks (mock until task-edit lands) */}
         <div style={{ marginTop: 24, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
             <MonoLabel theme={t}>TODAY'S TASKS · {a.tasks.length}</MonoLabel>
@@ -151,14 +321,7 @@ export default function TodayPage({ theme: t }: Props) {
                 <div style={{ fontSize: 13, fontWeight: 500, color: task.done ? t.ink30 : t.ink }}>
                   {task.label}
                 </div>
-                <div
-                  style={{
-                    fontFamily: t.mono,
-                    fontSize: 10,
-                    color: t.ink30,
-                    letterSpacing: '0.1em',
-                  }}
-                >
+                <div style={{ fontFamily: t.mono, fontSize: 10, color: t.ink30, letterSpacing: '0.1em' }}>
                   {task.est}M
                 </div>
                 <div
@@ -180,7 +343,7 @@ export default function TodayPage({ theme: t }: Props) {
         </div>
       </div>
 
-      {/* CELL 2 — Gap snapshot (col 2, row 1) */}
+      {/* CELL 2 — Gap snapshot */}
       <div
         style={{
           gridRow: '1 / 2',
@@ -223,7 +386,7 @@ export default function TodayPage({ theme: t }: Props) {
         </div>
       </div>
 
-      {/* CELL 4 — Active window CTA (col 2, row 2) */}
+      {/* CELL 4 — Active window CTA + Today habits */}
       <div
         style={{
           gridColumn: '2 / 3',
@@ -233,10 +396,21 @@ export default function TodayPage({ theme: t }: Props) {
           flexDirection: 'column',
           gap: 12,
           borderRight: `1px solid ${t.ink12}`,
+          minHeight: 0,
         }}
       >
-        <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <MonoLabel theme={t}>ACTIVE WINDOW · {t.cta.toUpperCase()}</MonoLabel>
+          <span
+            style={{
+              fontFamily: t.mono,
+              fontSize: 9,
+              color: t.accent,
+              letterSpacing: '0.16em',
+            }}
+          >
+            ● {isMockHabits ? 'MOCK' : 'LIVE'}
+          </span>
         </div>
         <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.015em', lineHeight: 1.25 }}>
           {t.greeting}。<br />
@@ -252,45 +426,98 @@ export default function TodayPage({ theme: t }: Props) {
           }}
         >
           {[
-            { k: 'DONE', v: done, sub: 'habits' },
-            { k: 'OPEN', v: total - done, sub: 'habits' },
+            { k: 'DONE', v: doneToday, sub: 'habits' },
+            { k: 'OPEN', v: Math.max(0, totalToday - doneToday), sub: 'habits' },
             { k: 'STREAK', v: a.user.streak, sub: 'days' },
           ].map((s) => (
             <div key={s.k} style={{ background: t.paper, padding: '10px 12px' }}>
-              <div
-                style={{
-                  fontFamily: t.mono,
-                  fontSize: 9,
-                  color: t.ink50,
-                  letterSpacing: '0.16em',
-                }}
-              >
+              <div style={{ fontFamily: t.mono, fontSize: 9, color: t.ink50, letterSpacing: '0.16em' }}>
                 {s.k}
               </div>
-              <div
-                style={{
-                  fontFamily: t.mono,
-                  fontSize: 24,
-                  fontWeight: 300,
-                  marginTop: 2,
-                  letterSpacing: '-0.02em',
-                }}
-              >
+              <div style={{ fontFamily: t.mono, fontSize: 24, fontWeight: 300, marginTop: 2, letterSpacing: '-0.02em' }}>
                 {s.v}
               </div>
-              <div
-                style={{
-                  fontFamily: t.mono,
-                  fontSize: 9,
-                  color: t.ink30,
-                  letterSpacing: '0.14em',
-                }}
-              >
+              <div style={{ fontFamily: t.mono, fontSize: 9, color: t.ink30, letterSpacing: '0.14em' }}>
                 {s.sub}
               </div>
             </div>
           ))}
         </div>
+
+        {/* Today habits checkboxes */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            minHeight: 0,
+            overflow: 'auto',
+            paddingTop: 4,
+          }}
+        >
+          <div style={{ marginBottom: 4 }}>
+            <MonoLabel theme={t}>TODAY · TAP TO TOGGLE</MonoLabel>
+          </div>
+          {todayHabitsView.length === 0 && (
+            <div style={{ fontFamily: t.mono, fontSize: 10, color: t.ink30, padding: '8px 0' }}>
+              habits がまだありません
+            </div>
+          )}
+          {todayHabitsView.map((h) => {
+            const done = h.completed
+            return (
+              <button
+                key={h.id}
+                onClick={() => {
+                  if (!liveHabits) return // mock: read-only
+                  const real = liveHabits.find((x) => x.id === h.id)
+                  if (real) toggleHabit(real)
+                }}
+                disabled={!liveHabits}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '20px 1fr',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '7px 8px',
+                  background: done ? t.paperWarm : 'transparent',
+                  border: `1px solid ${done ? t.ink12 : 'transparent'}`,
+                  cursor: liveHabits ? 'pointer' : 'default',
+                  textAlign: 'left',
+                  fontFamily: t.sans,
+                }}
+              >
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    border: `1.5px solid ${t.line}`,
+                    background: done ? t.line : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: t.paper,
+                    fontSize: 10,
+                    fontWeight: 900,
+                  }}
+                >
+                  {done ? '✓' : ''}
+                </span>
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: done ? t.ink50 : t.ink,
+                    textDecoration: done ? 'line-through' : 'none',
+                  }}
+                >
+                  {h.label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
         <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
           <button
             onClick={() => navigate('/flow')}
@@ -327,7 +554,7 @@ export default function TodayPage({ theme: t }: Props) {
         </div>
       </div>
 
-      {/* CELL 3 — Monthly + Coach (col 3, rows 1-3) */}
+      {/* CELL 3 — Monthly + Coach */}
       <div
         style={{
           gridRow: '1 / 3',
@@ -346,13 +573,13 @@ export default function TodayPage({ theme: t }: Props) {
             </span>
           </div>
           <div style={{ fontSize: 12, color: t.ink70, marginTop: 6 }}>
-            英語だけ遅れ。その他は想定線上。
+            {liveHabits ? `登録 ${liveHabits.length} 件・ストリーク基準` : '英語だけ遅れ。その他は想定線上。'}
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {a.habits.slice(0, 5).map((h) => {
-            const pct = h.month / h.target
+          {monthlyView.map((h) => {
+            const pct = h.target > 0 ? h.month / h.target : 0
             const lag = pct < 0.4
             return (
               <div key={h.id}>
@@ -381,16 +608,18 @@ export default function TodayPage({ theme: t }: Props) {
                       background: lag ? t.accent : t.ink,
                     }}
                   />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${(h.best / h.target) * 100}%`,
-                      top: -2,
-                      bottom: -2,
-                      width: 1,
-                      background: t.ink,
-                    }}
-                  />
+                  {h.best > 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: `${Math.min(h.best / Math.max(h.target, 1), 1) * 100}%`,
+                        top: -2,
+                        bottom: -2,
+                        width: 1,
+                        background: t.ink,
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             )

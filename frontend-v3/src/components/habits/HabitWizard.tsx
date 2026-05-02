@@ -3,21 +3,25 @@ import type { Theme } from '@/lib/theme'
 import { TEMPLATES, SOURCE_META, type HabitTemplate } from '@/lib/habitTemplates'
 import type { HabitSource } from '@/lib/mockData'
 import { MonoLabel } from '@/components/today/MonoLabel'
+import { createHabit } from '@/lib/api'
 
 interface Props {
   theme: Theme
   open: boolean
   onClose: () => void
+  onCreated?: () => void
 }
 
 type Step = 1 | 2 | 3
 
-export function HabitWizard({ theme: t, open, onClose }: Props) {
+export function HabitWizard({ theme: t, open, onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>(1)
   const [template, setTemplate] = useState<HabitTemplate | null>(null)
   const [habitName, setHabitName] = useState('')
   const [goalValue, setGoalValue] = useState<string>('')
   const [source, setSource] = useState<HabitSource>('manual')
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   if (!open) return null
 
@@ -27,6 +31,8 @@ export function HabitWizard({ theme: t, open, onClose }: Props) {
     setHabitName('')
     setGoalValue('')
     setSource('manual')
+    setError(null)
+    setCreating(false)
   }
   const handleClose = () => {
     reset()
@@ -39,10 +45,29 @@ export function HabitWizard({ theme: t, open, onClose }: Props) {
     setSource(tpl.defaultSource)
     setStep(2)
   }
-  const handleCreate = () => {
-    // Sprint 2 では mock のみ。Sprint 2 後半で API 結線。
-    console.log('[wizard] create habit (mock only)', { template, habitName, goalValue, source })
-    handleClose()
+  const handleCreate = async () => {
+    if (!template) return
+    setError(null)
+    setCreating(true)
+    try {
+      const isTime = template.metricType === 'time_before' || template.metricType === 'time_after'
+      const numeric = goalValue.trim() === '' ? undefined : Number(goalValue)
+      await createHabit({
+        title: habitName.trim(),
+        metric_type: template.metricType,
+        target_value: !isTime && numeric !== undefined && !Number.isNaN(numeric) ? numeric : undefined,
+        target_time: isTime ? goalValue : undefined,
+        unit: template.unit,
+        proof_type: template.defaultProof,
+        source_kind: source,
+      })
+      onCreated?.()
+      handleClose()
+    } catch (err) {
+      console.error('[wizard] create failed', err)
+      setError(err instanceof Error ? err.message : '作成に失敗しました')
+      setCreating(false)
+    }
   }
 
   const validSources: HabitSource[] = template
@@ -343,22 +368,39 @@ export function HabitWizard({ theme: t, open, onClose }: Props) {
               NEXT →
             </button>
           ) : (
-            <button
-              onClick={handleCreate}
-              style={{
-                padding: '8px 18px',
-                fontFamily: t.mono,
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '0.14em',
-                background: t.accent,
-                color: t.paper,
-                border: `1px solid ${t.accent}`,
-                cursor: 'pointer',
-              }}
-            >
-              CREATE HABIT
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {error && (
+                <span
+                  style={{
+                    fontFamily: t.mono,
+                    fontSize: 10,
+                    color: t.accent,
+                    letterSpacing: '0.1em',
+                    maxWidth: 300,
+                  }}
+                >
+                  {error}
+                </span>
+              )}
+              <button
+                onClick={handleCreate}
+                disabled={creating}
+                style={{
+                  padding: '8px 18px',
+                  fontFamily: t.mono,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.14em',
+                  background: t.accent,
+                  color: t.paper,
+                  border: `1px solid ${t.accent}`,
+                  cursor: creating ? 'wait' : 'pointer',
+                  opacity: creating ? 0.6 : 1,
+                }}
+              >
+                {creating ? 'CREATING…' : 'CREATE HABIT'}
+              </button>
+            </div>
           )}
         </div>
       </div>
