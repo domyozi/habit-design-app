@@ -191,12 +191,15 @@ async def _extract_and_persist_suggestions(
     # 1. 既存のアクティブな todo（habit / task 両方）と habit カテゴリの数を取得
     todo_labels, habit_count = _fetch_active_todo_summary(user_id, supabase)
 
-    # 2. 既存の pending / accepted 候補のラベル
+    # 2. 既存の pending / accepted / rejected 候補のラベル
+    #    rejected も含めることで、ユーザーが一度「× 不要」した label を AI が
+    #    avoid_list で避け、万一 Claude が同じ label を返しても exact-match
+    #    dedup で再 INSERT を弾けるようになる。
     existing = (
         supabase.table("habit_suggestions")
         .select("label, status")
         .eq("user_id", user_id)
-        .in_("status", ["pending", "accepted"])
+        .in_("status", ["pending", "accepted", "rejected"])
         .execute()
     )
     existing_rows = existing.data or []
