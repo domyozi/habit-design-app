@@ -3,7 +3,6 @@ import {
   fetchHealthToken,
   regenerateHealthToken,
   fetchHabitSuggestions,
-  createHabitSuggestion,
   clearPendingHabitSuggestions,
   updateHabitSuggestionStatus,
   type HabitSuggestion,
@@ -1041,12 +1040,12 @@ const MemoryView = () => {
 }
 
 // ─── 習慣候補パネル ───────────────────────────────────────────
+// pending が 0 件の場合はパネル自体を描画しない（null を返す）。
+// 手動追加 UI は廃止：候補は AI 抽出のみ。手動で項目を増やしたいときは
+// 「項目を追加」ボタンから直接 todo_definitions に追加する。
 const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
   const [, setTodos] = useTodoDefinitions()
   const [pending, setPending] = useState<HabitSuggestion[]>([])
-  const [loading, setLoading] = useState(false)
-  const [draft, setDraft] = useState('')
-  const isComposing = useRef(false)
 
   const reload = useCallback(async () => {
     try {
@@ -1089,17 +1088,6 @@ const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
     setPending(prev => prev.filter(p => p.id !== s.id))
   }
 
-  const handleManualAdd = async () => {
-    const label = draft.trim()
-    if (!label) return
-    setLoading(true)
-    try {
-      const created = await createHabitSuggestion(label, 'manual', kind)
-      setPending(prev => [created, ...prev])
-      setDraft('')
-    } catch { /* ignore */ } finally { setLoading(false) }
-  }
-
   const handleClearAll = async () => {
     if (pending.length === 0) return
     if (!window.confirm(`pending な${headerLabel}を全て不要扱いにしますか？（${pending.length} 件）`)) return
@@ -1108,6 +1096,8 @@ const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
       setPending([])
     } catch { /* ignore */ }
   }
+
+  if (pending.length === 0) return null
 
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
@@ -1127,66 +1117,35 @@ const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
         )}
       </div>
 
-      {/* 候補リスト */}
-      {pending.length > 0 ? (
-        <div className="space-y-2">
-          {pending.map(s => (
-            <div
-              key={s.id}
-              className="flex items-center gap-2 rounded-2xl px-3 py-2 border"
-              style={{ borderColor: `${accentColor}33`, backgroundColor: `${accentColor}0d` }}
+      <div className="space-y-2">
+        {pending.map(s => (
+          <div
+            key={s.id}
+            className="flex items-center gap-2 rounded-2xl px-3 py-2 border"
+            style={{ borderColor: `${accentColor}33`, backgroundColor: `${accentColor}0d` }}
+          >
+            <span className="flex-1 text-sm text-white/85">{s.label}</span>
+            {s.source && s.source !== 'manual' && (
+              <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-white/35">
+                {s.source}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleAccept(s)}
+              className="shrink-0 rounded-full border border-[#22c55e]/35 bg-[#22c55e]/12 px-3 py-1 text-[11px] font-semibold text-[#4ade80]"
             >
-              <span className="flex-1 text-sm text-white/85">{s.label}</span>
-              {s.source && s.source !== 'manual' && (
-                <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-white/35">
-                  {s.source}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => void handleAccept(s)}
-                className="shrink-0 rounded-full border border-[#22c55e]/35 bg-[#22c55e]/12 px-3 py-1 text-[11px] font-semibold text-[#4ade80]"
-              >
-                ✓ 採用
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleReject(s)}
-                className="shrink-0 rounded-full border border-white/[0.1] px-3 py-1 text-[11px] text-white/40 hover:text-white/70"
-              >
-                × 不要
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-2xl border border-dashed border-white/[0.08] px-3 py-4 text-center text-[11px] text-white/30">
-          現在の候補はありません。ジャーナル保存時に自動抽出されます。
-        </p>
-      )}
-
-      {/* 手動追加 */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onCompositionStart={() => { isComposing.current = true }}
-          onCompositionEnd={() => { isComposing.current = false }}
-          onKeyDown={e => { if (e.key === 'Enter' && !isComposing.current) void handleManualAdd() }}
-          placeholder={kind === 'habit' ? '習慣候補を追加...' : 'タスク候補を追加...'}
-          className="flex-1 rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"
-          disabled={loading}
-        />
-        <button
-          type="button"
-          onClick={() => void handleManualAdd()}
-          disabled={loading || !draft.trim()}
-          className="shrink-0 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-30 border"
-          style={{ borderColor: `${accentColor}55`, backgroundColor: `${accentColor}1f`, color: accentColor }}
-        >
-          + 追加
-        </button>
+              ✓ 採用
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleReject(s)}
+              className="shrink-0 rounded-full border border-white/[0.1] px-3 py-1 text-[11px] text-white/40 hover:text-white/70"
+            >
+              × 不要
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   )
