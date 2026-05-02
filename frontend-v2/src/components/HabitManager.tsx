@@ -5,7 +5,22 @@
 // テンプレ → 数値調整 → 保存 の動線を最短化することを優先。
 // ============================================================
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   HABIT_TEMPLATES_BY_CATEGORY,
   HABIT_TEMPLATE_CATEGORIES,
@@ -27,6 +42,7 @@ interface Props {
   add: (req: CreateHabitRequest) => Promise<Habit>
   update: (id: string, req: UpdateHabitRequest) => Promise<Habit>
   remove: (id: string) => Promise<void>
+  reorder: (orderedIds: string[]) => Promise<void>
 }
 
 const formatTargetSummary = (h: Habit): string => {
@@ -53,7 +69,49 @@ const formatTargetSummary = (h: Habit): string => {
   }
 }
 
-export const HabitManager = ({ habits, loading, add, update, remove }: Props) => {
+// ドラッグ＆ドロップ可能な行ラッパー。
+// 左端にハンドルを置き、children を内容スロットとしてレンダーする。
+// 編集モード時は disabled=true でドラッグを無効化（誤操作防止）。
+const SortableRow = ({
+  id,
+  disabled = false,
+  children,
+}: {
+  id: string
+  disabled?: boolean
+  children: React.ReactNode
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id, disabled })
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : undefined,
+  }
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-start gap-2 px-3 py-2.5">
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="並び替え"
+        disabled={disabled}
+        className={[
+          'mt-1 flex h-6 w-5 shrink-0 select-none items-center justify-center text-white/25 transition-colors',
+          disabled
+            ? 'cursor-not-allowed opacity-30'
+            : 'cursor-grab hover:text-white/55 active:cursor-grabbing',
+        ].join(' ')}
+        title={disabled ? '編集中は並び替えできません' : 'ドラッグで並び替え'}
+      >
+        ⋮⋮
+      </button>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  )
+}
+
+export const HabitManager = ({ habits, loading, add, update, remove, reorder }: Props) => {
   const [picker, setPicker] = useState<{ template: HabitTemplate; targetValue: string; targetTime: string } | null>(null)
   const [showCustom, setShowCustom] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -139,6 +197,25 @@ export const HabitManager = ({ habits, loading, add, update, remove }: Props) =>
     await remove(h.id)
   }
 
+  // ── DnD: display_order 順にソート、idのみ抽出して SortableContext に渡す
+  const sortedHabits = useMemo(
+    () => [...habits].sort((a, b) => a.display_order - b.display_order),
+    [habits],
+  )
+  const sortedIds = useMemo(() => sortedHabits.map((h) => h.id), [sortedHabits])
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  )
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = sortedIds.indexOf(String(active.id))
+    const newIndex = sortedIds.indexOf(String(over.id))
+    if (oldIndex < 0 || newIndex < 0) return
+    const newOrder = arrayMove(sortedIds, oldIndex, newIndex)
+    void reorder(newOrder)
+  }
+
   return (
     <div className="space-y-4 px-4 py-3">
       {/* 既存の習慣一覧 */}
@@ -158,12 +235,18 @@ export const HabitManager = ({ habits, loading, add, update, remove }: Props) =>
             まだ習慣がありません。下のテンプレートから1つ追加してみましょう。
           </p>
         ) : (
-          <div className="divide-y divide-white/[0.04] border-t border-white/[0.04]">
-            {habits.map((h) => {
-              const isEditing = editingId === h.id
-              return (
-                <div key={h.id} className="px-4 py-2.5">
-                  {isEditing ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
+              <div className="divide-y divide-white/[0.04] border-t border-white/[0.04]">
+                {sortedHabits.map((h) => {
+                  const isEditing = editingId === h.id
+                  return (
+                    <SortableRow key={h.id} id={h.id} disabled={isEditing}>
+                      {isEditing ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <input
@@ -254,10 +337,12 @@ export const HabitManager = ({ habits, loading, add, update, remove }: Props) =>
                       </button>
                     </div>
                   )}
-                </div>
-              )
-            })}
-          </div>
+                    </SortableRow>
+                  )
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </section>
 

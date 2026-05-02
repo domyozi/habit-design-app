@@ -1048,7 +1048,7 @@ const MemoryView = () => {
 // 手動追加 UI は廃止：候補は AI 抽出のみ。手動で項目を増やしたいときは
 // 「項目を追加」ボタンから直接 todo_definitions に追加する。
 const HabitTabContent = () => {
-  const { habits, loading, add, update, remove, refresh } = useHabits()
+  const { habits, loading, add, update, remove, refresh, reorder } = useHabits()
   const [todos, setTodos] = useTodoDefinitions()
   const handleAcceptSuggestion = useCallback(
     async (label: string) => {
@@ -1080,6 +1080,7 @@ const HabitTabContent = () => {
         add={add}
         update={update}
         remove={remove}
+        reorder={reorder}
       />
     </>
   )

@@ -102,6 +102,7 @@ export interface UpdateHabitRequest {
   title?: string
   scheduled_time?: string
   goal_id?: string
+  display_order?: number
   metric_type?: HabitMetricType
   target_value?: number
   target_value_max?: number

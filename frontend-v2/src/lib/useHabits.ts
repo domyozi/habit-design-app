@@ -36,6 +36,11 @@ export interface UseHabitsResult {
    * 3) 失敗したら refresh で巻き戻し（throw もする）
    */
   recordLog: (id: string, req: UpdateHabitLogRequest) => Promise<void>
+  /**
+   * 渡された id 順で display_order を 0,1,2,... に振り直して
+   * サーバーに反映する。並列 PATCH で送信し、失敗時は refresh で巻き戻し。
+   */
+  reorder: (orderedIds: string[]) => Promise<void>
 }
 
 const buildOptimisticLog = (h: Habit, req: UpdateHabitLogRequest): HabitLog => {
@@ -132,5 +137,46 @@ export const useHabits = (): UseHabitsResult => {
     [refresh],
   )
 
-  return { habits, loading, error, refresh, add, update, remove, recordLog }
+  const reorder = useCallback(
+    async (orderedIds: string[]) => {
+      // 楽観: 渡された順番で display_order を 0..n-1 に振り直す
+      setHabits((prev) => {
+        const map = new Map(prev.map((h) => [h.id, h]))
+        const reordered: Habit[] = []
+        orderedIds.forEach((id, i) => {
+          const h = map.get(id)
+          if (h) reordered.push({ ...h, display_order: i })
+        })
+        // orderedIds に含まれない（= 並び替え対象外の）habit は末尾に温存
+        for (const h of prev) {
+          if (!orderedIds.includes(h.id)) reordered.push(h)
+        }
+        return reordered
+      })
+
+      try {
+        await Promise.all(
+          orderedIds.map((id, i) =>
+            updateHabit(id, { action: 'manual_edit', display_order: i }),
+          ),
+        )
+      } catch (err) {
+        void refresh()
+        throw err
+      }
+    },
+    [refresh],
+  )
+
+  return {
+    habits,
+    loading,
+    error,
+    refresh,
+    add,
+    update,
+    remove,
+    recordLog,
+    reorder,
+  }
 }

@@ -167,6 +167,11 @@ class Habit(BaseModel):
     target_time: Optional[str] = None  # HH:MM:SS or HH:MM
     unit: Optional[str] = None
     aggregation: HabitAggregation = "exists"
+    # AI-native: 証明方法 / 記録ソース / 基本 XP
+    # 🔵 信頼性レベル: migrations/add_habit_proof_xp.sql より
+    proof_type: Literal["none", "photo", "auto"] = "none"
+    source_kind: str = "manual"
+    xp_base: int = 10
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -186,6 +191,10 @@ class HabitLog(BaseModel):
     input_method: Optional[HabitInputMethod] = None
     numeric_value: Optional[float] = None
     time_value: Optional[str] = None  # HH:MM:SS
+    # AI-native: 写真証明 URL / 付与 XP
+    # 🔵 信頼性レベル: migrations/add_habit_proof_xp.sql より
+    proof_url: Optional[str] = None
+    xp_earned: int = 0
     created_at: Optional[datetime] = None
 
 
@@ -389,6 +398,10 @@ class CreateHabitRequest(BaseModel):
     target_time: Optional[str] = None
     unit: Optional[str] = None
     aggregation: Optional[HabitAggregation] = None  # 未指定なら metric_type から推論
+    # AI-native（任意）: 計測タイプ + 外部連携 + 写真証明 + XP
+    proof_type: Optional[Literal["none", "photo", "auto"]] = None
+    source_kind: Optional[str] = None
+    xp_base: Optional[int] = None
 
 
 class UpdateHabitRequest(BaseModel):
@@ -403,6 +416,7 @@ class UpdateHabitRequest(BaseModel):
     title: Optional[str] = None
     scheduled_time: Optional[str] = None
     goal_id: Optional[str] = None
+    display_order: Optional[int] = None
     # 量・時刻系（manual_edit でのみ更新される想定）
     metric_type: Optional[HabitMetricType] = None
     target_value: Optional[float] = None
@@ -410,6 +424,10 @@ class UpdateHabitRequest(BaseModel):
     target_time: Optional[str] = None
     unit: Optional[str] = None
     aggregation: Optional[HabitAggregation] = None
+    # AI-native（任意・manual_edit でのみ更新される想定）
+    proof_type: Optional[Literal["none", "photo", "auto"]] = None
+    source_kind: Optional[str] = None
+    xp_base: Optional[int] = None
 
 
 class UpdateHabitLogRequest(BaseModel):
@@ -425,6 +443,8 @@ class UpdateHabitLogRequest(BaseModel):
     # 量・時刻系（metric_type に応じて値を渡す）
     numeric_value: Optional[float] = None
     time_value: Optional[str] = None  # HH:MM or HH:MM:SS
+    # AI-native（任意）: 写真証明 URL（Supabase Storage の habit-proofs バケット内 path）
+    proof_url: Optional[str] = None
 
 
 class VoiceInputRequest(BaseModel):
