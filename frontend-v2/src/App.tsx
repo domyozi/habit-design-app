@@ -335,9 +335,9 @@ function MainApp() {
           .map(t => ({
             id: createTodoId(t.label),
             label: t.label,
-            section: 'habit' as import('@/lib/todos').HabitCategory,
+            // AI ジャーナル由来のショット項目はタスク扱い。
+            section: 'task' as import('@/lib/todos').HabitCategory,
             timing: 'morning' as import('@/lib/todos').HabitTiming,
-            isMust: t.section === 'morning-must',
             is_active: true,
           }))
         return [...prev, ...newTasks]

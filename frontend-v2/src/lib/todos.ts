@@ -3,9 +3,11 @@ import { useEffect, useRef } from 'react'
 import { useLocalStorage } from '@/lib/storage'
 import { fetchTodoDefinitions, saveTodoDefinitions } from '@/lib/api'
 
-// 旧 6 カテゴリ（habit / growth / body / mind / system / task）は廃止し、`habit` のみに集約。
-// 既存 DB 行で他カテゴリ値が残っている場合は resolveCategory で 'habit' に正規化する。
-export type HabitCategory = 'habit'
+// 旧 6 カテゴリ（habit / growth / body / mind / system / task）は habit と task の 2 軸に集約。
+// - habit: 毎日繰り返す習慣化対象
+// - task : 一回限り or 不定期の個別タスク（AI ジャーナル由来の「やること」のデフォルト）
+// 既存 DB 行で他カテゴリ値（system / body / mind / growth）が残っている場合は task に正規化する。
+export type HabitCategory = 'habit' | 'task'
 export type HabitTiming   = 'morning' | 'evening' | 'anytime'
 
 // TodoSection は後方互換のために型エイリアスとして残す
@@ -54,6 +56,7 @@ export const DEFAULT_TODO_DEFINITIONS: TodoDefinition[] = [
 
 export const HABIT_CATEGORIES: Array<{ id: HabitCategory; label: string; accent: string; desc: string }> = [
   { id: 'habit', label: 'Habit', accent: '#ff6b35', desc: '習慣化対象' },
+  { id: 'task',  label: 'タスク', accent: '#94a3b8', desc: '個別タスク' },
 ]
 
 export const HABIT_TIMINGS: Array<{ id: HabitTiming; label: string }> = [
@@ -65,9 +68,12 @@ export const HABIT_TIMINGS: Array<{ id: HabitTiming; label: string }> = [
 // 後方互換のために TODO_SECTIONS も残す（SettingsPage が参照するかもしれないため）
 export const TODO_SECTIONS = HABIT_CATEGORIES.map(c => ({ id: c.id as HabitCategory, label: `${c.label} — ${c.desc}`, accent: c.accent }))
 
-// 旧カテゴリ値（growth / body / mind / system / task / identity / morning-must 等）はすべて 'habit' に正規化する。
-// バックエンドのマイグレーションで DB は揃うが、フロントの localStorage や旧 API レスポンスへの保険として残す。
-const resolveCategory = (_section: string, _id?: string): HabitCategory => 'habit'
+// 旧カテゴリ値の正規化:
+// - 'habit' / 'task' はそのまま
+// - それ以外（growth / body / mind / system / identity / morning-must 等）は 'task' へ寄せる
+//   （これらは過去の AI ジャーナル由来で、概ね個別タスク扱いが妥当）
+const resolveCategory = (section: string, _id?: string): HabitCategory =>
+  section === 'habit' ? 'habit' : 'task'
 
 export const normalizeTodoDefinitions = (todos: TodoDefinition[]) =>
   todos.map(todo => ({
@@ -167,10 +173,10 @@ export const bySectionAll = (todos: TodoDefinition[], section: HabitCategory) =>
 export const byTiming = (todos: TodoDefinition[], timing: HabitTiming) =>
   todos.filter(todo => (todo.timing === timing || todo.timing === 'anytime') && todo.is_active)
 
-// byTiming をカテゴリでグループ化（カテゴリは 'habit' に集約済みなので実質単一バケット）
+// byTiming をカテゴリでグループ化
 export const byTimingGrouped = (todos: TodoDefinition[], timing: HabitTiming): Record<HabitCategory, TodoDefinition[]> => {
   const filtered = byTiming(todos, timing)
-  const result: Record<HabitCategory, TodoDefinition[]> = { habit: [] }
+  const result: Record<HabitCategory, TodoDefinition[]> = { habit: [], task: [] }
   for (const todo of filtered) {
     result[resolveCategory(todo.section, todo.id)].push(todo)
   }

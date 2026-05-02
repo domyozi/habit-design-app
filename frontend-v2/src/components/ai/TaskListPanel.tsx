@@ -69,6 +69,7 @@ const TaskRow = ({
 
 const SECTION_ACCENT: Record<HabitCategory, string> = {
   habit: '#ff6b35',
+  task:  '#94a3b8',
 }
 
 export const TaskListPanel = ({

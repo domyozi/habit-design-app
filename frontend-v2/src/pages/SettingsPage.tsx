@@ -35,25 +35,30 @@ const TodoManager = () => {
   const [todos, setTodos] = useTodoDefinitions()
   const [draft, setDraft] = useState<AddDraft>({ label: '', field_type: 'checkbox', unit: '' })
   const [openSection, setOpenSection] = useState<HabitCategory | null>('habit')
-  const [adding, setAdding] = useState(false)
+  // どのセクションで追加フォームを開いているか（null = 閉）
+  const [addingIn, setAddingIn] = useState<HabitCategory | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   const [editing, setEditing] = useState<Record<string, EditDraft>>({})
 
   const updateDraft = <K extends keyof AddDraft>(key: K, value: AddDraft[K]) =>
     setDraft(prev => ({ ...prev, [key]: value }))
 
-  const addTodo = () => {
+  const startAdding = (section: HabitCategory) => {
+    setDraft({ label: '', field_type: 'checkbox', unit: '' })
+    setAddingIn(section)
+  }
+
+  const addTodo = (section: HabitCategory) => {
     const label = draft.label.trim()
     if (!label) return
     const unit = draft.unit.trim()
     const newTodo: TodoDefinition = {
       id: createTodoId(label),
       label,
-      section: 'habit',
+      section,
       timing: 'morning',
-      isMust: false,
       is_active: true,
-      monthly_target: 20,
+      monthly_target: section === 'habit' ? 20 : undefined,
       field_type: draft.field_type,
       field_options: NUMERIC_FIELD_TYPES.has(draft.field_type) && unit
         ? { unit }
@@ -61,7 +66,7 @@ const TodoManager = () => {
     }
     setTodos(prev => [...prev, newTodo])
     setDraft({ label: '', field_type: 'checkbox', unit: '' })
-    setAdding(false)
+    setAddingIn(null)
   }
 
   const hideTodo = (id: string) =>
@@ -258,7 +263,7 @@ const TodoManager = () => {
                 )}
 
                 {/* 追加フォーム */}
-                {adding ? (
+                {addingIn === section.id ? (
                   <div className="mt-1 space-y-2">
                     <div className="flex items-center gap-2">
                       <input
@@ -266,8 +271,8 @@ const TodoManager = () => {
                         value={draft.label}
                         onChange={e => updateDraft('label', e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === 'Enter') addTodo()
-                          if (e.key === 'Escape') setAdding(false)
+                          if (e.key === 'Enter') addTodo(section.id)
+                          if (e.key === 'Escape') setAddingIn(null)
                         }}
                         placeholder="項目名を入力…"
                         autoFocus
@@ -275,7 +280,7 @@ const TodoManager = () => {
                       />
                       <button
                         type="button"
-                        onClick={addTodo}
+                        onClick={() => addTodo(section.id)}
                         disabled={!draft.label.trim()}
                         className="shrink-0 rounded-xl border px-3 py-2 text-[11px] font-semibold disabled:opacity-30"
                         style={{ borderColor: `${section.accent}35`, backgroundColor: `${section.accent}10`, color: section.accent }}
@@ -284,7 +289,7 @@ const TodoManager = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setAdding(false)}
+                        onClick={() => setAddingIn(null)}
                         className="shrink-0 px-1 text-sm text-white/22 hover:text-white/50"
                       >
                         ×
@@ -321,7 +326,7 @@ const TodoManager = () => {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setAdding(true)}
+                    onClick={() => startAdding(section.id)}
                     className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-white/22 transition-colors hover:bg-white/[0.03] hover:text-white/45"
                   >
                     <span className="text-sm leading-none">+</span>
@@ -655,6 +660,7 @@ const AiTaskCreator = () => {
 
   const sectionLabel: Record<HabitCategory, string> = {
     habit: 'Habit（習慣）',
+    task:  'タスク',
   }
 
   const fieldTypeLabel: Record<TaskFieldType, string> = {

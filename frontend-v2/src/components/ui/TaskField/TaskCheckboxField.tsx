@@ -98,11 +98,6 @@ export const TaskCheckboxField = ({
         </span>
 
         <div className="flex flex-shrink-0 items-center gap-2">
-          {item.isMust && (
-            <span className="rounded-full border border-[#7dd3fc]/25 bg-[#7dd3fc]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff]">
-              MUST
-            </span>
-          )}
           {item.streak != null && item.streak > 0 && (
             <span className="text-[11px] text-white/32">{item.streak} days</span>
           )}

@@ -6,6 +6,7 @@ import { HABIT_CATEGORIES } from '@/lib/todos'
 
 const SECTION_ACCENT: Record<HabitCategory, string> = {
   habit: '#ff6b35',
+  task:  '#94a3b8',
 }
 
 type ViewRange = 1 | 3 | 7

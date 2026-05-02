@@ -170,11 +170,6 @@ export const CheckRow = ({
       </span>
 
       <div className="flex flex-shrink-0 items-center gap-2">
-        {item.isMust && (
-          <span className="rounded-full border border-[#7dd3fc]/25 bg-[#7dd3fc]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aee5ff]">
-            MUST
-          </span>
-        )}
         {item.streak != null && item.streak > 0 && (
           <span className="text-[11px] text-white/32">{item.streak} days</span>
         )}
@@ -388,9 +383,9 @@ export const MorningTab = ({
         .map(t => ({
           id: createTodoId(t.label),
           label: t.label,
-          section: 'habit' as import('@/lib/todos').HabitCategory,
+          // AI ジャーナル由来のショット項目はタスク扱い。HABIT は毎日の繰り返し用として保持する。
+          section: 'task' as import('@/lib/todos').HabitCategory,
           timing: 'morning' as import('@/lib/todos').HabitTiming,
-          isMust: t.section === 'morning-must',
           is_active: true,
         }))
       return [...prev, ...newTasks]
@@ -399,7 +394,7 @@ export const MorningTab = ({
 
   const generateReport = () => {
     const taskLines = ALL_MORNING_ITEMS.map(
-      i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}${i.isMust ? ' [MUST]' : ''}`
+      i => `${checked.has(i.id) ? '✅' : '⬜'} ${i.label}`
     ).join('\n')
 
     const text = [
