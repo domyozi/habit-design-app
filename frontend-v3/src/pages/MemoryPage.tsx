@@ -1,6 +1,8 @@
 import type { Theme } from '@/lib/theme'
 import { APP } from '@/lib/mockData'
 import { MonoLabel } from '@/components/today/MonoLabel'
+import { fetchUserContext } from '@/lib/api'
+import { useRemoteData } from '@/lib/useRemoteData'
 
 interface Props {
   theme: Theme
@@ -16,6 +18,14 @@ const MOOD_COLOR: Record<string, string> = {
 
 export default function MemoryPage({ theme: t }: Props) {
   const a = APP
+  const remoteCtx = useRemoteData(fetchUserContext, [])
+  const ctx = remoteCtx.data
+  const isMock = !ctx && !remoteCtx.loading
+
+  const identity = ctx?.identity ?? a.memory.identity
+  const goal = ctx?.goal_summary ?? a.memory.goal
+  const patterns = ctx?.patterns?.length ? ctx.patterns : a.memory.patterns
+  const keywords = ctx?.values_keywords?.length ? ctx.values_keywords : a.memory.keywords
 
   return (
     <div
@@ -36,19 +46,39 @@ export default function MemoryPage({ theme: t }: Props) {
           overflow: 'auto',
         }}
       >
-        <div style={{ padding: '20px 24px 14px', borderBottom: `1px solid ${t.ink12}` }}>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em' }}>Memory</div>
-          <div
+        <div
+          style={{
+            padding: '20px 24px 14px',
+            borderBottom: `1px solid ${t.ink12}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em' }}>Memory</div>
+            <div
+              style={{
+                fontFamily: t.mono,
+                fontSize: 10,
+                color: t.ink50,
+                marginTop: 2,
+                letterSpacing: '0.14em',
+              }}
+            >
+              あなたについて AI が覚えていること
+            </div>
+          </div>
+          <span
             style={{
               fontFamily: t.mono,
               fontSize: 10,
-              color: t.ink50,
-              marginTop: 2,
-              letterSpacing: '0.14em',
+              color: t.accent,
+              letterSpacing: '0.16em',
             }}
           >
-            あなたについて AI が覚えていること
-          </div>
+            ● {isMock ? 'MOCK' : 'LIVE'}
+          </span>
         </div>
         <div
           style={{
@@ -61,7 +91,7 @@ export default function MemoryPage({ theme: t }: Props) {
           <div>
             <MonoLabel theme={t}>IDENTITY</MonoLabel>
             <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4, marginTop: 8 }}>
-              {a.memory.identity}
+              {identity}
             </div>
           </div>
           <div>
@@ -75,7 +105,7 @@ export default function MemoryPage({ theme: t }: Props) {
                 color: t.accent,
               }}
             >
-              {a.memory.goal}
+              {goal}
             </div>
           </div>
           <div>
@@ -88,7 +118,7 @@ export default function MemoryPage({ theme: t }: Props) {
                 marginTop: 10,
               }}
             >
-              {a.memory.patterns.map((p, i) => (
+              {patterns.map((p, i) => (
                 <div
                   key={i}
                   style={{
@@ -124,7 +154,7 @@ export default function MemoryPage({ theme: t }: Props) {
                 marginTop: 10,
               }}
             >
-              {a.memory.keywords.map((k) => (
+              {keywords.map((k) => (
                 <span
                   key={k}
                   style={{

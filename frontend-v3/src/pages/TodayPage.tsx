@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom'
 import type { Theme } from '@/lib/theme'
 import { APP } from '@/lib/mockData'
 import { MonoLabel } from '@/components/today/MonoLabel'
+import { fetchPrimaryTarget } from '@/lib/api'
+import { useRemoteData } from '@/lib/useRemoteData'
 
 interface Props {
   theme: Theme
@@ -11,6 +13,12 @@ export default function TodayPage({ theme: t }: Props) {
   const navigate = useNavigate()
   const a = APP
   const hour = t.hour
+
+  const remotePT = useRemoteData(fetchPrimaryTarget, [])
+  const primaryTarget = remotePT.data
+    ? { value: remotePT.data.value, anchor: a.primaryTarget.anchor, minutes: a.primaryTarget.minutes }
+    : a.primaryTarget
+  const isMock = !remotePT.data && !remotePT.loading
 
   const done = a.habits.filter((h) => h.streak > 0 && h.month >= h.target * 0.5).length
   const total = a.habits.length
@@ -47,12 +55,12 @@ export default function TodayPage({ theme: t }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
           <MonoLabel theme={t}>PRIMARY TARGET · THE ONE THING</MonoLabel>
           <span style={{ fontFamily: t.mono, fontSize: 10, color: t.accent, letterSpacing: '0.16em' }}>
-            ● LOCKED 06:18
+            ● {isMock ? 'MOCK' : 'LIVE'}
           </span>
         </div>
 
         <div style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.1 }}>
-          {a.primaryTarget.value}
+          {primaryTarget.value}
         </div>
         <div
           style={{
@@ -63,7 +71,7 @@ export default function TodayPage({ theme: t }: Props) {
             letterSpacing: '0.04em',
           }}
         >
-          ANCHOR → {a.primaryTarget.anchor} · {a.primaryTarget.minutes}M
+          ANCHOR → {primaryTarget.anchor} · {primaryTarget.minutes}M
         </div>
 
         {/* Time budget gauge */}
@@ -71,7 +79,7 @@ export default function TodayPage({ theme: t }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
             <MonoLabel theme={t}>Time budget · 09:00–11:00</MonoLabel>
             <span style={{ fontFamily: t.mono, fontSize: 11, color: t.ink70 }}>
-              0 / {a.primaryTarget.minutes}m
+              0 / {primaryTarget.minutes}m
             </span>
           </div>
           <div style={{ height: 28, border: `1px solid ${t.line}`, position: 'relative', display: 'flex' }}>
