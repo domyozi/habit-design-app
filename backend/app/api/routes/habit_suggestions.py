@@ -23,6 +23,41 @@ router = APIRouter(prefix="/habit-suggestions")
 VALID_KINDS = {"habit", "task"}
 
 
+def _label_overlaps(candidate: str, existing: list[str]) -> bool:
+    """
+    候補ラベルが既存ラベル群と意味的に重複するかを判定する。
+    実装はシンプルな部分文字列の双方向チェック:
+    - 既存ラベルが候補に含まれる    （例: '英語学習' ⊂ '英語学習を継続する'）
+    - 候補が既存ラベルに含まれる    （例: '英語' ⊂ '英語学習'）
+    どちらかの場合に重複とみなす。
+    """
+    cand = candidate.strip().lower()
+    if not cand:
+        return False
+    for ex in existing:
+        ex_norm = (ex or "").strip().lower()
+        if not ex_norm:
+            continue
+        if ex_norm in cand or cand in ex_norm:
+            return True
+    return False
+
+
+def _fetch_active_todo_labels(user_id: str, supabase) -> list[str]:
+    """ユーザーの有効な todo_definitions ラベルを取得する。"""
+    result = (
+        supabase.table("todo_definitions")
+        .select("label, is_active")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return [
+        (row.get("label") or "").strip()
+        for row in (result.data or [])
+        if row.get("is_active")
+    ]
+
+
 @router.get("")
 async def list_habit_suggestions(
     status: Optional[str] = Query(None),
@@ -42,8 +77,15 @@ async def list_habit_suggestions(
         query = query.eq("status", status)
     if kind:
         query = query.eq("kind", kind)
-    result = query.execute()
-    return result.data or []
+    rows = query.execute().data or []
+
+    # 採用済みの todo に重複する pending 候補は古いゴミの可能性が高いため、表示から除外する。
+    # （extract 経由の cleanup を漏れたものへの安全網）
+    if status == "pending":
+        existing_labels = _fetch_active_todo_labels(user_id, supabase)
+        if existing_labels:
+            rows = [r for r in rows if not _label_overlaps(r.get("label") or "", existing_labels)]
+    return rows
 
 
 @router.post("")
@@ -143,6 +185,32 @@ async def _extract_and_persist_suggestions(
     """ジャーナル本文を Claude で分析し、新規 habit / task 候補を DB に挿入する。"""
     supabase = get_supabase()
 
+    # 1. 現在 active な todo_definitions ラベルを取得（既存の習慣・タスク）
+    todo_labels = _fetch_active_todo_labels(user_id, supabase)
+
+    # 2. 既存の pending 候補で「すでに todo に組み込まれているもの」は古いゴミなので reject 化
+    pending_existing = (
+        supabase.table("habit_suggestions")
+        .select("id, label")
+        .eq("user_id", user_id)
+        .eq("status", "pending")
+        .execute()
+    )
+    stale_ids = [
+        row["id"]
+        for row in (pending_existing.data or [])
+        if _label_overlaps(row.get("label") or "", todo_labels)
+    ]
+    if stale_ids:
+        (
+            supabase.table("habit_suggestions")
+            .update({"status": "rejected"})
+            .in_("id", stale_ids)
+            .eq("user_id", user_id)
+            .execute()
+        )
+
+    # 3. 残った pending / accepted 候補のラベルセット（重複防止）
     existing = (
         supabase.table("habit_suggestions")
         .select("label, status")
@@ -150,18 +218,24 @@ async def _extract_and_persist_suggestions(
         .in_("status", ["pending", "accepted"])
         .execute()
     )
-    existing_labels = {(row["label"] or "").strip().lower() for row in (existing.data or [])}
+    existing_sugg_labels = {(row["label"] or "").strip().lower() for row in (existing.data or [])}
 
-    candidates = await _ask_claude_for_suggestions(journal_text)
+    # 4. 既存ラベル一覧（todo + サジェスト）を AI へコンテキストとして渡す
+    avoid_list = list({*todo_labels, *(row["label"] for row in (existing.data or []) if row.get("label"))})
 
+    candidates = await _ask_claude_for_suggestions(journal_text, avoid_list)
+
+    # 5. 候補を後段でも再チェック（AI が重複を返したら捨てる）
     rows_to_insert = []
     for label, kind in candidates:
         norm = label.strip()
-        if not norm or norm.lower() in existing_labels:
+        if not norm or norm.lower() in existing_sugg_labels:
+            continue
+        if _label_overlaps(norm, todo_labels):
             continue
         if kind not in VALID_KINDS:
             kind = "habit"
-        existing_labels.add(norm.lower())
+        existing_sugg_labels.add(norm.lower())
         rows_to_insert.append({
             "user_id": user_id,
             "label": norm,
@@ -183,12 +257,27 @@ async def _extract_and_persist_suggestions(
 
 
 # ─── 内部ヘルパー: Claude で候補抽出 ─────────────────────────────
-async def _ask_claude_for_suggestions(journal_text: str) -> list[tuple[str, str]]:
+async def _ask_claude_for_suggestions(
+    journal_text: str,
+    avoid_labels: Optional[list[str]] = None,
+) -> list[tuple[str, str]]:
     """
     ジャーナル本文から行動候補を最大5つ抽出し、習慣化(habit) / 個別タスク(task) に分類する。
+    avoid_labels に指定された既存ラベル（習慣・タスク・既出候補）と意味的に重複する候補は提案しない。
     返り値: [(label, kind), ...]
     """
     from app.services.ai_service import create_message  # type: ignore
+
+    avoid_block = ""
+    cleaned_avoid = [lbl.strip() for lbl in (avoid_labels or []) if lbl and lbl.strip()]
+    if cleaned_avoid:
+        # プロンプトを膨らませすぎない上限
+        joined = "\n".join(f"- {lbl}" for lbl in cleaned_avoid[:30])
+        avoid_block = (
+            "\n\n**既に登録されている行動・候補（同じものや言い換えで再提案しないこと）:**\n"
+            f"{joined}\n"
+            "上記と意味が重複する場合は候補から除外してください。"
+        )
 
     system = (
         "あなたは行動設計コーチです。ユーザーのジャーナル本文を読み、"
@@ -197,8 +286,9 @@ async def _ask_claude_for_suggestions(journal_text: str) -> list[tuple[str, str]
         "- kind='habit' : 毎日や毎朝など、継続的に繰り返すことで価値が出るルーティン行動。"
         "（例: 早起き、瞑想、ストレッチ、英語学習）\n"
         "- kind='task'  : 一回限り、または期限のあるショット作業。"
-        "（例: 書類を提出する、◯◯さんに連絡する、見積を作成する）\n\n"
-        "次の JSON 形式のみで返してください（説明文不要）：\n"
+        "（例: 書類を提出する、◯◯さんに連絡する、見積を作成する）"
+        + avoid_block
+        + "\n\n次の JSON 形式のみで返してください（説明文不要）：\n"
         "```json\n"
         "{ \"candidates\": [\n"
         "    { \"label\": \"...\", \"kind\": \"habit\" },\n"
