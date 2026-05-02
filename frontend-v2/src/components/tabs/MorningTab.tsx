@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useDailyStorage, todayKey, useOpsStorage, readOps, yesterdayKey, type OpsTask } from '@/lib/storage'
 import { AiMark } from '@/components/ui/AiMark'
 import { byTimingGrouped, useTodoDefinitions, createTodoId, HABIT_CATEGORIES } from '@/lib/todos'
+import { HabitRecordList } from '@/components/HabitRecordList'
 import { streamJournalBrief, extractJsonBlock, stripJsonBlock, checkRateLimit, type JournalBriefResult, type YesterdayContext } from '@/lib/ai'
 import { TaskFieldRow, type TaskFieldItem } from '@/components/ui/TaskField'
 import { useUserContext } from '@/lib/user-context'
@@ -243,17 +244,20 @@ export const MorningTab = ({
   const [briefError, setBriefError] = useState<string | null>(null)
   const [editTargetText, setEditTargetText] = useState('')
   const morningGrouped = byTimingGrouped(todoDefinitions, 'morning')
-  // カテゴリ別タスクアイテム（空でないカテゴリのみ利用）
-  const ALL_MORNING_ITEMS: TaskFieldItem[] = HABIT_CATEGORIES.flatMap(cat =>
-    morningGrouped[cat.id].map(item => ({
-      id: item.id,
-      label: item.label,
-      isMust: item.isMust,
-      minutes: item.minutes,
-      field_type: item.field_type,
-      field_options: item.field_options,
-    }))
-  )
+  // タブヘッダ count・記録メータの分母にはタスク（非習慣）だけ含める。
+  // 習慣（Habit DB）は HabitRecordList 内で別途カウント表示する。
+  const ALL_MORNING_ITEMS: TaskFieldItem[] = HABIT_CATEGORIES
+    .filter(cat => cat.id !== 'habit')
+    .flatMap(cat =>
+      morningGrouped[cat.id].map(item => ({
+        id: item.id,
+        label: item.label,
+        isMust: item.isMust,
+        minutes: item.minutes,
+        field_type: item.field_type,
+        field_options: item.field_options,
+      }))
+    )
   // 後方互換: MUST/ROUTINE の区別を isMust で再現
   const [checkedArr, setCheckedArr] = useDailyStorage<string[]>('morning', 'checked', [], dateKey)
   const [skippedArr, setSkippedArr] = useDailyStorage<string[]>('morning', 'skipped', [], dateKey)
@@ -465,46 +469,52 @@ export const MorningTab = ({
 
         <div className={['mt-4', isReadOnly ? 'pointer-events-none' : ''].join(' ')}>
           {activeTaskTab === 'tasks' && (
-            HABIT_CATEGORIES.map(cat => {
-              const catItems: TaskFieldItem[] = morningGrouped[cat.id].map(item => ({
-                id: item.id, label: item.label, isMust: item.isMust,
-                minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
-              }))
-              if (catItems.length === 0) return null
-              return (
-                <Section
-                  key={cat.id}
-                  title={`${cat.label} — ${cat.desc}`}
-                  time=""
-                  accentColor={cat.accent}
-                  done={catItems.filter(isItemDone).length}
-                  total={catItems.length}
-                >
-                  {catItems.map(item => (
-                    <TaskFieldRow
-                      key={item.id}
-                      item={item}
-                      checked={checkedArr.includes(item.id)}
-                      onToggle={() => {
-                        if (isReadOnly) return
-                        setSkippedArr(prev => prev.filter(i => i !== item.id))
-                        const s = new Set(checkedArr)
-                        s.has(item.id) ? s.delete(item.id) : s.add(item.id)
-                        setCheckedArr([...s])
-                      }}
-                      skipped={skippedArr.includes(item.id)}
-                      onSkip={() => handleSkipMorning(item.id)}
-                      value={fieldValues[item.id] ?? ''}
-                      onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
-                      aiFeedback={aiFeedbacks[item.id]}
-                      onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
-                      isReadOnly={isReadOnly}
-                      dotColor={cat.accent}
-                    />
-                  ))}
-                </Section>
-              )
-            })
+            <>
+              {/* 習慣化（Habit DB ベース） */}
+              <HabitRecordList dateKey={dateKey} isReadOnly={isReadOnly} />
+
+              {/* タスク（TodoDefinition + localStorage） */}
+              {HABIT_CATEGORIES.filter(cat => cat.id !== 'habit').map(cat => {
+                const catItems: TaskFieldItem[] = morningGrouped[cat.id].map(item => ({
+                  id: item.id, label: item.label, isMust: item.isMust,
+                  minutes: item.minutes, field_type: item.field_type, field_options: item.field_options,
+                }))
+                if (catItems.length === 0) return null
+                return (
+                  <Section
+                    key={cat.id}
+                    title={`${cat.label} — ${cat.desc}`}
+                    time=""
+                    accentColor={cat.accent}
+                    done={catItems.filter(isItemDone).length}
+                    total={catItems.length}
+                  >
+                    {catItems.map(item => (
+                      <TaskFieldRow
+                        key={item.id}
+                        item={item}
+                        checked={checkedArr.includes(item.id)}
+                        onToggle={() => {
+                          if (isReadOnly) return
+                          setSkippedArr(prev => prev.filter(i => i !== item.id))
+                          const s = new Set(checkedArr)
+                          s.has(item.id) ? s.delete(item.id) : s.add(item.id)
+                          setCheckedArr([...s])
+                        }}
+                        skipped={skippedArr.includes(item.id)}
+                        onSkip={() => handleSkipMorning(item.id)}
+                        value={fieldValues[item.id] ?? ''}
+                        onChange={v => setFieldValues({ ...fieldValues, [item.id]: v })}
+                        aiFeedback={aiFeedbacks[item.id]}
+                        onAIFeedback={fb => setAiFeedbacks({ ...aiFeedbacks, [item.id]: fb })}
+                        isReadOnly={isReadOnly}
+                        dotColor={cat.accent}
+                      />
+                    ))}
+                  </Section>
+                )
+              })}
+            </>
           )}
 
           {activeTaskTab === 'record' && (
