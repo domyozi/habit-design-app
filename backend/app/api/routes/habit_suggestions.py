@@ -12,7 +12,9 @@
   PATCH  /api/habit-suggestions/{id}               → status を accepted/rejected に変更
   DELETE /api/habit-suggestions/{id}               → 削除
 """
+import re
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.security import get_current_user
@@ -23,22 +25,45 @@ router = APIRouter(prefix="/habit-suggestions")
 VALID_KINDS = {"habit", "task"}
 
 
+_MEANINGFUL_TOKEN_RE = re.compile(r'[一-龯]{2,}|[ァ-ヶー]{2,}')
+
+
+def _meaningful_tokens(label: str) -> set[str]:
+    """日本語ラベルから内容語（漢字2文字以上 / カタカナ2文字以上）の集合を抽出。
+
+    例:
+      '父親の印刷・返送作業'                → {'父親', '印刷', '返送', '作業'}
+      '父親ミッション（印刷・返送）の時間設定' → {'父親', 'ミッション', '印刷', '返送', '時間設定'}
+      'を作成する'（助詞 + ひらがな + する） → ∅
+    """
+    return set(_MEANINGFUL_TOKEN_RE.findall(label))
+
+
 def _label_overlaps(candidate: str, existing: list[str]) -> bool:
     """
     候補ラベルが既存ラベル群と意味的に重複するかを判定する。
-    実装はシンプルな部分文字列の双方向チェック:
-    - 既存ラベルが候補に含まれる    （例: '英語学習' ⊂ '英語学習を継続する'）
-    - 候補が既存ラベルに含まれる    （例: '英語' ⊂ '英語学習'）
-    どちらかの場合に重複とみなす。
+    実装は 2 段:
+    1. 双方向の部分文字列チェック   （例: '英語学習' ⊂ '英語学習を継続する'）
+    2. 内容語（漢字/カタカナ 2 文字以上）が 2 つ以上共有されている場合
+       （例: '父親の印刷・返送作業' と '父親ミッション（印刷・返送）の時間設定' は
+         '父親'/'印刷'/'返送' を共有する）
+    どちらかにヒットすれば重複扱い。
     """
-    cand = candidate.strip().lower()
+    cand = candidate.strip()
     if not cand:
         return False
+    cand_lower = cand.lower()
+    cand_tokens = _meaningful_tokens(cand)
     for ex in existing:
-        ex_norm = (ex or "").strip().lower()
+        ex_norm = (ex or "").strip()
         if not ex_norm:
             continue
-        if ex_norm in cand or cand in ex_norm:
+        ex_lower = ex_norm.lower()
+        # 1. 双方向の部分文字列
+        if ex_lower in cand_lower or cand_lower in ex_lower:
+            return True
+        # 2. 内容語の重複が 2 件以上
+        if cand_tokens and len(cand_tokens & _meaningful_tokens(ex_norm)) >= 2:
             return True
     return False
 
