@@ -670,6 +670,7 @@ export const patchUserContext = (patch: Partial<UserContext>): Promise<UserConte
 // ============================================================
 
 export type HabitSuggestionStatus = 'pending' | 'accepted' | 'rejected'
+export type SuggestionKind = 'habit' | 'task'
 
 export interface HabitSuggestion {
   id: string
@@ -677,14 +678,34 @@ export interface HabitSuggestion {
   status: HabitSuggestionStatus
   source: string | null
   source_date: string | null
+  kind: SuggestionKind
   created_at: string
 }
 
-export const fetchHabitSuggestions = (status?: HabitSuggestionStatus): Promise<HabitSuggestion[]> =>
-  apiGet<HabitSuggestion[]>(`/api/habit-suggestions${status ? `?status=${status}` : ''}`)
+interface FetchSuggestionOpts {
+  status?: HabitSuggestionStatus
+  kind?: SuggestionKind
+}
 
-export const createHabitSuggestion = (label: string, source: string = 'manual'): Promise<HabitSuggestion> =>
-  apiPost<HabitSuggestion>('/api/habit-suggestions', { label, source })
+export const fetchHabitSuggestions = (opts?: FetchSuggestionOpts | HabitSuggestionStatus): Promise<HabitSuggestion[]> => {
+  // 後方互換: 引数が文字列なら status のみのクエリ
+  const params = new URLSearchParams()
+  if (typeof opts === 'string') {
+    params.set('status', opts)
+  } else if (opts) {
+    if (opts.status) params.set('status', opts.status)
+    if (opts.kind) params.set('kind', opts.kind)
+  }
+  const qs = params.toString()
+  return apiGet<HabitSuggestion[]>(`/api/habit-suggestions${qs ? `?${qs}` : ''}`)
+}
+
+export const createHabitSuggestion = (
+  label: string,
+  source: string = 'manual',
+  kind: SuggestionKind = 'habit',
+): Promise<HabitSuggestion> =>
+  apiPost<HabitSuggestion>('/api/habit-suggestions', { label, source, kind })
 
 export const extractHabitSuggestions = (
   journal_text: string,

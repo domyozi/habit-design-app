@@ -88,6 +88,8 @@ export const UniqueId = Extension.create<UniqueIdOptions>({
             seen.add(id)
           }
           tr.setMeta('addToHistory', false)
+          // 親エディタの onUpdate 側で「ID 採番だけ」のトランザクションを検出してスキップさせる
+          tr.setMeta('uniqueId/silent', true)
           return tr
         },
 

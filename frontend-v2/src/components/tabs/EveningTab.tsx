@@ -226,9 +226,7 @@ export const EveningTab = ({
             }
           }
 
-          // メモリ自動更新は backend (POST /api/journals → BackgroundTasks) で実行される
-          // バックグラウンドで習慣候補抽出（サイレント）
-          void import('@/lib/api').then(api => api.extractHabitSuggestions(notes, 'evening', dateKey).catch(() => {}))
+          // メモリ自動更新と habit/task 候補抽出は backend (POST /api/journals → BackgroundTasks) で実行される
           onComplete?.()
         },
         todayMorningCtx,

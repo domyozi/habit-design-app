@@ -6,10 +6,11 @@
   GET  /api/journals        - ジャーナル一覧取得（直近 N 件）
   GET  /api/journals/{date} - 特定日のジャーナル取得
 
-【メモリ自動更新】:
-  POST /api/journals では保存後にバックグラウンドで AI 抽出を実行し、
-  user_context テーブル（identity / patterns / values_keywords / insights）を
-  追記マージで更新する。失敗してもメインフローは成功させる。
+【メモリ自動更新 + 行動候補抽出】:
+  POST /api/journals では保存後にバックグラウンドで AI 抽出を 2 種類実行する:
+    1. user_context のメモリ追記マージ
+    2. habit_suggestions への habit / task 候補の追加
+  どちらも失敗してもメインフローは成功させる。
 """
 import logging
 import uuid
@@ -18,6 +19,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
+from app.api.routes.habit_suggestions import _extract_and_persist_suggestions
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
 from app.services.ai_service import extract_memory_facts, merge_memory_patch
@@ -30,6 +32,14 @@ ALLOWED_ENTRY_TYPES = {'journaling', 'daily_report', 'checklist', 'kpi_update', 
 
 # メモリ抽出を実行する entry_type（短文・構造化データ系は除外）
 _MEMORY_EXTRACTION_TYPES = {'journaling', 'morning_journal', 'evening_notes', 'daily_report'}
+
+# 候補抽出を実行する entry_type と source 名のマッピング
+_SUGGESTION_SOURCE_MAP = {
+    'morning_journal': 'morning',
+    'evening_notes': 'evening',
+    'journaling': 'manual',
+    'daily_report': 'manual',
+}
 
 
 @router.post("", status_code=201)
@@ -74,10 +84,17 @@ async def upsert_journal(
         data["id"] = str(uuid.uuid4())
         result = supabase.table("journal_entries").insert(data).execute()
 
-    # 投稿テキストからメモリ差分を抽出して user_context へ追記する。
+    # 投稿テキストからメモリ差分 + 行動候補を抽出する。
     # AI 失敗・空抽出はサイレントに無視する（メインフローを壊さない）。
     if entry_type in _MEMORY_EXTRACTION_TYPES and isinstance(content, str) and content.strip():
         background_tasks.add_task(_process_memory_extraction, user_id, content)
+        background_tasks.add_task(
+            _process_suggestion_extraction,
+            user_id,
+            content,
+            _SUGGESTION_SOURCE_MAP.get(entry_type, "manual"),
+            entry_date,
+        )
 
     return result.data[0] if result.data else {}
 
@@ -106,6 +123,24 @@ async def _process_memory_extraction(user_id: str, session_text: str) -> None:
         supabase.table("user_context").upsert(merged, on_conflict="user_id").execute()
     except Exception as e:  # noqa: BLE001 - バックグラウンド失敗をメインへ伝播させない
         logger.warning("メモリ自動更新失敗 user_id=%s: %s", user_id, e)
+
+
+async def _process_suggestion_extraction(
+    user_id: str,
+    session_text: str,
+    source: str,
+    entry_date: str,
+) -> None:
+    """ジャーナル投稿後に habit / task 候補を habit_suggestions に追記する（バックグラウンド実行）。"""
+    try:
+        await _extract_and_persist_suggestions(
+            user_id=user_id,
+            journal_text=session_text,
+            source=source,
+            source_date=entry_date,
+        )
+    except Exception as e:  # noqa: BLE001 - バックグラウンド失敗をメインへ伝播させない
+        logger.warning("候補抽出失敗 user_id=%s: %s", user_id, e)
 
 
 @router.get("")

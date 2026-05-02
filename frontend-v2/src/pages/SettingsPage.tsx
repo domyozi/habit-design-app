@@ -31,10 +31,13 @@ interface EditDraft {
   monthly_target: string
 }
 
-const TodoManager = () => {
+const TodoManager = ({ visibleSections }: { visibleSections?: HabitCategory[] } = {}) => {
   const [todos, setTodos] = useTodoDefinitions()
   const [draft, setDraft] = useState<AddDraft>({ label: '', field_type: 'checkbox', unit: '' })
-  const [openSection, setOpenSection] = useState<HabitCategory | null>('habit')
+  const sections = visibleSections
+    ? HABIT_CATEGORIES.filter(c => visibleSections.includes(c.id))
+    : HABIT_CATEGORIES
+  const [openSection, setOpenSection] = useState<HabitCategory | null>(sections[0]?.id ?? 'habit')
   // どのセクションで追加フォームを開いているか（null = 閉）
   const [addingIn, setAddingIn] = useState<HabitCategory | null>(null)
   const [showHidden, setShowHidden] = useState(false)
@@ -113,7 +116,7 @@ const TodoManager = () => {
 
   return (
     <div className="px-4 py-3 space-y-2">
-      {HABIT_CATEGORIES.map(section => {
+      {sections.map(section => {
         const activeItems = bySectionAll(todos, section.id).filter(t => t.is_active)
         const isOpen = openSection === section.id
         const isNumericDraft = NUMERIC_FIELD_TYPES.has(draft.field_type)
@@ -1037,7 +1040,7 @@ const MemoryView = () => {
 }
 
 // ─── 習慣候補パネル ───────────────────────────────────────────
-const HabitSuggestionsPanel = () => {
+const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
   const [, setTodos] = useTodoDefinitions()
   const [pending, setPending] = useState<HabitSuggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -1046,25 +1049,29 @@ const HabitSuggestionsPanel = () => {
 
   const reload = useCallback(async () => {
     try {
-      const list = await fetchHabitSuggestions('pending')
+      const list = await fetchHabitSuggestions({ status: 'pending', kind })
       setPending(list)
     } catch { /* ignore */ }
-  }, [])
+  }, [kind])
 
   useEffect(() => { void reload() }, [reload])
 
+  const headerLabel = kind === 'habit' ? '習慣候補' : 'タスク候補'
+  const headerDesc = kind === 'habit'
+    ? 'ジャーナルから抽出された継続トラッキング候補。採用すると Habit カテゴリに追加されます。'
+    : 'ジャーナルから抽出された個別タスク候補。採用するとタスクカテゴリに追加されます。'
+  const accentColor = kind === 'habit' ? '#ff6b35' : '#94a3b8'
+
   const handleAccept = async (s: HabitSuggestion) => {
-    // TodoDefinition に追加（section='habit'）
     setTodos(prev => {
-      // 同名の habit が既に存在する場合はスキップ
-      if (prev.some(t => t.label.trim() === s.label.trim() && t.section === 'habit' && t.is_active)) return prev
+      if (prev.some(t => t.label.trim() === s.label.trim() && t.section === kind && t.is_active)) return prev
       const newTodo: TodoDefinition = {
         id: createTodoId(s.label),
         label: s.label,
-        section: 'habit',
+        section: kind,
         timing: 'morning',
-        isMust: true,
         is_active: true,
+        ...(kind === 'habit' ? { monthly_target: 20 } : {}),
       }
       return [...prev, newTodo]
     })
@@ -1086,7 +1093,7 @@ const HabitSuggestionsPanel = () => {
     if (!label) return
     setLoading(true)
     try {
-      const created = await createHabitSuggestion(label, 'manual')
+      const created = await createHabitSuggestion(label, 'manual', kind)
       setPending(prev => [created, ...prev])
       setDraft('')
     } catch { /* ignore */ } finally { setLoading(false) }
@@ -1095,17 +1102,19 @@ const HabitSuggestionsPanel = () => {
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">習慣候補</p>
-        <p className="mt-1 text-[11px] text-white/38">
-          ジャーナルから抽出された習慣化候補。採用すると Habit カテゴリに追加されます。
-        </p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">{headerLabel}</p>
+        <p className="mt-1 text-[11px] text-white/38">{headerDesc}</p>
       </div>
 
       {/* 候補リスト */}
       {pending.length > 0 ? (
         <div className="space-y-2">
           {pending.map(s => (
-            <div key={s.id} className="flex items-center gap-2 rounded-2xl border border-[#ff6b35]/20 bg-[#ff6b35]/5 px-3 py-2">
+            <div
+              key={s.id}
+              className="flex items-center gap-2 rounded-2xl px-3 py-2 border"
+              style={{ borderColor: `${accentColor}33`, backgroundColor: `${accentColor}0d` }}
+            >
               <span className="flex-1 text-sm text-white/85">{s.label}</span>
               {s.source && s.source !== 'manual' && (
                 <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-white/35">
@@ -1144,7 +1153,7 @@ const HabitSuggestionsPanel = () => {
           onCompositionStart={() => { isComposing.current = true }}
           onCompositionEnd={() => { isComposing.current = false }}
           onKeyDown={e => { if (e.key === 'Enter' && !isComposing.current) void handleManualAdd() }}
-          placeholder="自分で習慣候補を追加..."
+          placeholder={kind === 'habit' ? '習慣候補を追加...' : 'タスク候補を追加...'}
           className="flex-1 rounded-xl border border-white/[0.1] bg-[#08111c] px-3 py-2 text-sm text-white/80 placeholder-white/20 focus:border-white/20 focus:outline-none"
           disabled={loading}
         />
@@ -1152,7 +1161,8 @@ const HabitSuggestionsPanel = () => {
           type="button"
           onClick={() => void handleManualAdd()}
           disabled={loading || !draft.trim()}
-          className="shrink-0 rounded-full border border-[#ff6b35]/30 bg-[#ff6b35]/12 px-4 py-2 text-xs font-semibold text-[#ff9a6b] disabled:opacity-30"
+          className="shrink-0 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-30 border"
+          style={{ borderColor: `${accentColor}55`, backgroundColor: `${accentColor}1f`, color: accentColor }}
         >
           + 追加
         </button>
@@ -1161,16 +1171,23 @@ const HabitSuggestionsPanel = () => {
   )
 }
 
-export const SettingsPage = () => {
-  const [activeTab, setActiveTab] = useState<'tasks' | 'ai' | 'memory'>('tasks')
+type SettingsTab = 'habit' | 'task' | 'ai' | 'memory'
 
-  const tabLabel = { tasks: '習慣化・記録', ai: 'AI・設定', memory: 'メモリ' }
+export const SettingsPage = () => {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('habit')
+
+  const tabLabel: Record<SettingsTab, string> = {
+    habit: '習慣化',
+    task: 'タスク',
+    ai: 'AI・設定',
+    memory: 'メモリ',
+  }
 
   return (
     <div className="pb-6">
       {/* タブヘッダー */}
       <div className="flex gap-0 border-b border-white/[0.06] px-4 pt-2">
-        {(['tasks', 'ai', 'memory'] as const).map(t => (
+        {(['habit', 'task', 'ai', 'memory'] as const).map(t => (
           <button
             key={t}
             type="button"
@@ -1187,15 +1204,24 @@ export const SettingsPage = () => {
         ))}
       </div>
 
-      {activeTab === 'tasks' && (
+      {activeTab === 'habit' && (
         <>
           <div className="px-4 pt-4 pb-2">
-            <HabitSuggestionsPanel />
+            <HabitSuggestionsPanel kind="habit" />
+          </div>
+          <TodoManager visibleSections={['habit']} />
+        </>
+      )}
+
+      {activeTab === 'task' && (
+        <>
+          <div className="px-4 pt-4 pb-2">
+            <HabitSuggestionsPanel kind="task" />
           </div>
           <div className="px-4 pt-2 pb-2">
             <AiTaskCreator />
           </div>
-          <TodoManager />
+          <TodoManager visibleSections={['task']} />
         </>
       )}
 

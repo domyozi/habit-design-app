@@ -364,9 +364,7 @@ export const MorningTab = ({
             setBriefError('解析に失敗しました。もう一度お試しください。')
           }
           setBriefLoading(false)
-          // メモリ自動更新は backend (POST /api/journals → BackgroundTasks) で実行される
-          // バックグラウンドで習慣候補抽出（失敗してもサイレント）
-          void import('@/lib/api').then(api => api.extractHabitSuggestions(journal, 'morning', dateKey).catch(() => {}))
+          // メモリ自動更新と habit/task 候補抽出は backend (POST /api/journals → BackgroundTasks) で実行される
         },
       )
     } catch (e) {
