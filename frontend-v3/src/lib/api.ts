@@ -1,7 +1,12 @@
 import type {
   BackendHabit,
   BackendHabitLog,
+  BackendHabitSuggestion,
+  BackendJournalEntry,
+  JournalEntryType,
   PrimaryTargetResponse,
+  SuggestionKind,
+  SuggestionStatus,
   UserContextResponse,
 } from '@/types/api'
 
@@ -147,3 +152,40 @@ export interface UpdateHabitLogBody {
 
 export const updateHabitLog = (habitId: string, body: UpdateHabitLogBody) =>
   apiPatch<{ success: boolean; data: BackendHabitLog }>(`/api/habits/${habitId}/log`, body)
+
+// ─── Journal entries (Flow) ───────────────────────────────
+
+export interface UpsertJournalBody {
+  entry_date?: string
+  entry_type?: JournalEntryType
+  content: string
+  raw_input?: string
+}
+
+export const upsertJournal = (body: UpsertJournalBody) =>
+  apiPost<BackendJournalEntry>('/api/journals', body)
+
+export const listJournals = (limit = 20, entry_type?: JournalEntryType) => {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (entry_type) params.set('entry_type', entry_type)
+  return apiGet<BackendJournalEntry[]>(`/api/journals?${params.toString()}`)
+}
+
+// ─── Habit suggestions (AI extractions) ───────────────────
+
+export const listHabitSuggestions = (
+  status: SuggestionStatus | undefined = 'pending',
+  kind?: SuggestionKind,
+) => {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (kind) params.set('kind', kind)
+  const qs = params.toString()
+  return apiGet<BackendHabitSuggestion[]>(`/api/habit-suggestions${qs ? `?${qs}` : ''}`)
+}
+
+export const updateHabitSuggestion = (
+  id: string,
+  body: { status: SuggestionStatus },
+) =>
+  apiPatch<BackendHabitSuggestion>(`/api/habit-suggestions/${id}`, body)

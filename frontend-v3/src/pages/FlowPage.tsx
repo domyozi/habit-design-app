@@ -1,7 +1,17 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Theme } from '@/lib/theme'
-import { APP } from '@/lib/mockData'
 import { MonoLabel } from '@/components/today/MonoLabel'
+import {
+  listHabitSuggestions,
+  listJournals,
+  updateHabitSuggestion,
+  upsertJournal,
+} from '@/lib/api'
+import type {
+  BackendHabitSuggestion,
+  BackendJournalEntry,
+  JournalEntryType,
+} from '@/types/api'
 
 interface Props {
   theme: Theme
@@ -10,10 +20,117 @@ interface Props {
 const MODES = ['DECLARE', 'REFLECT', 'BRAINSTORM', 'PLAN'] as const
 type Mode = (typeof MODES)[number]
 
+const MODE_TO_ENTRY_TYPE: Record<Mode, JournalEntryType> = {
+  DECLARE: 'morning_journal',
+  REFLECT: 'evening_notes',
+  BRAINSTORM: 'journaling',
+  PLAN: 'daily_report',
+}
+
+const ENTRY_TYPE_LABEL: Record<JournalEntryType, string> = {
+  journaling: 'BRAINSTORM',
+  daily_report: 'PLAN',
+  checklist: 'CHECKLIST',
+  kpi_update: 'KPI',
+  evening_feedback: 'COACH',
+  evening_notes: 'REFLECT',
+  morning_journal: 'DECLARE',
+  user_context_snapshot: 'CTX',
+}
+
+function formatTimestamp(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export default function FlowPage({ theme: t }: Props) {
-  const a = APP
   const [mode, setMode] = useState<Mode>('DECLARE')
   const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [entries, setEntries] = useState<BackendJournalEntry[] | null>(null)
+  const [suggestions, setSuggestions] = useState<BackendHabitSuggestion[] | null>(null)
+
+  const loadAll = useCallback(async () => {
+    try {
+      const [j, s] = await Promise.all([
+        listJournals(20),
+        listHabitSuggestions('pending'),
+      ])
+      setEntries(j ?? [])
+      setSuggestions(s ?? [])
+    } catch (err) {
+      console.error('[flow] load failed', err)
+      setEntries(null)
+      setSuggestions(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAll()
+  }, [loadAll])
+
+  const isLive = entries !== null
+
+  const handleSend = async () => {
+    const content = draft.trim()
+    if (!content) return
+    setSending(true)
+    setError(null)
+    try {
+      await upsertJournal({
+        entry_type: MODE_TO_ENTRY_TYPE[mode],
+        content,
+        entry_date: todayStr(),
+      })
+      setDraft('')
+      // Reload entries; AI suggestions arrive async (background task) so
+      // schedule a follow-up reload too.
+      await loadAll()
+      window.setTimeout(loadAll, 5000)
+    } catch (err) {
+      console.error('[flow] send failed', err)
+      setError(err instanceof Error ? err.message : '送信に失敗しました')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const adoptSuggestion = async (id: string) => {
+    try {
+      await updateHabitSuggestion(id, { status: 'accepted' })
+      setSuggestions((prev) => prev?.filter((s) => s.id !== id) ?? null)
+    } catch (err) {
+      console.error('[flow] adopt failed', err)
+    }
+  }
+  const rejectSuggestion = async (id: string) => {
+    try {
+      await updateHabitSuggestion(id, { status: 'rejected' })
+      setSuggestions((prev) => prev?.filter((s) => s.id !== id) ?? null)
+    } catch (err) {
+      console.error('[flow] reject failed', err)
+    }
+  }
+
+  const habitSuggestions = (suggestions ?? []).filter((s) => s.kind === 'habit')
+  const taskSuggestions = (suggestions ?? []).filter((s) => s.kind === 'task')
+
+  // Sort entries oldest → newest so the latest sits at the bottom.
+  const sortedEntries = (entries ?? [])
+    .slice()
+    .sort((a, b) => {
+      const ax = a.created_at ?? a.entry_date
+      const bx = b.created_at ?? b.entry_date
+      return ax.localeCompare(bx)
+    })
 
   return (
     <div
@@ -45,7 +162,19 @@ export default function FlowPage({ theme: t }: Props) {
           }}
         >
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em' }}>Flow</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+              <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em' }}>Flow</span>
+              <span
+                style={{
+                  fontFamily: t.mono,
+                  fontSize: 10,
+                  color: t.accent,
+                  letterSpacing: '0.16em',
+                }}
+              >
+                ● {isLive ? `LIVE · ${sortedEntries.length}件` : 'MOCK · 履歴未取得'}
+              </span>
+            </div>
             <div
               style={{
                 fontFamily: t.mono,
@@ -95,101 +224,107 @@ export default function FlowPage({ theme: t }: Props) {
             gap: 20,
           }}
         >
-          {a.flowMessages.map((msg, i) => {
-            const isAi = msg.role === 'ai'
-            return (
+          {!isLive && (
+            <div
+              style={{
+                fontFamily: t.mono,
+                fontSize: 11,
+                color: t.ink50,
+                letterSpacing: '0.1em',
+                padding: 12,
+                border: `1px dashed ${t.ink12}`,
+                background: t.paperWarm,
+              }}
+            >
+              backend に接続できないため履歴未表示。下のコンポーザーで送ると LIVE になります。
+            </div>
+          )}
+          {isLive && sortedEntries.length === 0 && (
+            <div
+              style={{
+                fontFamily: t.mono,
+                fontSize: 11,
+                color: t.ink50,
+                letterSpacing: '0.1em',
+                padding: 12,
+                border: `1px dashed ${t.ink12}`,
+                background: t.paperWarm,
+              }}
+            >
+              まだ独白がありません。コンポーザーから書いてください。
+            </div>
+          )}
+          {sortedEntries.map((entry) => (
+            <div
+              key={entry.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '34px 1fr',
+                gap: 14,
+                maxWidth: 720,
+                alignSelf: 'flex-end',
+                marginLeft: 'auto',
+              }}
+            >
               <div
-                key={i}
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '34px 1fr',
-                  gap: 14,
-                  maxWidth: 720,
-                  alignSelf: isAi ? 'flex-start' : 'flex-end',
-                  marginLeft: isAi ? 0 : 'auto',
+                  width: 34,
+                  height: 34,
+                  border: `1.5px solid ${t.line}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: t.ink,
+                  fontFamily: t.mono,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  color: t.paper,
                 }}
               >
+                ME
+              </div>
+              <div>
                 <div
                   style={{
-                    width: 34,
-                    height: 34,
-                    border: `1.5px solid ${t.line}`,
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: isAi ? t.paperWarm : t.ink,
-                    fontFamily: t.mono,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: '0.1em',
-                    color: isAi ? t.ink : t.paper,
+                    alignItems: 'baseline',
+                    gap: 10,
+                    marginBottom: 6,
                   }}
                 >
-                  {isAi ? <div style={{ width: 8, height: 8, background: t.accent }} /> : 'ME'}
+                  <span
+                    style={{
+                      fontFamily: t.mono,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.16em',
+                      color: t.ink70,
+                    }}
+                  >
+                    {ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type.toUpperCase()}
+                  </span>
+                  <span style={{ fontFamily: t.mono, fontSize: 9, color: t.ink30 }}>
+                    {entry.entry_date}
+                    {entry.created_at ? ` · ${formatTimestamp(entry.created_at)}` : ''}
+                  </span>
                 </div>
-                <div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'baseline',
-                      gap: 10,
-                      marginBottom: 6,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: t.mono,
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: '0.16em',
-                        color: isAi ? t.accent : t.ink70,
-                      }}
-                    >
-                      {isAi ? 'COACH' : 'ME'}
-                    </span>
-                    <span style={{ fontFamily: t.mono, fontSize: 9, color: t.ink30 }}>
-                      {msg.t}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      lineHeight: 1.6,
-                      color: t.ink,
-                      whiteSpace: 'pre-wrap',
-                      padding: '14px 16px',
-                      border: `1px solid ${isAi ? t.ink12 : t.line}`,
-                      background: isAi ? t.paper : t.paperWarm,
-                    }}
-                  >
-                    {msg.text}
-                  </div>
-                  {msg.actions && (
-                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                      {msg.actions.map((act, j) => (
-                        <button
-                          key={j}
-                          style={{
-                            padding: '8px 14px',
-                            cursor: 'pointer',
-                            fontFamily: t.mono,
-                            fontSize: 10,
-                            fontWeight: 700,
-                            letterSpacing: '0.14em',
-                            background: act.kind === 'adopt' ? t.accent : 'transparent',
-                            color: act.kind === 'adopt' ? t.paper : t.ink70,
-                            border: `1px solid ${act.kind === 'adopt' ? t.accent : t.ink12}`,
-                          }}
-                        >
-                          {act.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                <div
+                  style={{
+                    fontSize: 14,
+                    lineHeight: 1.6,
+                    color: t.ink,
+                    whiteSpace: 'pre-wrap',
+                    padding: '14px 16px',
+                    border: `1px solid ${t.line}`,
+                    background: t.paperWarm,
+                  }}
+                >
+                  {entry.content}
                 </div>
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
 
         {/* Composer */}
@@ -200,6 +335,21 @@ export default function FlowPage({ theme: t }: Props) {
             background: t.paper,
           }}
         >
+          {error && (
+            <div
+              style={{
+                marginBottom: 8,
+                padding: '6px 10px',
+                background: `${t.accent}14`,
+                border: `1px solid ${t.accent}`,
+                fontFamily: t.mono,
+                fontSize: 10,
+                color: t.accent,
+              }}
+            >
+              {error}
+            </div>
+          )}
           <div
             style={{
               border: `1.5px solid ${t.line}`,
@@ -210,7 +360,13 @@ export default function FlowPage({ theme: t }: Props) {
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="今思っていること、宣言、振り返りを書く...　/  音声入力は ⌘ + Space"
+              placeholder={`今思っていること、宣言、振り返りを書く...　/  モード: ${mode}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
               style={{
                 width: '100%',
                 minHeight: 56,
@@ -268,9 +424,11 @@ export default function FlowPage({ theme: t }: Props) {
                     letterSpacing: '0.14em',
                   }}
                 >
-                  ⏎ SEND · ⇧⏎ NEW LINE
+                  ⌘⏎ SEND
                 </span>
                 <button
+                  onClick={handleSend}
+                  disabled={sending || !draft.trim()}
                   style={{
                     padding: '8px 16px',
                     background: t.ink,
@@ -280,10 +438,11 @@ export default function FlowPage({ theme: t }: Props) {
                     fontSize: 10,
                     fontWeight: 700,
                     letterSpacing: '0.16em',
-                    cursor: 'pointer',
+                    cursor: sending ? 'wait' : 'pointer',
+                    opacity: sending || !draft.trim() ? 0.5 : 1,
                   }}
                 >
-                  SEND →
+                  {sending ? 'SENDING…' : 'SEND →'}
                 </button>
               </div>
             </div>
@@ -307,20 +466,29 @@ export default function FlowPage({ theme: t }: Props) {
             AI EXTRACTIONS
           </MonoLabel>
           <div style={{ fontSize: 11, color: t.ink50, marginTop: 4 }}>
-            この対話から抽出された候補。ワンタップで反映できます。
+            Flow に書いた独白から AI が抽出した候補。SEND 後 5〜15 秒で反映されます。
           </div>
         </div>
 
         <div>
           <div style={{ marginBottom: 8 }}>
-            <MonoLabel theme={t}>NEW TASKS · 2</MonoLabel>
+            <MonoLabel theme={t}>NEW TASKS · {taskSuggestions.length}</MonoLabel>
           </div>
-          {[
-            { l: '英語学習を 08:00–08:25 に固定', est: 25, due: 'today' },
-            { l: 'GW計画を手書きで整理', est: 30, due: 'today' },
-          ].map((tk, i) => (
+          {taskSuggestions.length === 0 && (
             <div
-              key={i}
+              style={{
+                fontFamily: t.mono,
+                fontSize: 10,
+                color: t.ink30,
+                padding: '6px 0',
+              }}
+            >
+              候補はありません
+            </div>
+          )}
+          {taskSuggestions.map((tk) => (
+            <div
+              key={tk.id}
               style={{
                 padding: '10px 12px',
                 border: `1px solid ${t.ink12}`,
@@ -328,7 +496,7 @@ export default function FlowPage({ theme: t }: Props) {
                 marginBottom: 6,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 500 }}>{tk.l}</div>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>{tk.label}</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
                 <span
                   style={{
@@ -338,23 +506,42 @@ export default function FlowPage({ theme: t }: Props) {
                     letterSpacing: '0.14em',
                   }}
                 >
-                  {tk.est}M · {tk.due.toUpperCase()}
+                  {(tk.source ?? 'manual').toUpperCase()}
                 </span>
-                <button
-                  style={{
-                    fontFamily: t.mono,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    letterSpacing: '0.14em',
-                    color: t.accent,
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  + ADD
-                </button>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    onClick={() => rejectSuggestion(tk.id)}
+                    style={{
+                      fontFamily: t.mono,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: '0.14em',
+                      color: t.ink50,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    ✕ DISMISS
+                  </button>
+                  <button
+                    onClick={() => adoptSuggestion(tk.id)}
+                    style={{
+                      fontFamily: t.mono,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: '0.14em',
+                      color: t.accent,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    + ADD
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -362,91 +549,100 @@ export default function FlowPage({ theme: t }: Props) {
 
         <div>
           <div style={{ marginBottom: 8 }}>
-            <MonoLabel theme={t}>HABIT SUGGESTIONS · 1</MonoLabel>
+            <MonoLabel theme={t}>HABIT SUGGESTIONS · {habitSuggestions.length}</MonoLabel>
           </div>
-          <div style={{ padding: '10px 12px', border: `1px solid ${t.accent}`, background: t.paper }}>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>英語を朝の固定枠に</div>
-            <div style={{ fontSize: 11, color: t.ink50, marginTop: 4, lineHeight: 1.45 }}>
-              3日連続で抜けた事実 + 朝の方が達成率68%高いパターン
+          {habitSuggestions.length === 0 && (
+            <div
+              style={{
+                fontFamily: t.mono,
+                fontSize: 10,
+                color: t.ink30,
+                padding: '6px 0',
+              }}
+            >
+              候補はありません
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-              <span
-                style={{
-                  fontFamily: t.mono,
-                  fontSize: 9,
-                  color: t.accent,
-                  letterSpacing: '0.14em',
-                  fontWeight: 700,
-                }}
-              >
-                ● 92% CONFIDENCE
-              </span>
-              <button
-                style={{
-                  fontFamily: t.mono,
-                  fontSize: 9,
-                  fontWeight: 700,
-                  letterSpacing: '0.14em',
-                  color: t.accent,
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                + ADOPT
-              </button>
+          )}
+          {habitSuggestions.map((s) => (
+            <div
+              key={s.id}
+              style={{
+                padding: '10px 12px',
+                border: `1px solid ${t.accent}`,
+                background: t.paper,
+                marginBottom: 6,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 600 }}>{s.label}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+                <span
+                  style={{
+                    fontFamily: t.mono,
+                    fontSize: 9,
+                    color: t.accent,
+                    letterSpacing: '0.14em',
+                    fontWeight: 700,
+                  }}
+                >
+                  ● {(s.source ?? 'journal').toUpperCase()}
+                </span>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    onClick={() => rejectSuggestion(s.id)}
+                    style={{
+                      fontFamily: t.mono,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: '0.14em',
+                      color: t.ink50,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    ✕ DISMISS
+                  </button>
+                  <button
+                    onClick={() => adoptSuggestion(s.id)}
+                    style={{
+                      fontFamily: t.mono,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: '0.14em',
+                      color: t.accent,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    + ADOPT
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-
-        <div>
-          <div style={{ marginBottom: 8 }}>
-            <MonoLabel theme={t}>TAGS DETECTED</MonoLabel>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {['提案書', 'GW', '英語', '副業', '朝固定枠'].map((tag) => (
-              <span
-                key={tag}
-                style={{
-                  padding: '3px 8px',
-                  fontFamily: t.mono,
-                  fontSize: 9,
-                  letterSpacing: '0.1em',
-                  border: `1px solid ${t.ink12}`,
-                  background: t.paper,
-                  color: t.ink70,
-                }}
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
+          ))}
         </div>
 
         <div style={{ marginTop: 'auto', borderTop: `1px solid ${t.ink12}`, paddingTop: 12 }}>
-          <MonoLabel theme={t}>SENT TO</MonoLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-            {[
-              { app: 'Notion', count: 2 },
-              { app: 'Linear', count: 1 },
-              { app: 'Calendar', count: 2 },
-            ].map((s) => (
-              <div
-                key={s.app}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontFamily: t.mono,
-                  fontSize: 10,
-                  color: t.ink70,
-                }}
-              >
-                <span>↗ {s.app}</span>
-                <span>{s.count}</span>
-              </div>
-            ))}
-          </div>
+          <button
+            onClick={loadAll}
+            style={{
+              width: '100%',
+              padding: '8px 10px',
+              fontFamily: t.mono,
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.18em',
+              background: 'transparent',
+              color: t.ink70,
+              border: `1px solid ${t.ink12}`,
+              cursor: 'pointer',
+            }}
+          >
+            ↻ REFRESH
+          </button>
         </div>
       </div>
     </div>

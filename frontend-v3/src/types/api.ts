@@ -68,3 +68,36 @@ export interface BackendHabitLog {
   proof_url?: string | null
   xp_earned?: number
 }
+
+export type JournalEntryType =
+  | 'journaling'
+  | 'daily_report'
+  | 'checklist'
+  | 'kpi_update'
+  | 'evening_feedback'
+  | 'evening_notes'
+  | 'morning_journal'
+  | 'user_context_snapshot'
+
+export interface BackendJournalEntry {
+  id: string
+  user_id: string
+  entry_date: string
+  content: string
+  entry_type: JournalEntryType
+  raw_input: string | null
+  created_at?: string
+}
+
+export type SuggestionStatus = 'pending' | 'accepted' | 'rejected'
+export type SuggestionKind = 'habit' | 'task'
+
+export interface BackendHabitSuggestion {
+  id: string
+  label: string
+  status: SuggestionStatus
+  source: string | null
+  source_date: string | null
+  kind: SuggestionKind
+  created_at?: string
+}
