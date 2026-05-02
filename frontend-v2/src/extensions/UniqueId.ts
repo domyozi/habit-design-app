@@ -93,9 +93,17 @@ export const UniqueId = Extension.create<UniqueIdOptions>({
           return tr
         },
 
-        // 初期ロード時に既存ドキュメントへ ID をバックフィルするフラグ
+        // 初期ロード時に既存ドキュメントへ ID をバックフィルするフラグ。
+        // `update` イベントで渡される transaction は dispatch に渡した root tr なので、
+        // ここで `uniqueId/silent` も付けないと TiptapEditor 側のスキップ判定が効かない
+        // （appendTransaction が返す tr ではなく root tr のメタがイベント参照される）。
         view: (editorView) => {
-          editorView.dispatch(editorView.state.tr.setMeta('uniqueId-init', true))
+          editorView.dispatch(
+            editorView.state.tr
+              .setMeta('uniqueId-init', true)
+              .setMeta('uniqueId/silent', true)
+              .setMeta('addToHistory', false)
+          )
           return {}
         },
       }),
