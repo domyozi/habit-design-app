@@ -2,28 +2,22 @@
 // Daily OS v2 — 型定義
 // ============================================================
 
-export type HabitCategory = 'must' | 'routine'
 export type TabId = 'home' | 'morning' | 'evening' | 'monthly' | 'wanna-be' | 'report' | 'more' | 'settings' | 'journal' | 'notes' | 'calendar' | 'health'
 
-export interface Habit {
-  id: string
-  title: string
-  category: HabitCategory        // must=勝利項目 / routine=準備ルーティン
-  time_slot: 'morning' | 'evening' | 'anytime'
-  order_index: number
-  estimated_minutes: number | null
-  target_frequency_per_month: number | null  // 月間目標回数
-  is_active: boolean
-}
-
-export interface HabitLog {
-  id: string
-  habit_id: string
-  log_date: string               // YYYY-MM-DD
-  completed: boolean
-  duration_minutes: number | null
-  note: string | null
-}
+// Habit / HabitLog / HabitMetricType 等は types/habit.ts に統合（バックエンド /api/habits 対応）。
+export type {
+  Habit,
+  HabitLog,
+  HabitMetricType,
+  HabitAggregation,
+  HabitFrequency,
+  HabitInputMethod,
+  CreateHabitRequest,
+  UpdateHabitRequest,
+  HabitUpdateAction,
+  UpdateHabitLogRequest,
+} from './habit'
+export { isNumericMetric, isTimeMetric } from './habit'
 
 export interface DailyBoss {
   id: string

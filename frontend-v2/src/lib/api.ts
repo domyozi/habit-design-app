@@ -267,6 +267,17 @@ export const patchMandalaTracked = (tracked: Record<string, boolean>): Promise<R
 // Habits API クライアント
 // ============================================================
 
+import type {
+  CreateHabitRequest,
+  Habit,
+  UpdateHabitLogRequest,
+  UpdateHabitRequest,
+} from '@/types/habit'
+
+/**
+ * 軽量版 Habit。WannaBeTab 等、新フィールドを必要としない既存呼び出し向けの後方互換型。
+ * 新規実装では `Habit`（types/habit.ts）を使う。
+ */
 export interface HabitItem {
   id: string
   title: string
@@ -279,9 +290,9 @@ export interface HabitItem {
  * アクティブな習慣一覧を取得する（今日のログ付き）
  * GET /api/habits
  */
-export const getHabits = async (): Promise<HabitItem[]> => {
+export const getHabits = async (): Promise<Habit[]> => {
   try {
-    const response = await apiGet<{ success: boolean; data: HabitItem[] }>('/api/habits')
+    const response = await apiGet<{ success: boolean; data: Habit[] }>('/api/habits')
     return response.data ?? []
   } catch {
     return []
@@ -291,20 +302,67 @@ export const getHabits = async (): Promise<HabitItem[]> => {
 /**
  * 習慣を作成する
  * POST /api/habits
+ *
+ * 互換性のため、旧シグネチャ `createHabit(title, wannaBeConnectionText)` も受ける。
  */
-export const createHabit = async (title: string, wannaBeConnectionText?: string): Promise<HabitItem> => {
-  const body: Record<string, unknown> = { title }
-  if (wannaBeConnectionText) body.wanna_be_connection_text = wannaBeConnectionText
-  const response = await apiPost<{ success: boolean; data: HabitItem }>('/api/habits', body)
+export const createHabit = async (
+  titleOrRequest: string | CreateHabitRequest,
+  wannaBeConnectionText?: string,
+): Promise<Habit> => {
+  const body: CreateHabitRequest =
+    typeof titleOrRequest === 'string'
+      ? { title: titleOrRequest, wanna_be_connection_text: wannaBeConnectionText }
+      : titleOrRequest
+  const response = await apiPost<{ success: boolean; data: Habit }>('/api/habits', body)
   return response.data
+}
+
+/**
+ * 習慣を更新する（手動編集または AI 提案承認）
+ * PATCH /api/habits/{habit_id}
+ */
+export const updateHabit = async (
+  habitId: string,
+  req: UpdateHabitRequest,
+): Promise<Habit> => {
+  const response = await apiPatch<{ success: boolean; data: Habit }>(
+    `/api/habits/${habitId}`,
+    req,
+  )
+  return response.data
+}
+
+/**
+ * 習慣を論理削除する
+ * DELETE /api/habits/{habit_id}
+ */
+export const deleteHabit = async (habitId: string): Promise<void> => {
+  await apiDelete(`/api/habits/${habitId}`)
 }
 
 /**
  * 習慣ログを記録する
  * PATCH /api/habits/{habit_id}/log
+ *
+ * 互換性のため、旧シグネチャ `logHabit(habitId, completed)` も受ける。
  */
-export const logHabit = async (habitId: string, completed: boolean): Promise<void> => {
-  await apiPatch(`/api/habits/${habitId}/log`, { completed })
+export const logHabit = async (
+  habitId: string,
+  completedOrRequest: boolean | UpdateHabitLogRequest,
+  date?: string,
+): Promise<{ log: unknown; streak: number; badge_earned: unknown | null }> => {
+  const body: UpdateHabitLogRequest =
+    typeof completedOrRequest === 'boolean'
+      ? {
+          date: date ?? new Date().toISOString().slice(0, 10),
+          completed: completedOrRequest,
+        }
+      : completedOrRequest
+  const response = await apiPatch<{
+    success: boolean
+    data: { log: unknown; streak: number; badge_earned: unknown | null }
+  }>(`/api/habits/${habitId}/log`, body)
+  return response.data
 }
 
 // ============================================================
