@@ -5,8 +5,10 @@ import type {
   UserContextResponse,
 } from '@/types/api'
 
-export const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000'
+// Empty default → fetch hits a relative path (`/api/...`), letting vite's
+// `/api` proxy forward to localhost:8000 in dev. Override with an absolute
+// URL only for production deployments.
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
 
 function getStoredAccessToken(): string | null {
   for (let i = 0; i < localStorage.length; i += 1) {

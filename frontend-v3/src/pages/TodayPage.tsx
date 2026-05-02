@@ -35,7 +35,8 @@ export default function TodayPage({ theme: t }: Props) {
   }, [remotePT.data])
 
   const ptValue = savedPT?.value ?? remotePT.data?.value ?? a.primaryTarget.value
-  const isMockPT = !remotePT.data && !remotePT.loading
+  // After a successful PUT we have savedPT even if the initial GET failed.
+  const isMockPT = !savedPT && !remotePT.data && !remotePT.loading
   const ptAnchor = a.primaryTarget.anchor
   const ptMinutes = a.primaryTarget.minutes
 
