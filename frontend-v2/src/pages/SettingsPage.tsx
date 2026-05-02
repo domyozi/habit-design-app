@@ -9,6 +9,9 @@ import {
 } from '@/lib/api'
 import { callClaude } from '@/lib/ai'
 import { HABIT_CATEGORIES, bySectionAll, createTodoId, useTodoDefinitions, type TodoDefinition, type HabitCategory, type HabitTiming, type TaskFieldType, type TaskFieldOptions } from '@/lib/todos'
+import { useHabits } from '@/lib/useHabits'
+import { HabitManager } from '@/components/HabitManager'
+import type { Habit } from '@/types/habit'
 import { AiMark } from '@/components/ui/AiMark'
 import { useUserContext } from '@/lib/user-context'
 import { useUserProfile } from '@/hooks/useUserProfile'
@@ -1043,7 +1046,44 @@ const MemoryView = () => {
 // pending が 0 件の場合はパネル自体を描画しない（null を返す）。
 // 手動追加 UI は廃止：候補は AI 抽出のみ。手動で項目を増やしたいときは
 // 「項目を追加」ボタンから直接 todo_definitions に追加する。
-const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
+const HabitTabContent = () => {
+  const { habits, loading, add, update, remove } = useHabits()
+  const handleAcceptSuggestion = useCallback(
+    async (label: string) => {
+      const trimmed = label.trim()
+      if (!trimmed) return
+      const dup = habits.some(
+        (h: Habit) => h.title.trim() === trimmed && h.is_active,
+      )
+      if (dup) return
+      await add({ title: trimmed, metric_type: 'binary' })
+    },
+    [habits, add],
+  )
+
+  return (
+    <>
+      <div className="px-4 pt-4 pb-2">
+        <HabitSuggestionsPanel kind="habit" onAcceptHabit={handleAcceptSuggestion} />
+      </div>
+      <HabitManager
+        habits={habits}
+        loading={loading}
+        add={add}
+        update={update}
+        remove={remove}
+      />
+    </>
+  )
+}
+
+const HabitSuggestionsPanel = ({
+  kind,
+  onAcceptHabit,
+}: {
+  kind: 'habit' | 'task'
+  onAcceptHabit?: (label: string) => Promise<void> | void
+}) => {
   const [, setTodos] = useTodoDefinitions()
   const [pending, setPending] = useState<HabitSuggestion[]>([])
 
@@ -1058,23 +1098,31 @@ const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
 
   const headerLabel = kind === 'habit' ? '習慣候補' : 'タスク候補'
   const headerDesc = kind === 'habit'
-    ? 'ジャーナルから抽出された継続トラッキング候補。採用すると Habit カテゴリに追加されます。'
+    ? 'ジャーナルから抽出された継続トラッキング候補。採用すると習慣として登録されます。'
     : 'ジャーナルから抽出された個別タスク候補。採用するとタスクカテゴリに追加されます。'
   const accentColor = kind === 'habit' ? '#ff6b35' : '#94a3b8'
 
   const handleAccept = async (s: HabitSuggestion) => {
-    setTodos(prev => {
-      if (prev.some(t => t.label.trim() === s.label.trim() && t.section === kind && t.is_active)) return prev
-      const newTodo: TodoDefinition = {
-        id: createTodoId(s.label),
-        label: s.label,
-        section: kind,
-        timing: 'morning',
-        is_active: true,
-        ...(kind === 'habit' ? { monthly_target: 20 } : {}),
-      }
-      return [...prev, newTodo]
-    })
+    if (kind === 'habit' && onAcceptHabit) {
+      // Habit DB ベースの新ルートに委譲
+      try {
+        await onAcceptHabit(s.label)
+      } catch { /* ignore */ }
+    } else {
+      // 従来ルート（タスク用）
+      setTodos(prev => {
+        if (prev.some(t => t.label.trim() === s.label.trim() && t.section === kind && t.is_active)) return prev
+        const newTodo: TodoDefinition = {
+          id: createTodoId(s.label),
+          label: s.label,
+          section: kind,
+          timing: 'morning',
+          is_active: true,
+          ...(kind === 'habit' ? { monthly_target: 20 } : {}),
+        }
+        return [...prev, newTodo]
+      })
+    }
     try {
       await updateHabitSuggestionStatus(s.id, 'accepted')
     } catch { /* ignore */ }
@@ -1184,14 +1232,7 @@ export const SettingsPage = () => {
         ))}
       </div>
 
-      {activeTab === 'habit' && (
-        <>
-          <div className="px-4 pt-4 pb-2">
-            <HabitSuggestionsPanel kind="habit" />
-          </div>
-          <TodoManager visibleSections={['habit']} />
-        </>
-      )}
+      {activeTab === 'habit' && <HabitTabContent />}
 
       {activeTab === 'task' && (
         <>
