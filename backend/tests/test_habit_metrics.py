@@ -278,6 +278,30 @@ class TestUpdateHabitLogWithMetric:
         upsert_args = mock_sb.table.return_value.upsert.call_args[0][0]
         assert upsert_args["time_value"] == "06:45"
 
+    def test_get_habit_logs_filters_by_date_range(self, client, valid_token):
+        """GET /api/habits/logs が from/to 期間内のログを返す"""
+        rows = [
+            _make_metric_log(log_date="2026-04-01", numeric_value=10),
+            _make_metric_log(log_date="2026-04-15", numeric_value=20),
+        ]
+
+        with patch("app.api.routes.habits.get_supabase") as mock_get_supabase:
+            mock_sb = MagicMock()
+            mock_get_supabase.return_value = mock_sb
+            mock_sb.table.return_value.select.return_value \
+                .eq.return_value.gte.return_value.lte.return_value \
+                .order.return_value.execute.return_value.data = rows
+
+            response = client.get(
+                "/api/habits/logs?from=2026-04-01&to=2026-04-30",
+                headers={"Authorization": f"Bearer {valid_token}"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert len(data["data"]) == 2
+
     def test_numeric_below_threshold_resets_streak(self, client, valid_token):
         """閾値未満の値で is_achieved=False となり streak が 0 リセットされる"""
         habit = _make_metric_habit("numeric_min", target_value=15)

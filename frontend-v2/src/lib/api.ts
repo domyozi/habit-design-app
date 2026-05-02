@@ -270,6 +270,7 @@ export const patchMandalaTracked = (tracked: Record<string, boolean>): Promise<R
 import type {
   CreateHabitRequest,
   Habit,
+  HabitLog,
   UpdateHabitLogRequest,
   UpdateHabitRequest,
 } from '@/types/habit'
@@ -338,6 +339,21 @@ export const updateHabit = async (
  */
 export const deleteHabit = async (habitId: string): Promise<void> => {
   await apiDelete(`/api/habits/${habitId}`)
+}
+
+/**
+ * 期間内の habit_logs を全件取得する（分析画面の月次集計用）
+ * GET /api/habits/logs?from=YYYY-MM-DD&to=YYYY-MM-DD
+ */
+export const fetchHabitLogs = async (from: string, to: string): Promise<HabitLog[]> => {
+  try {
+    const response = await apiGet<{ success: boolean; data: HabitLog[] }>(
+      `/api/habits/logs?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    )
+    return response.data ?? []
+  } catch {
+    return []
+  }
 }
 
 /**

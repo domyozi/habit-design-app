@@ -15,6 +15,7 @@ import { streamClaude, buildWannaBeAnalysisPrompt } from '@/lib/ai'
 import { getWannaBe } from '@/lib/api'
 import { ProgressRing } from '@/components/home/ProgressRing'
 import { useTodoDefinitions, byTiming } from '@/lib/todos'
+import { HabitMonthlyOverview } from '@/components/HabitMonthlyOverview'
 
 interface HabitDef {
   id: string
@@ -743,9 +744,12 @@ const MonthlyView = ({
       </div>
     </div>
 
+    {/* 新: Habit DB ベースの今月概要（量・時刻系を含む） */}
+    <HabitMonthlyOverview />
+
     <div className="rounded-[24px] border border-white/[0.08] bg-[#0b1320]/85 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">今月の概要</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/35">今月の概要（旧 / TodoDefinition）</span>
         <span className="text-[10px] uppercase tracking-[0.14em] text-white/25">Live</span>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -141,6 +141,30 @@ async def get_habits(
     return APIResponse(success=True, data=habits_with_log).model_dump(mode="json")
 
 
+@router.get("/habits/logs")
+async def get_habit_logs(
+    from_date: str = Query(..., alias="from"),
+    to_date: str = Query(..., alias="to"),
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【GET /habits/logs】: 期間内の habit_logs を全件取得（分析画面の月次集計用）
+    【期間】: from / to は YYYY-MM-DD（両端含む）
+    🔵 信頼性レベル: api-endpoints.md 拡張提案より
+    """
+    supabase = get_supabase()
+    result = (
+        supabase.table("habit_logs")
+        .select("*")
+        .eq("user_id", user_id)
+        .gte("log_date", from_date)
+        .lte("log_date", to_date)
+        .order("log_date")
+        .execute()
+    )
+    return APIResponse(success=True, data=result.data or []).model_dump(mode="json")
+
+
 @router.post("/habits", status_code=201)
 async def create_habit(
     request: CreateHabitRequest,
