@@ -20,6 +20,7 @@ export default function App() {
       <AppChrome theme={theme} hour={hour}>
         <Routes>
           <Route path="/" element={<Navigate to="/today" replace />} />
+          <Route path="/auth/callback" element={<Navigate to="/today" replace />} />
           <Route path="/today"    element={<TodayPage    theme={theme} />} />
           <Route path="/flow"     element={<FlowPage     theme={theme} />} />
           <Route path="/habits"   element={<HabitsPage   theme={theme} />} />

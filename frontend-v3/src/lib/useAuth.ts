@@ -26,6 +26,10 @@ export function useAuth(): AuthState {
       if (!mounted) return
       setSession(next)
       setStatus(next ? 'authenticated' : 'unauthenticated')
+      // After OAuth redirect, drop the callback path so React Router recovers.
+      if (next && window.location.pathname === '/auth/callback') {
+        window.history.replaceState({}, '', '/')
+      }
     })
 
     return () => {
