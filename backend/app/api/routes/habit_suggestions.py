@@ -12,7 +12,6 @@
   PATCH  /api/habit-suggestions/{id}               → status を accepted/rejected に変更
   DELETE /api/habit-suggestions/{id}               → 削除
 """
-import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,63 +23,25 @@ router = APIRouter(prefix="/habit-suggestions")
 
 VALID_KINDS = {"habit", "task"}
 
-
-_MEANINGFUL_TOKEN_RE = re.compile(r'[一-龯]{2,}|[ァ-ヶー]{2,}')
-
-
-def _meaningful_tokens(label: str) -> set[str]:
-    """日本語ラベルから内容語（漢字2文字以上 / カタカナ2文字以上）の集合を抽出。
-
-    例:
-      '父親の印刷・返送作業'                → {'父親', '印刷', '返送', '作業'}
-      '父親ミッション（印刷・返送）の時間設定' → {'父親', 'ミッション', '印刷', '返送', '時間設定'}
-      'を作成する'（助詞 + ひらがな + する） → ∅
-    """
-    return set(_MEANINGFUL_TOKEN_RE.findall(label))
+# 同時に保留できる候補数の上限（決定負荷を抑える）。
+# habit / task 合算でこの数を超えるなら新規抽出はスキップする。
+MAX_PENDING_TOTAL = 5
+# 1 回のジャーナル投稿あたり AI に依頼する最大件数。
+MAX_PER_EXTRACTION = 2
 
 
-def _label_overlaps(candidate: str, existing: list[str]) -> bool:
-    """
-    候補ラベルが既存ラベル群と意味的に重複するかを判定する。
-    実装は 2 段:
-    1. 双方向の部分文字列チェック   （例: '英語学習' ⊂ '英語学習を継続する'）
-    2. 内容語（漢字/カタカナ 2 文字以上）が 2 つ以上共有されている場合
-       （例: '父親の印刷・返送作業' と '父親ミッション（印刷・返送）の時間設定' は
-         '父親'/'印刷'/'返送' を共有する）
-    どちらかにヒットすれば重複扱い。
-    """
-    cand = candidate.strip()
-    if not cand:
-        return False
-    cand_lower = cand.lower()
-    cand_tokens = _meaningful_tokens(cand)
-    for ex in existing:
-        ex_norm = (ex or "").strip()
-        if not ex_norm:
-            continue
-        ex_lower = ex_norm.lower()
-        # 1. 双方向の部分文字列
-        if ex_lower in cand_lower or cand_lower in ex_lower:
-            return True
-        # 2. 内容語の重複が 2 件以上
-        if cand_tokens and len(cand_tokens & _meaningful_tokens(ex_norm)) >= 2:
-            return True
-    return False
-
-
-def _fetch_active_todo_labels(user_id: str, supabase) -> list[str]:
-    """ユーザーの有効な todo_definitions ラベルを取得する。"""
+def _fetch_active_todo_summary(user_id: str, supabase) -> tuple[list[str], int]:
+    """ユーザーの有効な todo_definitions ラベルと habit カテゴリの数を返す。"""
     result = (
         supabase.table("todo_definitions")
-        .select("label, is_active")
+        .select("label, section, is_active")
         .eq("user_id", user_id)
         .execute()
     )
-    return [
-        (row.get("label") or "").strip()
-        for row in (result.data or [])
-        if row.get("is_active")
-    ]
+    rows = [r for r in (result.data or []) if r.get("is_active")]
+    labels = [(row.get("label") or "").strip() for row in rows]
+    habit_count = sum(1 for row in rows if (row.get("section") or "").strip() == "habit")
+    return labels, habit_count
 
 
 @router.get("")
@@ -102,15 +63,7 @@ async def list_habit_suggestions(
         query = query.eq("status", status)
     if kind:
         query = query.eq("kind", kind)
-    rows = query.execute().data or []
-
-    # 採用済みの todo に重複する pending 候補は古いゴミの可能性が高いため、表示から除外する。
-    # （extract 経由の cleanup を漏れたものへの安全網）
-    if status == "pending":
-        existing_labels = _fetch_active_todo_labels(user_id, supabase)
-        if existing_labels:
-            rows = [r for r in rows if not _label_overlaps(r.get("label") or "", existing_labels)]
-    return rows
+    return query.execute().data or []
 
 
 @router.post("")
@@ -200,6 +153,27 @@ async def delete_habit_suggestion(
     return {"ok": True}
 
 
+@router.post("/clear-pending")
+async def clear_pending_suggestions(
+    kind: Optional[str] = Query(None),
+    user_id: str = Depends(get_current_user),
+):
+    """pending な候補を一括で rejected に変更する。kind 指定で対象を絞れる。"""
+    if kind is not None and kind not in VALID_KINDS:
+        raise HTTPException(status_code=400, detail="invalid kind")
+    supabase = get_supabase()
+    query = (
+        supabase.table("habit_suggestions")
+        .update({"status": "rejected"})
+        .eq("user_id", user_id)
+        .eq("status", "pending")
+    )
+    if kind:
+        query = query.eq("kind", kind)
+    result = query.execute()
+    return {"ok": True, "cleared": len(result.data or [])}
+
+
 # ─── 内部ヘルパー: 抽出 & 永続化（journal POST のフックからも呼ばれる） ───
 async def _extract_and_persist_suggestions(
     user_id: str,
@@ -207,35 +181,17 @@ async def _extract_and_persist_suggestions(
     source: str,
     source_date: Optional[str],
 ) -> list[dict]:
-    """ジャーナル本文を Claude で分析し、新規 habit / task 候補を DB に挿入する。"""
+    """ジャーナル本文を Claude で分析し、新規 habit / task 候補を DB に挿入する。
+
+    重複・言い換え判定は AI に任せる（決定論的なテキストマッチは行わない）。
+    pending 合計が MAX_PENDING_TOTAL を超えるなら新規抽出はスキップする。
+    """
     supabase = get_supabase()
 
-    # 1. 現在 active な todo_definitions ラベルを取得（既存の習慣・タスク）
-    todo_labels = _fetch_active_todo_labels(user_id, supabase)
+    # 1. 既存のアクティブな todo（habit / task 両方）と habit カテゴリの数を取得
+    todo_labels, habit_count = _fetch_active_todo_summary(user_id, supabase)
 
-    # 2. 既存の pending 候補で「すでに todo に組み込まれているもの」は古いゴミなので reject 化
-    pending_existing = (
-        supabase.table("habit_suggestions")
-        .select("id, label")
-        .eq("user_id", user_id)
-        .eq("status", "pending")
-        .execute()
-    )
-    stale_ids = [
-        row["id"]
-        for row in (pending_existing.data or [])
-        if _label_overlaps(row.get("label") or "", todo_labels)
-    ]
-    if stale_ids:
-        (
-            supabase.table("habit_suggestions")
-            .update({"status": "rejected"})
-            .in_("id", stale_ids)
-            .eq("user_id", user_id)
-            .execute()
-        )
-
-    # 3. 残った pending / accepted 候補のラベルセット（重複防止）
+    # 2. 既存の pending / accepted 候補のラベル
     existing = (
         supabase.table("habit_suggestions")
         .select("label, status")
@@ -243,24 +199,36 @@ async def _extract_and_persist_suggestions(
         .in_("status", ["pending", "accepted"])
         .execute()
     )
-    existing_sugg_labels = {(row["label"] or "").strip().lower() for row in (existing.data or [])}
+    existing_rows = existing.data or []
+    pending_count = sum(1 for r in existing_rows if r.get("status") == "pending")
 
-    # 4. 既存ラベル一覧（todo + サジェスト）を AI へコンテキストとして渡す
-    avoid_list = list({*todo_labels, *(row["label"] for row in (existing.data or []) if row.get("label"))})
+    # 3. pool 上限を超えていたら新規抽出しない（決定負荷の上限）
+    available_slots = MAX_PENDING_TOTAL - pending_count
+    if available_slots <= 0:
+        return []
+    max_count = min(MAX_PER_EXTRACTION, available_slots)
 
-    candidates = await _ask_claude_for_suggestions(journal_text, avoid_list)
+    # 4. AI へ渡す avoid-list（重複・言い換え判断は AI に任せる）
+    avoid_list = list({*todo_labels, *(r["label"] for r in existing_rows if r.get("label"))})
 
-    # 5. 候補を後段でも再チェック（AI が重複を返したら捨てる）
+    candidates = await _ask_claude_for_suggestions(
+        journal_text=journal_text,
+        avoid_labels=avoid_list,
+        max_count=max_count,
+        existing_habit_count=habit_count,
+    )
+
+    # 5. 純粋な exact-match dedup のみ（データ整合性の最低限）
+    existing_lower = {(r["label"] or "").strip().lower() for r in existing_rows}
+
     rows_to_insert = []
     for label, kind in candidates:
         norm = label.strip()
-        if not norm or norm.lower() in existing_sugg_labels:
-            continue
-        if _label_overlaps(norm, todo_labels):
+        if not norm or norm.lower() in existing_lower:
             continue
         if kind not in VALID_KINDS:
             kind = "habit"
-        existing_sugg_labels.add(norm.lower())
+        existing_lower.add(norm.lower())
         rows_to_insert.append({
             "user_id": user_id,
             "label": norm,
@@ -285,13 +253,18 @@ async def _extract_and_persist_suggestions(
 async def _ask_claude_for_suggestions(
     journal_text: str,
     avoid_labels: Optional[list[str]] = None,
+    max_count: int = MAX_PER_EXTRACTION,
+    existing_habit_count: int = 0,
 ) -> list[tuple[str, str]]:
     """
-    ジャーナル本文から行動候補を最大5つ抽出し、習慣化(habit) / 個別タスク(task) に分類する。
-    avoid_labels に指定された既存ラベル（習慣・タスク・既出候補）と意味的に重複する候補は提案しない。
-    返り値: [(label, kind), ...]
+    ジャーナル本文から行動候補を抽出し、習慣化(habit) / 個別タスク(task) に分類する。
+    重複・言い換え判定は AI 側に完全に委ねる（Python 側でのテキストマッチは行わない）。
+    返り値: [(label, kind), ...]（最大 max_count 件、0 件もあり得る）
     """
     from app.services.ai_service import create_message  # type: ignore
+
+    if max_count <= 0:
+        return []
 
     avoid_block = ""
     cleaned_avoid = [lbl.strip() for lbl in (avoid_labels or []) if lbl and lbl.strip()]
@@ -299,28 +272,39 @@ async def _ask_claude_for_suggestions(
         # プロンプトを膨らませすぎない上限
         joined = "\n".join(f"- {lbl}" for lbl in cleaned_avoid[:30])
         avoid_block = (
-            "\n\n**既に登録されている行動・候補（同じものや言い換えで再提案しないこと）:**\n"
+            "\n\n**既に登録されている行動・候補:**\n"
             f"{joined}\n"
-            "上記と意味が重複する場合は候補から除外してください。"
+            "これらと同一概念のもの、表現を変えただけのバリエーション、"
+            "同じ目的を達成する別の言い回しは絶対に提案しないこと。"
+            "（例: 既存に「英語学習」がある場合、「英語学習を継続する」「毎日英語学習」「英語を勉強する」"
+            "などはすべて重複扱い）"
         )
+
+    capacity_note = (
+        f"\n\nユーザーは現在 {existing_habit_count} 件の習慣を継続的に追跡しています。"
+        "意思決定の負担を考慮し、ジャーナルから明確に読み取れる「今すぐ採用すべき」高優先度の候補だけを抽出してください。\n"
+        f"- candidates は **0〜{max_count} 件**（ジャーナルに新しい行動意図が明確に書かれていなければ 0 件で構いません）\n"
+        "- 同じ概念のバリエーションを複数提案しない（最も適切な 1 案だけ）\n"
+        "- 既存と重複する/言い換えに過ぎないものは含めない"
+    )
 
     system = (
         "あなたは行動設計コーチです。ユーザーのジャーナル本文を読み、"
-        "次の行動に役立ちそうな候補を最大5つ抽出し、それぞれを kind に分類してください。\n\n"
+        "次の行動に役立ちそうな候補を抽出して habit / task に分類してください。\n\n"
         "分類:\n"
         "- kind='habit' : 毎日や毎朝など、継続的に繰り返すことで価値が出るルーティン行動。"
         "（例: 早起き、瞑想、ストレッチ、英語学習）\n"
         "- kind='task'  : 一回限り、または期限のあるショット作業。"
         "（例: 書類を提出する、◯◯さんに連絡する、見積を作成する）"
         + avoid_block
+        + capacity_note
         + "\n\n次の JSON 形式のみで返してください（説明文不要）：\n"
         "```json\n"
         "{ \"candidates\": [\n"
-        "    { \"label\": \"...\", \"kind\": \"habit\" },\n"
-        "    { \"label\": \"...\", \"kind\": \"task\" }\n"
+        "    { \"label\": \"...\", \"kind\": \"habit\" }\n"
         "] }\n"
         "```\n"
-        "label は 16 文字以内の簡潔な行動ラベル（動詞含む）。candidates は 0〜5 件。"
+        "label は 16 文字以内の簡潔な行動ラベル（動詞含む）。"
     )
 
     try:
@@ -353,4 +337,6 @@ async def _ask_claude_for_suggestions(
         elif isinstance(c, str) and c.strip():
             # 旧フォーマット互換: 文字列のみの場合は habit として扱う
             out.append((c, "habit"))
+        if len(out) >= max_count:
+            break
     return out

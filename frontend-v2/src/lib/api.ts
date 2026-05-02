@@ -723,6 +723,13 @@ export const updateHabitSuggestionStatus = (
 export const deleteHabitSuggestion = (id: string): Promise<{ ok: boolean }> =>
   apiDelete<{ ok: boolean }>(`/api/habit-suggestions/${id}`)
 
+export const clearPendingHabitSuggestions = (
+  kind?: SuggestionKind,
+): Promise<{ ok: boolean; cleared: number }> => {
+  const qs = kind ? `?kind=${kind}` : ''
+  return apiPost<{ ok: boolean; cleared: number }>(`/api/habit-suggestions/clear-pending${qs}`)
+}
+
 // ============================================================
 // Integrations API クライアント（iOS Shortcuts Webhook）
 // ============================================================

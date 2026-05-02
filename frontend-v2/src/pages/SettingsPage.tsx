@@ -4,6 +4,7 @@ import {
   regenerateHealthToken,
   fetchHabitSuggestions,
   createHabitSuggestion,
+  clearPendingHabitSuggestions,
   updateHabitSuggestionStatus,
   type HabitSuggestion,
 } from '@/lib/api'
@@ -1099,11 +1100,31 @@ const HabitSuggestionsPanel = ({ kind }: { kind: 'habit' | 'task' }) => {
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 
+  const handleClearAll = async () => {
+    if (pending.length === 0) return
+    if (!window.confirm(`pending な${headerLabel}を全て不要扱いにしますか？（${pending.length} 件）`)) return
+    try {
+      await clearPendingHabitSuggestions(kind)
+      setPending([])
+    } catch { /* ignore */ }
+  }
+
   return (
     <div className="rounded-[28px] border border-white/[0.06] bg-[#111827]/78 p-4 space-y-3">
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">{headerLabel}</p>
-        <p className="mt-1 text-[11px] text-white/38">{headerDesc}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8da4c3]">{headerLabel}</p>
+          <p className="mt-1 text-[11px] text-white/38">{headerDesc}</p>
+        </div>
+        {pending.length > 1 && (
+          <button
+            type="button"
+            onClick={() => void handleClearAll()}
+            className="shrink-0 rounded-full border border-white/[0.08] px-3 py-1 text-[10px] text-white/40 hover:border-white/[0.18] hover:text-white/70"
+          >
+            × 全部不要
+          </button>
+        )}
       </div>
 
       {/* 候補リスト */}
