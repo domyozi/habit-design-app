@@ -7,7 +7,6 @@
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react'
-import { logHabit } from '@/lib/api'
 import { useHabits } from '@/lib/useHabits'
 import {
   isNumericMetric,
@@ -24,7 +23,7 @@ interface Props {
 const HABIT_ACCENT = '#7dd3fc'
 
 export const HabitRecordList = ({ dateKey, isReadOnly = false }: Props) => {
-  const { habits, loading, refresh } = useHabits()
+  const { habits, loading, recordLog } = useHabits()
   const sorted = useMemo(
     () => [...habits].sort((a, b) => a.display_order - b.display_order),
     [habits],
@@ -63,7 +62,13 @@ export const HabitRecordList = ({ dateKey, isReadOnly = false }: Props) => {
       </header>
       <div className="space-y-1.5">
         {sorted.map((h) => (
-          <HabitRow key={h.id} habit={h} dateKey={dateKey} isReadOnly={isReadOnly} onLogged={refresh} />
+          <HabitRow
+            key={h.id}
+            habit={h}
+            dateKey={dateKey}
+            isReadOnly={isReadOnly}
+            recordLog={recordLog}
+          />
         ))}
       </div>
     </section>
@@ -74,10 +79,10 @@ interface RowProps {
   habit: Habit
   dateKey: string
   isReadOnly: boolean
-  onLogged: () => void | Promise<void>
+  recordLog: (id: string, req: UpdateHabitLogRequest) => Promise<void>
 }
 
-const HabitRow = ({ habit, dateKey, isReadOnly, onLogged }: RowProps) => {
+const HabitRow = ({ habit, dateKey, isReadOnly, recordLog }: RowProps) => {
   // 数値・時刻はローカル state で編集し、blur / Enter で保存。
   const initialNumeric = habit.today_log?.numeric_value
   const initialTime = habit.today_log?.time_value
@@ -110,8 +115,8 @@ const HabitRow = ({ habit, dateKey, isReadOnly, onLogged }: RowProps) => {
         input_method: 'manual',
         ...overrides,
       }
-      await logHabit(habit.id, req)
-      await onLogged()
+      // recordLog が楽観更新 → サーバー応答で確定 → エラー時は refresh を回す
+      await recordLog(habit.id, req)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存に失敗しました')
     } finally {

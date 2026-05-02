@@ -6,8 +6,20 @@
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react'
-import { createHabit, deleteHabit, getHabits, updateHabit } from './api'
-import type { CreateHabitRequest, Habit, UpdateHabitRequest } from '@/types/habit'
+import {
+  createHabit,
+  deleteHabit,
+  getHabits,
+  logHabit,
+  updateHabit,
+} from './api'
+import type {
+  CreateHabitRequest,
+  Habit,
+  HabitLog,
+  UpdateHabitLogRequest,
+  UpdateHabitRequest,
+} from '@/types/habit'
 
 export interface UseHabitsResult {
   habits: Habit[]
@@ -17,6 +29,33 @@ export interface UseHabitsResult {
   add: (req: CreateHabitRequest) => Promise<Habit>
   update: (id: string, req: UpdateHabitRequest) => Promise<Habit>
   remove: (id: string) => Promise<void>
+  /**
+   * /api/habits/{id}/log を楽観更新で叩く。
+   * 1) 即座に setHabits で today_log を反映（UI 即時）
+   * 2) サーバー応答で today_log と current_streak を確定値に上書き
+   * 3) 失敗したら refresh で巻き戻し（throw もする）
+   */
+  recordLog: (id: string, req: UpdateHabitLogRequest) => Promise<void>
+}
+
+const buildOptimisticLog = (h: Habit, req: UpdateHabitLogRequest): HabitLog => {
+  const prev = h.today_log
+  return {
+    id: prev?.id ?? `optimistic-${h.id}-${req.date}`,
+    habit_id: h.id,
+    user_id: h.user_id,
+    log_date: req.date,
+    completed: req.completed,
+    completed_at: prev?.completed_at ?? null,
+    input_method: req.input_method ?? prev?.input_method ?? null,
+    numeric_value:
+      req.numeric_value !== undefined
+        ? req.numeric_value
+        : prev?.numeric_value ?? null,
+    time_value:
+      req.time_value !== undefined ? req.time_value : prev?.time_value ?? null,
+    created_at: prev?.created_at ?? new Date().toISOString(),
+  }
 }
 
 export const useHabits = (): UseHabitsResult => {
@@ -58,5 +97,40 @@ export const useHabits = (): UseHabitsResult => {
     setHabits((prev) => prev.filter((h) => h.id !== id))
   }, [])
 
-  return { habits, loading, error, refresh, add, update, remove }
+  const recordLog = useCallback(
+    async (id: string, req: UpdateHabitLogRequest) => {
+      // (a) Optimistic — 即座に UI を反映
+      setHabits((prev) =>
+        prev.map((h) =>
+          h.id === id ? { ...h, today_log: buildOptimisticLog(h, req) } : h,
+        ),
+      )
+
+      try {
+        const result = await logHabit(id, req)
+        // (b) サーバー応答で確定値に上書き
+        setHabits((prev) =>
+          prev.map((h) => {
+            if (h.id !== id) return h
+            const serverLog = (result.log as HabitLog | undefined) ?? h.today_log
+            return {
+              ...h,
+              today_log: serverLog,
+              current_streak:
+                typeof result.streak === 'number'
+                  ? result.streak
+                  : h.current_streak,
+            }
+          }),
+        )
+      } catch (err) {
+        // (c) 失敗 — サーバーから再取得して巻き戻す
+        void refresh()
+        throw err
+      }
+    },
+    [refresh],
+  )
+
+  return { habits, loading, error, refresh, add, update, remove, recordLog }
 }
