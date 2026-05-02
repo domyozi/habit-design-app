@@ -54,9 +54,10 @@ interface Props {
   pos: { top: number; left: number }
   onClose: () => void
   onImageInsert: () => void
+  onCopyBlockLink?: () => void
 }
 
-export function SlashMenu({ editor, query, pos, onClose, onImageInsert }: Props) {
+export function SlashMenu({ editor, query, pos, onClose, onImageInsert, onCopyBlockLink }: Props) {
   const [activeIndex, setActiveIndex] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -66,6 +67,15 @@ export function SlashMenu({ editor, query, pos, onClose, onImageInsert }: Props)
       id: 'image', label: '画像', desc: '画像を挿入', icon: '🖼',
       action: () => { onClose(); onImageInsert() },
     },
+    ...(onCopyBlockLink ? [{
+      id: 'copy-link', label: 'リンクをコピー', desc: 'この行へのアンカー URL を取得', icon: '🔗',
+      // スラッシュ文字をエディタから消した上でコピーを実行
+      action: (e: Editor) => {
+        // 現状の挿入トリガー文字（"/" 以降）を削除してから、現在ブロックの id を解決する
+        e.chain().focus().deleteRange(e.state.selection).run()
+        onCopyBlockLink()
+      },
+    }] as Command[] : []),
   ]
 
   const filtered = query

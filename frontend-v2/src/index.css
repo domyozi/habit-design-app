@@ -304,3 +304,10 @@ input:focus, textarea:focus, select:focus {
     border-color: #ccc !important;
   }
 }
+
+/* アンカーリンク経由でジャンプしたブロックを一時的にハイライト */
+.block-anchor-highlight {
+  background: rgba(125, 211, 252, 0.18);
+  border-radius: 4px;
+  transition: background 0.6s ease-out;
+}

@@ -222,6 +222,29 @@ function DailyLogView() {
   )
 }
 
+// ── Anchor scroll helpers ───────────────────────────────────────────────
+
+const HIGHLIGHT_CLASS = 'block-anchor-highlight'
+
+const scrollToBlockById = (blockId: string) => {
+  // エディタの mount + ノードレンダ完了を待つため次フレームで実行
+  requestAnimationFrame(() => {
+    const el = document.getElementById(blockId)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add(HIGHLIGHT_CLASS)
+    setTimeout(() => el.classList.remove(HIGHLIGHT_CLASS), 1800)
+  })
+}
+
+const readAnchorFromLocation = (): { noteId: string | null; blockId: string | null } => {
+  const params = new URLSearchParams(window.location.search)
+  const noteId = params.get('n')
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
+  const blockId = hash ? decodeURIComponent(hash) : null
+  return { noteId, blockId }
+}
+
 // ── Notes (free-form) View ──────────────────────────────────────────────
 function FreeNotesView() {
   const { notes, selected, selectedId, setSelectedId, createNote, updateNote, deleteNote } = useNotes()
@@ -233,6 +256,29 @@ function FreeNotesView() {
   const [wordCount, setWordCount] = useState(0)
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bodyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // URL アンカー由来でスクロール待ちのブロック ID
+  const pendingAnchorRef = useRef<string | null>(null)
+
+  // 初期マウント時 + notes ロード後に URL の ?n=<id> を解釈してノートを選択し、ハッシュをスクロール対象として記憶
+  useEffect(() => {
+    if (notes.length === 0) return
+    const { noteId, blockId } = readAnchorFromLocation()
+    if (noteId && notes.some(n => n.id === noteId)) {
+      setSelectedId(noteId)
+    }
+    if (blockId) pendingAnchorRef.current = blockId
+  }, [notes.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ハッシュ変更（同ページ内アンカー遷移）にも対応
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
+      if (!hash) return
+      scrollToBlockById(decodeURIComponent(hash))
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
 
   useEffect(() => {
     if (selected) {
@@ -241,6 +287,12 @@ function FreeNotesView() {
       setShowEditor(true)
       setCharCount(0)
       setWordCount(0)
+      // ノート切り替え後、保留中のアンカーがあればスクロールを試みる（少し待ってからエディタが ID を出すまで）
+      if (pendingAnchorRef.current) {
+        const blockId = pendingAnchorRef.current
+        pendingAnchorRef.current = null
+        setTimeout(() => scrollToBlockById(blockId), 120)
+      }
     }
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -388,6 +440,8 @@ function FreeNotesView() {
           )}
           <div className="flex-1 overflow-y-auto">
             <TiptapEditor
+              key={selected.id}
+              noteId={selected.id}
               content={localBody}
               onChange={handleBodyChange}
               onCharCount={(c, w) => { setCharCount(c); setWordCount(w) }}
@@ -457,7 +511,13 @@ function FreeNotesView() {
 type PageTab = 'daily' | 'notes'
 
 export function NotesPage() {
-  const [pageTab, setPageTab] = useState<PageTab>('daily')
+  // URL に ?n=<noteId> がある場合は最初から Notes タブを開く
+  const [pageTab, setPageTab] = useState<PageTab>(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('n')) {
+      return 'notes'
+    }
+    return 'daily'
+  })
 
   return (
     <div className="flex h-full flex-col">
