@@ -9,7 +9,7 @@ Todo定義 CRUD API
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
@@ -34,7 +34,7 @@ async def list_todo_definitions(
 
 @router.post("", status_code=201)
 async def upsert_todo_definitions(
-    payload: list,
+    payload: list = Body(...),
     user_id: str = Depends(get_current_user),
 ):
     """配列を受け取り、既存レコードは更新・新規は挿入する。"""
@@ -42,6 +42,26 @@ async def upsert_todo_definitions(
         return []
 
     supabase = get_supabase()
+    provided_ids = [
+        item.get("id")
+        for item in payload
+        if isinstance(item, dict) and item.get("id")
+    ]
+    if provided_ids:
+        existing = (
+            supabase.table("todo_definitions")
+            .select("id, user_id")
+            .in_("id", provided_ids)
+            .execute()
+        )
+        unauthorized_ids = [
+            row["id"]
+            for row in (existing.data or [])
+            if row.get("user_id") != user_id
+        ]
+        if unauthorized_ids:
+            raise HTTPException(status_code=403, detail="Cannot update another user's todo definition")
+
     records = []
     for item in payload:
         if not isinstance(item, dict):

@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
 from app.models.schemas import (
+    AiKpiSuggestion,
     APIResponse,
     KpiChartDataPoint,
     KpiChartResponse,
@@ -32,11 +33,64 @@ from app.models.schemas import (
     KpiLogResponse,
     KpiLogUpsert,
     KpiResponse,
+    KpiUpdate,
     KpiWithTodayStatus,
     LinkKpiHabitsRequest,
+    SuggestKpisRequest,
 )
+from app.services import ai_service
+import json
+import re
+import logging
+
+_logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _get_owned_active_kpi_or_404(supabase, kpi_id: str, user_id: str) -> dict:
+    result = (
+        supabase.table("kpis")
+        .select("*")
+        .eq("id", kpi_id)
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="KPI not found")
+    return result.data
+
+
+def _validate_owned_active_habit_ids(supabase, habit_ids: list[str], user_id: str) -> list[str]:
+    unique_habit_ids = _dedupe_preserve_order(habit_ids)
+    if not unique_habit_ids:
+        return []
+
+    result = (
+        supabase.table("habits")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    owned_ids = {row["id"] for row in (result.data or [])}
+    invalid_ids = [habit_id for habit_id in unique_habit_ids if habit_id not in owned_ids]
+    if invalid_ids:
+        raise HTTPException(status_code=422, detail="habit_ids contain unknown or unauthorized habits")
+    return unique_habit_ids
 
 
 @router.post("/kpis")
@@ -51,19 +105,22 @@ async def create_kpi(
     """
     supabase = get_supabase()
 
-    # Goal が KGI かを確認
+    # Goal の所有権・存在チェック（KGI 化済みである必要は撤廃 — Sprint G1.5）
+    # 元仕様 REQ-KPI-001 では target_date 必須だったが、Habit からの「月X回」
+    # 軽量入力動線を成立させるため、KGI 化前でも KPI を作れるようにする。
     goal = (
         supabase.table("goals")
-        .select("target_date")
+        .select("id")
         .eq("id", request.goal_id)
         .eq("user_id", user_id)
+        .eq("is_active", True)
         .single()
         .execute()
     )
-    if not goal.data or not goal.data.get("target_date"):
+    if not goal.data:
         raise HTTPException(
             status_code=422,
-            detail="指定した Goal は KGI として設定されていません",
+            detail="指定した Goal が見つかりません",
         )
 
     data = {**request.model_dump(), "user_id": user_id}
@@ -102,6 +159,7 @@ async def get_today_kpis(
             supabase.table("kpi_logs")
             .select("*")
             .eq("kpi_id", kpi["id"])
+            .eq("user_id", user_id)
             .eq("log_date", today)
             .single()
             .execute()
@@ -113,9 +171,10 @@ async def get_today_kpis(
             supabase.table("kpi_habits")
             .select("habit_id")
             .eq("kpi_id", kpi["id"])
+            .eq("user_id", user_id)
             .execute()
         )
-        habit_ids = [h["habit_id"] for h in habits_result.data]
+        habit_ids = [h["habit_id"] for h in (habits_result.data or []) if h.get("habit_id")]
 
         # 今日完了判定
         if kpi["metric_type"] == "binary":
@@ -165,9 +224,10 @@ async def get_kpis(
             supabase.table("kpi_habits")
             .select("habit_id")
             .eq("kpi_id", kpi["id"])
+            .eq("user_id", user_id)
             .execute()
         )
-        habit_ids = [h["habit_id"] for h in habits_result.data]
+        habit_ids = [h["habit_id"] for h in (habits_result.data or []) if h.get("habit_id")]
         kpis.append(KpiResponse(**kpi, habit_ids=habit_ids))
 
     return JSONResponse(
@@ -241,19 +301,87 @@ async def link_kpi_habits(
     🔵 信頼性レベル: REQ-KPI-006・REQ-KPI-007 より
     """
     supabase = get_supabase()
+    _get_owned_active_kpi_or_404(supabase, kpi_id, user_id)
+    habit_ids = _validate_owned_active_habit_ids(supabase, request.habit_ids, user_id)
 
     # 既存の連結を全削除
     supabase.table("kpi_habits").delete().eq("kpi_id", kpi_id).eq("user_id", user_id).execute()
 
     # 新しい連結を挿入
-    if request.habit_ids:
-        rows = [{"kpi_id": kpi_id, "habit_id": hid, "user_id": user_id} for hid in request.habit_ids]
+    if habit_ids:
+        rows = [{"kpi_id": kpi_id, "habit_id": hid, "user_id": user_id} for hid in habit_ids]
         supabase.table("kpi_habits").insert(rows).execute()
 
     return JSONResponse(
         content=APIResponse(
             success=True,
-            data={"kpi_id": kpi_id, "habit_ids": request.habit_ids},
+            data={"kpi_id": kpi_id, "habit_ids": habit_ids},
+        ).model_dump(mode="json"),
+    )
+
+
+@router.patch("/kpis/{kpi_id}")
+async def update_kpi(
+    kpi_id: str,
+    request: KpiUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【PATCH /kpis/{kpi_id}】Sprint G1: 個別 KPI を編集する。
+    全フィールド optional。送られたフィールドだけ更新する。
+    """
+    supabase = get_supabase()
+    _get_owned_active_kpi_or_404(supabase, kpi_id, user_id)
+
+    update_data = request.model_dump(exclude_none=True)
+    if not update_data:
+        current = (
+            supabase.table("kpis").select("*").eq("id", kpi_id).single().execute()
+        )
+        habits = (
+            supabase.table("kpi_habits")
+            .select("habit_id")
+            .eq("kpi_id", kpi_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        habit_ids = [h["habit_id"] for h in (habits.data or []) if h.get("habit_id")]
+        return JSONResponse(
+            content=APIResponse(
+                success=True,
+                data=KpiResponse(**current.data, habit_ids=habit_ids),
+            ).model_dump(mode="json"),
+        )
+
+    # percentage 型の target_value 範囲チェック
+    target_value = update_data.get("target_value")
+    metric_type = update_data.get("metric_type")
+    if target_value is not None and metric_type == "percentage":
+        if not (0 <= target_value <= 100):
+            raise HTTPException(
+                status_code=422,
+                detail="percentage 型の target_value は 0〜100 の範囲で入力してください",
+            )
+
+    result = (
+        supabase.table("kpis")
+        .update(update_data)
+        .eq("id", kpi_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    habits = (
+        supabase.table("kpi_habits")
+        .select("habit_id")
+        .eq("kpi_id", kpi_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    habit_ids = [h["habit_id"] for h in (habits.data or []) if h.get("habit_id")]
+    return JSONResponse(
+        content=APIResponse(
+            success=True,
+            data=KpiResponse(**result.data[0], habit_ids=habit_ids),
         ).model_dump(mode="json"),
     )
 
@@ -291,13 +419,24 @@ async def delete_kpi(
 
 def _parse_range_to_start_date(range_str: str, today: date) -> date:
     """'30d', '12w', '6m' などの range 文字列を開始日に変換"""
-    if range_str.endswith("d"):
-        return today - timedelta(days=int(range_str[:-1]))
-    elif range_str.endswith("w"):
-        return today - timedelta(weeks=int(range_str[:-1]))
-    elif range_str.endswith("m"):
-        return today - timedelta(days=int(range_str[:-1]) * 30)
-    return today - timedelta(days=30)
+    if len(range_str) < 2:
+        raise HTTPException(status_code=422, detail="Invalid range")
+
+    unit = range_str[-1]
+    try:
+        amount = int(range_str[:-1])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid range") from exc
+
+    max_values = {"d": 366, "w": 104, "m": 24}
+    if unit not in max_values or amount < 1 or amount > max_values[unit]:
+        raise HTTPException(status_code=422, detail="Invalid range")
+
+    if unit == "d":
+        return today - timedelta(days=amount)
+    if unit == "w":
+        return today - timedelta(weeks=amount)
+    return today - timedelta(days=amount * 30)
 
 
 def _aggregate_daily(log_map: dict, start_date: date, today: date) -> list[KpiChartDataPoint]:
@@ -391,6 +530,7 @@ async def get_kpi_logs_chart(
         supabase.table("kpi_logs")
         .select("log_date, value")
         .eq("kpi_id", kpi_id)
+        .eq("user_id", user_id)
         .gte("log_date", str(start_date))
         .order("log_date")
         .execute()
@@ -424,3 +564,201 @@ async def get_kpi_logs_chart(
     return JSONResponse(
         content=APIResponse(success=True, data=chart).model_dump(mode="json"),
     )
+
+
+# Sprint G3-a: AI による KPI 提案
+# ────────────────────────────────────────────────────────────────────
+# 既存 KPI と重複しない提案を 2〜4 件返す。既存 habit を活かす提案も歓迎。
+# 出力 JSON のパースは緩め（ ```json ブロックや末尾の余計な説明文を許容）。
+
+_SUGGEST_KPIS_SYSTEM_PROMPT = """あなたは長期目標達成のコーチです。
+渡された Goal（KGI）を達成するための KPI を **2〜4 件** 提案してください。
+
+# 出力形式（必須）
+JSON 配列のみ。説明文は付けない。コードフェンスは使わない。
+```
+[
+  {
+    "title": "短い KPI 名（例: 月20回 瞑想）",
+    "metric_type": "numeric" | "percentage" | "binary",
+    "tracking_frequency": "daily" | "weekly" | "monthly",
+    "target_value": number | null,
+    "unit": "回" | "分" | "%" | など | null,
+    "reason": "なぜこの KPI が Goal 達成に効くかの 1〜2 文",
+    "link_habit_ids": ["habit_id 候補（既存習慣を活かす場合）"]
+  }
+]
+```
+
+# 守ること
+- existing_kpis に既にあるものは提案しない（重複禁止）
+- 既存 habit が活かせる場合は link_habit_ids に id を入れる（複数可）
+- 新規習慣の提案も可（その場合 link_habit_ids は []）
+- target_value は具体的な数値を入れる（binary なら null）
+- 提案件数は最低 2、最多 4
+- ユーザーの user_context（identity / values / patterns）を踏まえてパーソナライズ
+"""
+
+
+def _parse_kpi_suggestions(text: str) -> list[dict]:
+    """LLM 出力から JSON 配列を取り出す。コードフェンス／前後余計テキストに耐える。"""
+    # コードフェンスの中身があれば取る
+    fence = re.search(r"```(?:json)?\s*([\[{][\s\S]*?[\]}])\s*```", text)
+    if fence:
+        candidate = fence.group(1)
+    else:
+        # 最初の [ ... ] を抽出
+        m = re.search(r"\[[\s\S]*\]", text)
+        if not m:
+            return []
+        candidate = m.group(0)
+    try:
+        data = json.loads(candidate)
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception as e:
+        _logger.warning("[suggest-kpis] JSON parse failed: %s | text=%s", e, text[:300])
+        return []
+
+
+@router.post("/ai/suggest-kpis")
+async def suggest_kpis(
+    request: SuggestKpisRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【POST /ai/suggest-kpis】Sprint G3-a: 指定 Goal の KPI 候補を AI が提案。
+    """
+    supabase = get_supabase()
+
+    # Goal 取得
+    goal_result = (
+        supabase.table("goals")
+        .select("*")
+        .eq("id", request.goal_id)
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .single()
+        .execute()
+    )
+    if not goal_result.data:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    goal = goal_result.data
+
+    # 既存 KPI（同 goal）— 重複防止のため AI に渡す
+    existing_kpis_result = (
+        supabase.table("kpis")
+        .select("title, metric_type, tracking_frequency, target_value, unit")
+        .eq("user_id", user_id)
+        .eq("goal_id", request.goal_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    existing_kpis = existing_kpis_result.data or []
+
+    # ユーザーの既存 habits（紐付け候補）
+    habits_result = (
+        supabase.table("habits")
+        .select("id, title, metric_type, scheduled_time, frequency")
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .order("display_order")
+        .execute()
+    )
+    habits = habits_result.data or []
+    habit_ids_set = {h["id"] for h in habits}
+
+    # user_context（パーソナライズ用）
+    ctx_result = (
+        supabase.table("user_context")
+        .select("identity, values_keywords, goal_summary, patterns, profile")
+        .eq("user_id", user_id)
+        .single()
+        .execute()
+    )
+    ctx = ctx_result.data or {}
+
+    # ユーザープロンプト構築
+    parts: list[str] = []
+    parts.append("# Goal\n")
+    parts.append(f"- title: {goal.get('title')}")
+    if goal.get("description"):
+        parts.append(f"- description: {goal['description']}")
+    if goal.get("target_value") is not None:
+        unit = goal.get("unit") or ""
+        parts.append(f"- target_value: {goal['target_value']}{unit}")
+    if goal.get("target_date"):
+        parts.append(f"- target_date: {goal['target_date']}")
+    if goal.get("metric_type"):
+        parts.append(f"- metric_type: {goal['metric_type']}")
+
+    parts.append("\n# existing_kpis（重複禁止）")
+    if existing_kpis:
+        for k in existing_kpis:
+            parts.append(
+                f"- {k['title']} ({k.get('tracking_frequency')}, {k.get('metric_type')}, target={k.get('target_value')}{k.get('unit') or ''})"
+            )
+    else:
+        parts.append("- (なし)")
+
+    parts.append("\n# existing_habits（link_habit_ids 候補）")
+    if habits:
+        for h in habits:
+            parts.append(
+                f"- id={h['id']}, title=「{h['title']}」, metric={h.get('metric_type')}, time={h.get('scheduled_time') or '-'}"
+            )
+    else:
+        parts.append("- (なし)")
+
+    parts.append("\n# user_context")
+    if ctx.get("identity"):
+        parts.append(f"- identity: {ctx['identity']}")
+    if ctx.get("goal_summary"):
+        parts.append(f"- goal_summary: {ctx['goal_summary']}")
+    vk = ctx.get("values_keywords")
+    if isinstance(vk, list) and vk:
+        parts.append(f"- values: {', '.join(vk[:8])}")
+    pat = ctx.get("patterns")
+    if isinstance(pat, list) and pat:
+        parts.append(f"- patterns: {', '.join(pat[:5])}")
+
+    user_prompt = "\n".join(parts)
+
+    # LLM 呼び出し（分析系なので Sonnet を指定）
+    try:
+        text = await ai_service.create_message(
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=_SUGGEST_KPIS_SYSTEM_PROMPT,
+            max_tokens=2048,
+            model="claude-sonnet-4-6",
+        )
+    except ai_service.AIUnavailableError as e:
+        raise HTTPException(status_code=503, detail="AI service unavailable") from e
+
+    raw = _parse_kpi_suggestions(text)
+
+    # サニタイズ：link_habit_ids は user 所有のものだけ残す
+    suggestions: list[AiKpiSuggestion] = []
+    for s in raw:
+        try:
+            sanitized_link = [hid for hid in (s.get("link_habit_ids") or []) if hid in habit_ids_set]
+            sug = AiKpiSuggestion(
+                title=str(s.get("title", ""))[:200] or "提案 KPI",
+                metric_type=s.get("metric_type") or "numeric",
+                tracking_frequency=s.get("tracking_frequency") or "monthly",
+                target_value=(
+                    float(s["target_value"])
+                    if s.get("target_value") is not None and s.get("target_value") != ""
+                    else None
+                ),
+                unit=(str(s["unit"]) if s.get("unit") else None),
+                reason=str(s.get("reason", ""))[:400],
+                link_habit_ids=sanitized_link,
+            )
+            suggestions.append(sug)
+        except Exception as e:
+            _logger.warning("[suggest-kpis] item validation failed: %s | item=%s", e, s)
+            continue
+
+    return APIResponse(success=True, data=suggestions).model_dump(mode="json")

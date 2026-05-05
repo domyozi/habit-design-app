@@ -318,10 +318,20 @@ class TestLinkKpiHabits:
             mock_sb = make_supabase_mock()
             mock_get.return_value = mock_sb
 
-            # 削除と挿入のモック
-            mock_sb.table.return_value.delete.return_value \
-                .eq.return_value.eq.return_value.execute.return_value.data = []
-            mock_sb.table.return_value.insert.return_value.execute.return_value.data = []
+            kpis_table = MagicMock()
+            kpis_table.select.return_value.eq.return_value.eq.return_value.eq.return_value \
+                .single.return_value.execute.return_value.data = KPI_DATA
+            habits_table = MagicMock()
+            habits_table.select.return_value.eq.return_value.eq.return_value \
+                .execute.return_value.data = [{"id": "habit-uuid-001"}, {"id": "habit-uuid-002"}]
+            links_table = MagicMock()
+            links_table.delete.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+            links_table.insert.return_value.execute.return_value.data = []
+            mock_sb.table.side_effect = {
+                "kpis": kpis_table,
+                "habits": habits_table,
+                "kpi_habits": links_table,
+            }.__getitem__
 
             response = client.post(
                 f"/api/kpis/{TEST_KPI_ID}/habits",
@@ -340,8 +350,15 @@ class TestLinkKpiHabits:
         with patch("app.api.routes.kpis.get_supabase") as mock_get:
             mock_sb = make_supabase_mock()
             mock_get.return_value = mock_sb
-            mock_sb.table.return_value.delete.return_value \
-                .eq.return_value.eq.return_value.execute.return_value.data = []
+            kpis_table = MagicMock()
+            kpis_table.select.return_value.eq.return_value.eq.return_value.eq.return_value \
+                .single.return_value.execute.return_value.data = KPI_DATA
+            links_table = MagicMock()
+            links_table.delete.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+            mock_sb.table.side_effect = {
+                "kpis": kpis_table,
+                "kpi_habits": links_table,
+            }.__getitem__
 
             response = client.post(
                 f"/api/kpis/{TEST_KPI_ID}/habits",
@@ -350,6 +367,51 @@ class TestLinkKpiHabits:
             )
 
         assert response.status_code == 200
+
+    def test_link_kpi_habits_rejects_unowned_kpi(self, client, valid_token):
+        """他ユーザーまたは非activeのKPIには習慣を連結できない。"""
+        with patch("app.api.routes.kpis.get_supabase") as mock_get:
+            mock_sb = make_supabase_mock()
+            mock_get.return_value = mock_sb
+            kpis_table = MagicMock()
+            kpis_table.select.return_value.eq.return_value.eq.return_value.eq.return_value \
+                .single.return_value.execute.return_value.data = None
+            mock_sb.table.side_effect = {"kpis": kpis_table}.__getitem__
+
+            response = client.post(
+                f"/api/kpis/{TEST_KPI_ID}/habits",
+                json={"habit_ids": ["habit-uuid-001"]},
+                headers={"Authorization": f"Bearer {valid_token}"},
+            )
+
+        assert response.status_code == 404
+
+    def test_link_kpi_habits_rejects_unowned_habit_ids(self, client, valid_token):
+        """habit_ids に現在ユーザー所有でないIDが含まれる場合は拒否する。"""
+        with patch("app.api.routes.kpis.get_supabase") as mock_get:
+            mock_sb = make_supabase_mock()
+            mock_get.return_value = mock_sb
+            kpis_table = MagicMock()
+            kpis_table.select.return_value.eq.return_value.eq.return_value.eq.return_value \
+                .single.return_value.execute.return_value.data = KPI_DATA
+            habits_table = MagicMock()
+            habits_table.select.return_value.eq.return_value.eq.return_value \
+                .execute.return_value.data = [{"id": "habit-uuid-001"}]
+            links_table = MagicMock()
+            mock_sb.table.side_effect = {
+                "kpis": kpis_table,
+                "habits": habits_table,
+                "kpi_habits": links_table,
+            }.__getitem__
+
+            response = client.post(
+                f"/api/kpis/{TEST_KPI_ID}/habits",
+                json={"habit_ids": ["habit-uuid-001", "habit-uuid-other"]},
+                headers={"Authorization": f"Bearer {valid_token}"},
+            )
+
+        assert response.status_code == 422
+        links_table.delete.assert_not_called()
 
 
 class TestDeleteKpi:

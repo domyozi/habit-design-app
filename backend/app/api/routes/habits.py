@@ -33,6 +33,7 @@ from app.models.schemas import (
     CreateHabitRequest,
     FailureReason,
     Habit,
+    ReorderHabitsRequest,
     UpdateHabitLogRequest,
     UpdateHabitRequest,
 )
@@ -217,6 +218,52 @@ async def create_habit(
         status_code=201,
         content=APIResponse(success=True, data=Habit(**created)).model_dump(mode="json"),
     )
+
+
+@router.post("/habits/reorder")
+async def reorder_habits(
+    request: ReorderHabitsRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【POST /habits/reorder】: 習慣の並び替えを 1 トランザクションで反映する。
+    【入力】: ordered_ids = 並び替え後の habit id 配列。
+    【動作】: Postgres の reorder_habits(habit_ids) 関数を呼び、display_order を 0..n-1 に振り直す。
+    【所有者保護】: 関数内で user_id = auth.uid() を強制するので、他ユーザーの habit は no-op。
+    🔵 信頼性レベル: docs/sprint-spec/v3-stocktake.md K (habit 重み付け) + add_reorder_habits_function.sql
+    """
+    supabase = get_supabase()
+    ids = request.ordered_ids
+
+    if not ids:
+        return APIResponse(success=True, data=None).model_dump(mode="json")
+
+    # 【所有者確認】: 渡された全 id が呼び出しユーザーのものであることを事前に検証する。
+    # ストアド関数側でも auth.uid() フィルタはかかるが、不一致があれば 403 で明示的に弾く方が
+    # クライアント側のデバッグが楽になる。
+    fetched = (
+        supabase.table("habits")
+        .select("id, user_id")
+        .in_("id", ids)
+        .execute()
+    )
+    rows = fetched.data or []
+    if len(rows) != len(ids):
+        raise NotFoundError("習慣")
+    for row in rows:
+        if row["user_id"] != user_id:
+            raise ForbiddenError()
+
+    # 【一括 reorder】: ストアド関数を 1 回呼ぶだけ。Postgres トランザクションで原子的に走る。
+    # 注: backend は service_role で接続しているため関数内の auth.uid() は NULL になる。
+    # そのため target_user_id を明示的に渡し、関数側はこの値で WHERE 句を作る。所有権は
+    # 上で検証済みなので、ここで他人の id を渡すことは事実上できない。
+    supabase.rpc(
+        "reorder_habits",
+        {"target_user_id": user_id, "habit_ids": ids},
+    ).execute()
+
+    return APIResponse(success=True, data=None).model_dump(mode="json")
 
 
 @router.patch("/habits/{habit_id}")

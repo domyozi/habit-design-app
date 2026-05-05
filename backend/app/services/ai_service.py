@@ -57,10 +57,12 @@ async def create_message(
     system_prompt: str | None = None,
     max_tokens: int = 1024,
     async_client=None,
+    model: str = "claude-haiku-4-5-20251001",
 ) -> str:
     """
     Browser clients must not call Anthropic directly. This server-side wrapper
     keeps the API key in backend environment variables and returns plain text.
+    Sprint G3: model 引数追加（KPI 提案など分析系は Sonnet を指定したい）
     """
     import anthropic
 
@@ -70,7 +72,7 @@ async def create_message(
         )
 
     kwargs = {
-        "model": "claude-haiku-4-5-20251001",
+        "model": model,
         "max_tokens": max_tokens,
         "messages": messages,
     }
@@ -95,10 +97,16 @@ async def stream_message(
     system_prompt: str | None = None,
     max_tokens: int = 1024,
     async_client=None,
+    model: str = "claude-haiku-4-5-20251001",
+    tools: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream text chunks from Anthropic as plain strings. HTTP/SSE formatting is
     handled by the route layer.
+
+    Sprint 6.5.4: tools パラメータを追加。web_search 等のサーバ側ツールを Claude に
+    使わせたい場合に渡す。tool 結果は SDK 内部で処理されてアシスタントの応答に組み込まれ、
+    text_stream には最終的なテキストだけが流れる。
     """
     import anthropic
 
@@ -107,13 +115,15 @@ async def stream_message(
             api_key=os.getenv("ANTHROPIC_API_KEY", "")
         )
 
-    kwargs = {
-        "model": "claude-haiku-4-5-20251001",
+    kwargs: dict = {
+        "model": model,
         "max_tokens": max_tokens,
         "messages": messages,
     }
     if system_prompt:
         kwargs["system"] = system_prompt
+    if tools:
+        kwargs["tools"] = tools
 
     try:
         async with async_client.messages.stream(**kwargs) as stream:

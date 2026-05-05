@@ -132,7 +132,8 @@ async def stream_ai_message(
         sse_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
             "X-Accel-Buffering": "no",
         },
     )
@@ -173,7 +174,7 @@ async def stream_weekly_review(
 
     if existing.data:
         review_id = existing.data[0]["id"]
-        supabase.table("weekly_reviews").update({"status": "generating"}).eq("id", review_id).execute()
+        supabase.table("weekly_reviews").update({"status": "generating"}).eq("id", review_id).eq("user_id", user_id).execute()
     else:
         insert_result = supabase.table("weekly_reviews").insert({
             "user_id": user_id,
@@ -256,7 +257,7 @@ async def stream_weekly_review(
                     "status": "completed",
                     "achievement_rate": achievement_rate,
                     "suggested_actions": actions,
-                }).eq("id", review_id).execute()
+                }).eq("id", review_id).eq("user_id", user_id).execute()
 
         except AIUnavailableError:
             logger.error("週次レビュー生成中にClaude API障害が発生")
@@ -264,13 +265,14 @@ async def stream_weekly_review(
 
             # 【DB更新】: failed に更新
             if review_id:
-                supabase.table("weekly_reviews").update({"status": "failed"}).eq("id", review_id).execute()
+                supabase.table("weekly_reviews").update({"status": "failed"}).eq("id", review_id).eq("user_id", user_id).execute()
 
     return StreamingResponse(
         sse_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
             "X-Accel-Buffering": "no",
         },
     )

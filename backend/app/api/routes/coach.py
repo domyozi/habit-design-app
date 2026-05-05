@@ -1,0 +1,738 @@
+"""
+Phase 6.5: Coach Real backend
+- GET  /api/ai/coach-context             → bundle 並列取得（FE MockCoachClient.getContext と同 shape）
+- GET  /api/ai/coach-pending-actions     → pending 一覧
+- PATCH /api/ai/coach-pending-actions/{id} → status 更新（accepted/rejected/expired）
+- POST /api/ai/coach-stream              → SSE で coach 応答（次 step で実装）
+
+Frontend の `MockCoachClient` を Real に切り替えても shape が一致するように構築する。
+Mock 期に確定した型 (`frontend-v3/src/lib/coach/types.ts`) が backend 側のソース・オブ・トゥルース。
+"""
+import asyncio
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+from app.core.security import get_current_user
+from app.core.supabase import get_supabase
+from app.services import ai_service
+from app.services.coach_extractor import (
+    extract_json_block,
+    filter_by_confidence,
+    to_pending_action_rows,
+)
+from app.services.coach_prompts import build_coach_prompt
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/ai")
+
+PENDING_TTL_SEC = 24 * 3600
+PENDING_KINDS = {"pt_update", "pt_close", "habit_today_complete", "memory_patch", "task", "habit"}
+PENDING_STATUSES_RESOLVABLE = {"accepted", "rejected", "expired"}
+WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
+
+
+# ─── ヘルパー ──────────────────────────────────────────────
+
+def _resolve_tz(tz: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo("UTC")
+
+
+def _now_local_fields(tz: str) -> dict:
+    zi = _resolve_tz(tz)
+    now_local = datetime.now(zi)
+    return {
+        "today_date": now_local.strftime("%Y-%m-%d"),
+        "today_weekday": WEEKDAYS_JA[now_local.weekday()],
+        "local_time": now_local.strftime("%H:%M"),
+        "user_timezone": str(zi),
+    }
+
+
+def _adapt_habit(h: dict, today_log: dict | None = None) -> dict:
+    """FE CoachHabitSnapshot と shape を揃える。
+
+    Sprint 6.6: today_log を受け取り `today_completed` を埋める。
+    `completed=true` を「ユーザーが今日マークした」と解釈（binary は user 操作、
+    numeric/time は streak_service.is_achieved の結果が log.completed に入る）。
+    """
+    return {
+        "id": h.get("id"),
+        "title": h.get("title", ""),
+        "current_streak": h.get("current_streak", 0) or 0,
+        "longest_streak": h.get("longest_streak"),
+        "scheduled_time": h.get("scheduled_time"),
+        "today_completed": bool(today_log and today_log.get("completed")),
+        "target_value": h.get("target_value"),
+        "unit": h.get("unit"),
+        "metric_type": h.get("metric_type", "binary"),
+    }
+
+
+def _adapt_journal(j: dict) -> dict:
+    """FE CoachJournalSnapshot と shape を揃える。"""
+    content = j.get("content") or ""
+    excerpt = " ".join(content.split())
+    if len(excerpt) > 200:
+        excerpt = excerpt[:200] + "…"
+    return {
+        "entry_type": j.get("entry_type", ""),
+        "content_excerpt": excerpt,
+        "entry_date": j.get("entry_date", ""),
+        "created_at": j.get("created_at"),
+    }
+
+
+# Sprint G3-b: Goal + KPI を coach 文脈に渡す。
+# KPI 進捗は monthly_logs から FE GoalKpiOverview と同じロジックで集計する。
+
+def _kpi_period_window(freq: str, today_str: str) -> tuple[str, str]:
+    """tracking_frequency に応じた from/to (両端含む) を返す。"""
+    from datetime import date as _date
+    today_d = _date.fromisoformat(today_str)
+    if freq == "daily":
+        return today_str, today_str
+    if freq == "weekly":
+        offset = today_d.weekday()  # Mon=0
+        from_d = _date.fromordinal(today_d.toordinal() - offset)
+        return from_d.isoformat(), today_str
+    # monthly (default)
+    return today_str[:8] + "01", today_str
+
+
+def _count_kpi_progress(habit_ids: list[str], freq: str, monthly_logs: list[dict], today_str: str) -> int:
+    if not habit_ids:
+        return 0
+    from_str, to_str = _kpi_period_window(freq, today_str)
+    id_set = set(habit_ids)
+    count = 0
+    for log in monthly_logs:
+        if not log.get("completed"):
+            continue
+        if log.get("habit_id") not in id_set:
+            continue
+        d = log.get("log_date")
+        if not d:
+            continue
+        if from_str <= d <= to_str:
+            count += 1
+    return count
+
+
+def _build_goals_with_kpis(
+    goals_raw: list[dict],
+    kpis_raw: list[dict],
+    kpi_habits_raw: list[dict],
+    monthly_logs: list[dict],
+    today_str: str,
+) -> list[dict]:
+    """Goal 配列に配下 KPI（進捗付き）と KGI 計算済みフィールドを足して返す。"""
+    from datetime import date as _date
+
+    # kpi_id → habit_ids の map
+    kpi_habit_map: dict[str, list[str]] = {}
+    for kh in kpi_habits_raw:
+        kid = kh.get("kpi_id")
+        hid = kh.get("habit_id")
+        if not kid or not hid:
+            continue
+        kpi_habit_map.setdefault(kid, []).append(hid)
+
+    # goal_id → kpis の map
+    kpis_by_goal: dict[str, list[dict]] = {}
+    for k in kpis_raw:
+        kpis_by_goal.setdefault(k["goal_id"], []).append(k)
+
+    today_d = _date.fromisoformat(today_str)
+    out: list[dict] = []
+    for g in goals_raw:
+        is_kgi = g.get("target_date") is not None
+        days_remaining = None
+        achievement_rate = None
+        is_expired = False
+        if is_kgi:
+            try:
+                td = _date.fromisoformat(g["target_date"])
+                days_remaining = (td - today_d).days
+                is_expired = days_remaining < 0
+            except Exception:
+                pass
+            try:
+                tv = g.get("target_value")
+                cv = g.get("current_value")
+                if tv and cv is not None and tv != 0:
+                    achievement_rate = round(min(100.0, float(cv) / float(tv) * 100), 1)
+            except Exception:
+                pass
+
+        adapted_kpis = []
+        for k in kpis_by_goal.get(g["id"], []):
+            hids = kpi_habit_map.get(k["id"], [])
+            adapted_kpis.append({
+                "id": k["id"],
+                "title": k.get("title", ""),
+                "metric_type": k.get("metric_type"),
+                "tracking_frequency": k.get("tracking_frequency", "monthly"),
+                "target_value": k.get("target_value"),
+                "unit": k.get("unit"),
+                "habit_ids": hids,
+                "current_period_count": _count_kpi_progress(
+                    hids, k.get("tracking_frequency", "monthly"), monthly_logs, today_str,
+                ),
+            })
+
+        out.append({
+            "id": g["id"],
+            "title": g.get("title", ""),
+            "description": g.get("description"),
+            "is_kgi": is_kgi,
+            "target_value": g.get("target_value"),
+            "current_value": g.get("current_value"),
+            "unit": g.get("unit"),
+            "target_date": g.get("target_date"),
+            "metric_type": g.get("metric_type"),
+            "achievement_rate": achievement_rate,
+            "days_remaining": days_remaining,
+            "is_expired": is_expired,
+            "kpis": adapted_kpis,
+        })
+    return out
+
+
+def _detect_streak_alerts(habits: list[dict]) -> list[dict]:
+    """current_streak=0 かつ scheduled_time あり habit を「3 日連続未達」と仮置き。
+    Mock と同じ簡易ヒューリスティック。"""
+    out = []
+    for h in habits:
+        if (h.get("current_streak") or 0) == 0 and h.get("scheduled_time"):
+            out.append({
+                "habit_id": h["id"],
+                "title": h.get("title", ""),
+                "days_missed": 3,
+            })
+            if len(out) >= 3:
+                break
+    return out
+
+
+# ─── GET /coach-context ────────────────────────────────────
+
+@router.get("/coach-context")
+async def get_coach_context(
+    tz: str = Query("UTC", description="IANA timezone, e.g. Asia/Tokyo"),
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """
+    coach prompt 組立に必要なデータを並列に取得して 1 つの bundle にまとめる。
+    Frontend の MockCoachClient.getContext と互換 shape を返す。
+    """
+    supabase = get_supabase()
+
+    def _fetch_pt():
+        row = (
+            supabase.table("primary_targets")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("set_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not row.data:
+            return None
+        d = row.data[0]
+        return {
+            "value": d.get("value"),
+            "set_date": d.get("set_date"),
+            "completed": d.get("completed", False),
+        }
+
+    def _fetch_habits():
+        # Sprint 6.6: is_active=true でフィルタ。
+        # 旧実装は削除済み habit (is_active=false) も coach に渡していて、
+        # /api/habits 側のフィルタとズレて Today に余分に出る + delete 後に
+        # PATCH /log を打つと 500 に至る不整合の元凶だった。
+        row = (
+            supabase.table("habits")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        )
+        return row.data or []
+
+    # Sprint 6.6: ローカル今日（tz 解決済）の habit_logs を一括取得
+    today_local_str = _now_local_fields(tz)["today_date"]
+
+    def _fetch_today_logs():
+        row = (
+            supabase.table("habit_logs")
+            .select("habit_id, completed, numeric_value, time_value")
+            .eq("user_id", user_id)
+            .eq("log_date", today_local_str)
+            .execute()
+        )
+        return row.data or []
+
+    def _fetch_user_context():
+        row = (
+            supabase.table("user_context")
+            .select("*")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        return row.data[0] if row.data else None
+
+    def _fetch_journals():
+        # MVP前パフォーマンス対応: 7 だとコーチが直近対話を覚えない問題があったため 30 に拡張。
+        # _journals_section が prompt 側で更にスライスするので、ここは多めに取って柔軟性を持たせる。
+        row = (
+            supabase.table("journal_entries")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("entry_date", desc=True)
+            .order("created_at", desc=True)
+            .limit(30)
+            .execute()
+        )
+        return row.data or []
+
+    def _fetch_pending_suggestions():
+        row = (
+            supabase.table("habit_suggestions")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        return row.data or []
+
+    # Sprint G3-b: Goals + KPI を coach 文脈に追加。
+    # KPI 進捗は今月分の habit_logs から計算（FE GoalKpiOverview と同じロジックを backend にも）。
+    def _fetch_goals():
+        row = (
+            supabase.table("goals")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        )
+        return row.data or []
+
+    def _fetch_kpis():
+        row = (
+            supabase.table("kpis")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        )
+        return row.data or []
+
+    def _fetch_kpi_habits():
+        row = (
+            supabase.table("kpi_habits")
+            .select("kpi_id, habit_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return row.data or []
+
+    def _fetch_monthly_logs():
+        # 月初〜今日の habit_logs（KPI 進捗集計用）。月単位 KPI までカバー。
+        today_str = today_local_str
+        month_start = today_str[:8] + "01"
+        row = (
+            supabase.table("habit_logs")
+            .select("habit_id, log_date, completed")
+            .eq("user_id", user_id)
+            .gte("log_date", month_start)
+            .lte("log_date", today_str)
+            .execute()
+        )
+        return row.data or []
+
+    def _fetch_pending_coach_actions():
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=PENDING_TTL_SEC)).isoformat()
+        row = (
+            supabase.table("coach_pending_actions")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .gte("created_at", cutoff)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return row.data or []
+
+    # Supabase Python SDK は同期なので run_in_executor で並列化。
+    # 一括 try ではなく per-fetch でエラーを握って原因究明可能にする
+    # （Sprint 6.5.2 の primary_target → primary_targets typo を silent
+    # で握りつぶしてバグ特定に時間を使ったため）。
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+
+    async def _safe(label: str, fn):
+        try:
+            return await loop.run_in_executor(None, fn)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("coach-context fetch failed [%s]: %s", label, e)
+            return None
+
+    (
+        pt,
+        habits_raw,
+        ctx_raw,
+        journals_raw,
+        suggestions_raw,
+        coach_actions_raw,
+        today_logs_raw,
+        goals_raw,
+        kpis_raw,
+        kpi_habits_raw,
+        monthly_logs_raw,
+    ) = await asyncio.gather(
+        _safe("primary_targets", _fetch_pt),
+        _safe("habits", _fetch_habits),
+        _safe("user_context", _fetch_user_context),
+        _safe("journal_entries", _fetch_journals),
+        _safe("habit_suggestions", _fetch_pending_suggestions),
+        _safe("coach_pending_actions", _fetch_pending_coach_actions),
+        _safe("habit_logs_today", _fetch_today_logs),
+        _safe("goals", _fetch_goals),
+        _safe("kpis", _fetch_kpis),
+        _safe("kpi_habits", _fetch_kpi_habits),
+        _safe("habit_logs_month", _fetch_monthly_logs),
+    )
+    habits_raw = habits_raw or []
+    journals_raw = journals_raw or []
+    suggestions_raw = suggestions_raw or []
+    coach_actions_raw = coach_actions_raw or []
+    today_logs_raw = today_logs_raw or []
+    goals_raw = goals_raw or []
+    kpis_raw = kpis_raw or []
+    kpi_habits_raw = kpi_habits_raw or []
+    monthly_logs_raw = monthly_logs_raw or []
+    today_logs_map = {log["habit_id"]: log for log in today_logs_raw if log.get("habit_id")}
+
+    user_context = None
+    if ctx_raw:
+        user_context = {
+            "identity": ctx_raw.get("identity"),
+            "patterns": ctx_raw.get("patterns"),
+            "values_keywords": ctx_raw.get("values_keywords"),
+            "insights": ctx_raw.get("insights"),
+            "goal_summary": ctx_raw.get("goal_summary"),
+            # Phase 6.5.3: profile (JSONB) を coach に渡す
+            "profile": ctx_raw.get("profile"),
+        }
+
+    habits = [_adapt_habit(h, today_logs_map.get(h["id"])) for h in habits_raw]
+
+    # Sprint G3-b: Goals + KPI を組み立てる。KPI 進捗は monthly_logs_raw から FE と同じロジックで集計。
+    goals_with_kpis = _build_goals_with_kpis(
+        goals_raw, kpis_raw, kpi_habits_raw, monthly_logs_raw, today_local_str,
+    )
+
+    bundle = {
+        "primary_target": pt,
+        "user_context": user_context,
+        "habits": habits,
+        "goals": goals_with_kpis,
+        "recent_journals": [_adapt_journal(j) for j in journals_raw],
+        "pending_suggestions": [
+            {
+                "id": s["id"],
+                "label": s.get("label", ""),
+                "kind": s.get("kind", "habit"),
+                "source": s.get("source"),
+            }
+            for s in suggestions_raw
+        ],
+        "pending_coach_actions": coach_actions_raw,
+        "today_calendar": {"items": [], "available": False},
+        "signals": {"habit_streak_alerts": _detect_streak_alerts(habits)},
+        "server_received_at": int((loop.time() - started) * 1000),
+    }
+    bundle.update(_now_local_fields(tz))
+    return bundle
+
+
+# ─── coach_pending_actions CRUD ────────────────────────────
+
+
+@router.get("/coach-pending-actions")
+async def list_pending_actions(
+    status: Optional[str] = Query(None, description="pending/accepted/rejected/expired"),
+    user_id: str = Depends(get_current_user),
+) -> list[dict]:
+    """coach_pending_actions の自分の行を返す。デフォルトは全 status。"""
+    supabase = get_supabase()
+    q = (
+        supabase.table("coach_pending_actions")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(100)
+    )
+    if status:
+        q = q.eq("status", status)
+    return q.execute().data or []
+
+
+class PendingActionPatch(BaseModel):
+    status: Optional[str] = None  # 'accepted' | 'rejected' | 'expired'
+    source_journal_id: Optional[str] = None
+
+
+@router.patch("/coach-pending-actions/{action_id}")
+async def update_pending_action(
+    action_id: str,
+    patch: PendingActionPatch,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """ActionCard の accept/reject / 自動 expire / source 紐づけで呼ばれる。"""
+    if patch.status is None and patch.source_journal_id is None:
+        raise HTTPException(status_code=422, detail="status or source_journal_id is required")
+    if patch.status is not None and patch.status not in PENDING_STATUSES_RESOLVABLE:
+        raise HTTPException(status_code=422, detail=f"Invalid status: {patch.status}")
+    update_data = {}
+    if patch.status is not None:
+        update_data["status"] = patch.status
+        update_data["resolved_at"] = datetime.now(timezone.utc).isoformat()
+    if patch.source_journal_id is not None:
+        update_data["source_journal_id"] = patch.source_journal_id
+    supabase = get_supabase()
+    # 自分の行のみ更新（RLS で防御されているが念のため eq でも絞る）
+    res = (
+        supabase.table("coach_pending_actions")
+        .update(update_data)
+        .eq("id", action_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="not found")
+    return res.data[0]
+
+
+class PendingActionCreate(BaseModel):
+    kind: str
+    payload: dict
+    confidence: float
+    source_journal_id: Optional[str] = None
+
+
+@router.post("/coach-pending-actions", status_code=201)
+async def create_pending_action(
+    body: PendingActionCreate,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """coach stream が抽出した action を pending として保存する。
+    /coach-stream 側でも内部的に呼ぶが、外部からも投入できる。"""
+    if body.kind not in PENDING_KINDS:
+        raise HTTPException(status_code=422, detail=f"Invalid kind: {body.kind}")
+    if not 0.0 <= body.confidence <= 1.0:
+        raise HTTPException(status_code=422, detail="confidence must be 0.0-1.0")
+    supabase = get_supabase()
+    res = (
+        supabase.table("coach_pending_actions")
+        .insert({
+            "user_id": user_id,
+            "kind": body.kind,
+            "payload": body.payload,
+            "confidence": body.confidence,
+            "source_journal_id": body.source_journal_id,
+            "status": "pending",
+        })
+        .execute()
+    )
+    return res.data[0] if res.data else {}
+
+
+# ─── POST /coach-stream (SSE) ──────────────────────────────
+
+
+def _filter_completed_habit_actions(filtered: dict, ctx: dict) -> dict:
+    done_habit_ids = {
+        h.get("id")
+        for h in (ctx.get("habits") or [])
+        if h.get("id") and h.get("today_completed")
+    }
+    if not done_habit_ids or not filtered.get("habit_today_completes"):
+        return filtered
+    kept = [
+        c for c in (filtered.get("habit_today_completes") or [])
+        if c.get("habit_id") not in done_habit_ids
+    ]
+    next_filtered = {**filtered}
+    if kept:
+        next_filtered["habit_today_completes"] = kept
+    else:
+        next_filtered.pop("habit_today_completes", None)
+    return next_filtered
+
+
+def _persist_pending_actions(user_id: str, filtered: dict, ctx: dict) -> None:
+    """filter_by_confidence 済 payload から pending actions を DB に書き込む。
+    重複は気にせず追加のみ（FE 側 dedupe ロジックは markPendingActionResolved で）。"""
+    rows = to_pending_action_rows(_filter_completed_habit_actions(filtered, ctx))
+    if not rows:
+        return
+    supabase = get_supabase()
+    for r in rows:
+        try:
+            supabase.table("coach_pending_actions").insert({
+                "user_id": user_id,
+                "kind": r["kind"],
+                "payload": r["payload"],
+                "confidence": r["confidence"],
+                "status": "pending",
+            }).execute()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("coach_pending_actions insert failed kind=%s: %s", r["kind"], e)
+
+
+def _sse(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+@router.post("/coach-stream")
+async def coach_stream(
+    request: Request,
+    user_id: str = Depends(get_current_user),
+):
+    """SSE で AI 応答を text_chunk → actions → done の順に返す。
+
+    Body:
+      {
+        "mode": "DECLARE" | "REFLECT" | "BRAINSTORM" | "PLAN" | "BRIEFING",
+        "user_input": "...",
+        "history": [{role, content}, ...],
+        "tz": "Asia/Tokyo"
+      }
+    """
+    body = await request.json()
+    mode = body.get("mode") or "DECLARE"
+    user_input = body.get("user_input") or ""
+    history = body.get("history") or []
+    tz = body.get("tz") or "UTC"
+
+    # context 取得（同関数を内部利用）
+    try:
+        ctx = await get_coach_context(tz=tz, user_id=user_id)
+    except Exception as e:
+        logger.error("coach-stream: context load failed: %s", e)
+
+        async def err_gen():
+            yield _sse({"type": "error", "code": "CONTEXT_LOAD_FAILED", "message": str(e)})
+
+        return StreamingResponse(err_gen(), media_type="text/event-stream")
+
+    system_prompt, user_prompt = build_coach_prompt(ctx, mode, user_input)
+
+    # 観測性: <user_memory> セクションだけを抜き出してログ。AI に届いた memory が
+    # どう embed されているかを後追い検証できるようにする（Sprint 6.5.3-fix2）。
+    import re
+
+    mem_match = re.search(r"<user_memory>(.*?)</user_memory>", system_prompt, re.DOTALL)
+    if mem_match:
+        logger.info("coach-stream user_memory:\n%s", mem_match.group(0))
+    logger.info(
+        "coach-stream mode=%s user_input_len=%d system_prompt_len=%d",
+        mode, len(user_input), len(system_prompt),
+    )
+
+    # message history（FE 側で history を渡してきた場合）
+    messages: list[dict] = []
+    if isinstance(history, list):
+        for h in history:
+            if isinstance(h, dict) and h.get("role") in ("user", "assistant"):
+                messages.append({"role": h["role"], "content": str(h.get("content") or "")})
+    messages.append({"role": "user", "content": user_prompt})
+
+    started_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+    async def generate():
+        # meta
+        yield _sse({
+            "type": "meta",
+            "tracing_id": f"real-{started_ms}",
+            "mode": mode,
+            "model": "claude-sonnet-4-6",
+            "server_received_at": started_ms,
+        })
+        # thinking trace
+        for step in ("memory_loaded", "habits_loaded", "calendar_loaded", "composing"):
+            yield _sse({"type": "thinking_trace", "step": step})
+
+        accumulated = ""
+        try:
+            async for chunk in ai_service.stream_message(
+                messages=messages,
+                system_prompt=system_prompt,
+                # JSON action 出力で 1024 だと途中で切れて extract 失敗 → memory 更新が
+                # silent に失われる現象が観測されたため引き上げ（Sprint 6.5.3-fix2）。
+                max_tokens=2048,
+                # Haiku は OUTPUT_CONTRACT の遵守が弱く、テキスト質問返しに固執して
+                # memory_patch JSON を emit しない振る舞いが頻発したため Sonnet 4.6 を使う。
+                model="claude-sonnet-4-6",
+                # Sprint 6.5.4: web_search 有効化。
+                # Coach がユーザーから「調べて」と頼まれた時、サーバ側でリアル検索を
+                # 行ってその結果を踏まえた応答を返せる。「調べる task」を新規作成して
+                # ユーザーに自分で検索させるパターンを廃止する。
+                tools=[{
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 3,
+                }],
+            ):
+                accumulated += chunk
+                yield _sse({"type": "text_chunk", "content": chunk})
+        except ai_service.AIUnavailableError as e:
+            logger.error("coach-stream: claude unavailable: %s", e)
+            yield _sse({"type": "error", "code": "STREAM_FAILED", "message": str(e)})
+            return
+        except Exception as e:  # noqa: BLE001
+            logger.error("coach-stream: unexpected error: %s", e)
+            yield _sse({"type": "error", "code": "STREAM_FAILED", "message": str(e)})
+            return
+
+        # 末尾 JSON fence 抽出 → confidence フィルタ → 保存
+        parsed = extract_json_block(accumulated)
+        # 観測性: AI が JSON を出したか / 出した場合 keys は何か / 出さなかった場合
+        # accumulated 末尾 300 文字をログ（Sprint 6.5.3-fix2）。
+        if parsed:
+            logger.info(
+                "coach-stream JSON emitted keys=%s accumulated_len=%d",
+                list(parsed.keys()), len(accumulated),
+            )
+        else:
+            tail = accumulated[-300:] if len(accumulated) > 300 else accumulated
+            logger.info(
+                "coach-stream NO_JSON accumulated_len=%d tail=%r",
+                len(accumulated), tail,
+            )
+        if parsed:
+            filtered = filter_by_confidence(parsed)
+            if filtered:
+                filtered = _filter_completed_habit_actions(filtered, ctx)
+                if filtered:
+                    _persist_pending_actions(user_id, filtered, ctx)
+                    yield _sse({"type": "actions", "payload": filtered})
+
+        yield _sse({"type": "done"})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

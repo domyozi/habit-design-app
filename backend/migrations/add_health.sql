@@ -19,6 +19,7 @@ CREATE POLICY "health_logs_self_only" ON public.health_logs
 CREATE INDEX IF NOT EXISTS health_logs_user_recorded ON public.health_logs (user_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS health_logs_user_metric ON public.health_logs (user_id, metric, recorded_at DESC);
 
--- user_profiles に shortcuts_token カラムを追加（iOS Shortcuts 用の静的トークン）
+-- user_profiles に shortcuts_token カラムを追加（旧iOS Shortcuts 用トークン）
+-- 新規発行分は add_shortcuts_token_hash.sql の shortcuts_token_hash に保存する。
 ALTER TABLE public.user_profiles
-    ADD COLUMN IF NOT EXISTS shortcuts_token UUID DEFAULT gen_random_uuid();
+    ADD COLUMN IF NOT EXISTS shortcuts_token UUID;

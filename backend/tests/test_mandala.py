@@ -81,10 +81,10 @@ class TestGetMandala:
         assert body["data"]["id"] == TEST_MANDALA_ID
         assert body["data"]["cells"] == TEST_CELLS
 
-    def test_unauthenticated_get_returns_403(self, client):
-        """TC-MANDALA-05: 未認証の GET で 403 が返る"""
+    def test_unauthenticated_get_returns_401(self, client):
+        """TC-MANDALA-05: 未認証の GET で 401 が返る"""
         response = client.get("/api/mandala")
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 class TestSaveMandala:
@@ -151,7 +151,7 @@ class TestSaveMandala:
             # UPDATE の結果
             (
                 mock_sb.table.return_value.update.return_value
-                .eq.return_value.execute.return_value.data
+                .eq.return_value.eq.return_value.execute.return_value.data
             ) = [updated_record]
 
             response = client.post(
@@ -165,10 +165,10 @@ class TestSaveMandala:
         assert body["success"] is True
         assert body["data"]["cells"] == new_cells
 
-    def test_unauthenticated_post_returns_403(self, client):
-        """TC-MANDALA-06: 未認証の POST で 403 が返る"""
+    def test_unauthenticated_post_returns_401(self, client):
+        """TC-MANDALA-06: 未認証の POST で 401 が返る"""
         response = client.post(
             "/api/mandala",
             json={"cells": TEST_CELLS},
         )
-        assert response.status_code == 403
+        assert response.status_code == 401

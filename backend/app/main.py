@@ -16,7 +16,7 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import api_router
@@ -69,6 +69,9 @@ register_exception_handlers(app)
 # 例: FRONTEND_URL=https://habit.vercel.app,https://habit-preview.vercel.app
 _frontend_urls = os.getenv("FRONTEND_URL", "http://localhost:5173,http://localhost:5174")
 allow_origins = [url.strip() for url in _frontend_urls.split(",") if url.strip()]
+if any(origin == "*" for origin in allow_origins):
+    raise RuntimeError("FRONTEND_URL must not contain wildcard origins")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -76,6 +79,21 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["content-type", "authorization", "x-shortcuts-token"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy-Report-Only",
+        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+    )
+    return response
+
 
 # 【APIルーター登録】: /api/v1 プレフィックスで全エンドポイントをマウント 🔵
 app.include_router(api_router)

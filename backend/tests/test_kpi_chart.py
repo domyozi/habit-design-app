@@ -52,7 +52,7 @@ class TestGetKpiLogsChart:
 
             # ログ取得
             mock_sb.table.return_value.select.return_value \
-                .eq.return_value.gte.return_value.order.return_value.execute.return_value \
+                .eq.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value \
                 .data = LOGS_DATA
 
             response = client.get(
@@ -80,7 +80,7 @@ class TestGetKpiLogsChart:
                 .data = KPI_DATA
             # 記録なし
             mock_sb.table.return_value.select.return_value \
-                .eq.return_value.gte.return_value.order.return_value.execute.return_value \
+                .eq.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value \
                 .data = []
 
             response = client.get(
@@ -105,7 +105,7 @@ class TestGetKpiLogsChart:
                 .eq.return_value.eq.return_value.single.return_value.execute.return_value \
                 .data = KPI_DATA
             mock_sb.table.return_value.select.return_value \
-                .eq.return_value.gte.return_value.order.return_value.execute.return_value \
+                .eq.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value \
                 .data = LOGS_DATA
 
             response = client.get(
@@ -128,7 +128,7 @@ class TestGetKpiLogsChart:
                 .eq.return_value.eq.return_value.single.return_value.execute.return_value \
                 .data = KPI_DATA
             mock_sb.table.return_value.select.return_value \
-                .eq.return_value.gte.return_value.order.return_value.execute.return_value \
+                .eq.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value \
                 .data = LOGS_DATA
 
             response = client.get(
@@ -148,15 +148,21 @@ class TestGetKpiLogsChart:
         with patch("app.api.routes.kpis.get_supabase") as mock_get:
             mock_sb = MagicMock()
             mock_get.return_value = mock_sb
-            mock_sb.table.return_value.select.return_value \
+            kpis_table = MagicMock()
+            kpis_table.select.return_value \
                 .eq.return_value.eq.return_value.single.return_value.execute.return_value \
                 .data = KPI_DATA
-            mock_sb.table.return_value.select.return_value \
-                .eq.return_value.gte.return_value.order.return_value.execute.return_value \
+            logs_table = MagicMock()
+            logs_table.select.return_value \
+                .eq.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value \
                 .data = LOGS_DATA
+            mock_sb.table.side_effect = {
+                "kpis": kpis_table,
+                "kpi_logs": logs_table,
+            }.__getitem__
 
             response = client.get(
-                f"/api/kpis/{TEST_KPI_ID}/logs?granularity=daily&range=7d",
+                f"/api/kpis/{TEST_KPI_ID}/logs?granularity=daily&range=30d",
                 headers={"Authorization": f"Bearer {valid_token}"},
             )
 
@@ -193,4 +199,20 @@ class TestGetKpiLogsChart:
                 f"/api/kpis/{TEST_KPI_ID}/logs?granularity=invalid",
                 headers={"Authorization": f"Bearer {valid_token}"},
             )
+        assert response.status_code == 422
+
+    def test_invalid_or_too_large_range(self, client, valid_token):
+        """range は形式と上限を満たさない場合 422 を返す。"""
+        with patch("app.api.routes.kpis.get_supabase") as mock_get:
+            mock_sb = MagicMock()
+            mock_get.return_value = mock_sb
+            mock_sb.table.return_value.select.return_value \
+                .eq.return_value.eq.return_value.single.return_value.execute.return_value \
+                .data = KPI_DATA
+
+            response = client.get(
+                f"/api/kpis/{TEST_KPI_ID}/logs?range=999999d",
+                headers={"Authorization": f"Bearer {valid_token}"},
+            )
+
         assert response.status_code == 422

@@ -168,7 +168,7 @@ def classify_voice_input(
 
     except anthropic.APIError as e:
         logger.error("Claude API障害: %s", str(e))
-        raise AIUnavailableError(f"Claude APIが利用不能です: {str(e)}") from e
+        raise AIUnavailableError("Claude API is unavailable") from e
 
 
 async def match_kpi_candidates(

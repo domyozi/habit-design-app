@@ -110,6 +110,48 @@ class TestVoiceInputEndpoint:
         assert data["data"]["type"] == "checklist"  # 【確認内容】: 分類タイプ 🔵
         assert len(data["data"]["updated_habits"]) == 1  # 【確認内容】: 1件更新 🔵
 
+    def test_checklist_rejects_unowned_habit_id_from_ai(self, client, valid_token):
+        """LLMがユーザー所有でない habit_id を返してもDB更新しない。"""
+        from app.services.voice_classifier import ClassificationResult, HabitCheckResult
+
+        other_habit_id = "00000000-0000-0000-0000-000000009999"
+        checklist_result = ClassificationResult(
+            type="checklist",
+            habit_results=[
+                HabitCheckResult(
+                    habit_id=other_habit_id,
+                    habit_title="他ユーザーの習慣",
+                    completed=True,
+                    confidence=0.95,
+                )
+            ],
+        )
+
+        with patch("app.api.routes.voice_input.get_supabase") as mock_get_supabase, \
+             patch("app.api.routes.voice_input.classify_voice_input", return_value=checklist_result), \
+             patch("app.api.routes.voice_input.streak_service") as mock_streak, \
+             patch("app.api.routes.voice_input.badge_service") as mock_badge:
+
+            mock_sb = MagicMock()
+            mock_get_supabase.return_value = mock_sb
+            mock_sb.table.return_value.select.return_value \
+                .eq.return_value.eq.return_value.order.return_value \
+                .execute.return_value.data = [{"id": TEST_HABIT_ID, "title": "早起き"}]
+
+            response = client.post(
+                "/api/voice-input",
+                json={"text": "他ユーザーの習慣を達成", "date": TODAY},
+                headers={"Authorization": f"Bearer {valid_token}"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["updated_habits"] == []
+        assert data["failed_habits"][0]["habit_id"] == other_habit_id
+        mock_sb.table.return_value.upsert.assert_not_called()
+        mock_streak.update_streak.assert_not_called()
+        mock_badge.check_and_award_badges.assert_not_called()
+
     def test_journaling_classification_saves_journal(self, client, valid_token):
         """
         TC-002: ジャーナリング分類時に journal_entries に保存されること
@@ -219,18 +261,18 @@ class TestVoiceInputEndpoint:
         assert data["error"]["code"] == "AI_UNAVAILABLE"  # 【確認内容】: AI_UNAVAILABLEエラー 🔵
         assert "通常のトラッキング機能" in data["error"]["message"]  # 【確認内容】: 継続案内 🔵
 
-    def test_no_auth_returns_403(self, client):
+    def test_no_auth_returns_401(self, client):
         """
-        TC-008: 未認証で 403
+        TC-008: 未認証で 401
 
-        【期待される動作】: 403
+        【期待される動作】: 401
         🔵 信頼性レベル: NFR-101 より
         """
         response = client.post(
             "/api/voice-input",
             json={"text": "テスト", "date": TODAY},
         )
-        assert response.status_code == 403  # 【確認内容】: 未認証で403 🔵
+        assert response.status_code == 401  # 【確認内容】: 未認証で401 🔵
 
 
 # ==================================================

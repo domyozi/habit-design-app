@@ -378,6 +378,18 @@ class CreateGoalRequest(BaseModel):
     display_order: Optional[int] = None
 
 
+class UpdateGoalRequest(BaseModel):
+    """
+    【目標更新リクエスト】Sprint G1: 個別 Goal の編集（title/description/display_order/is_active）
+    KGI 属性は別エンドポイント（PATCH /goals/{id}/kgi）で扱う。
+    """
+
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    display_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
 class CreateHabitRequest(BaseModel):
     """
     【習慣作成リクエスト】
@@ -414,9 +426,12 @@ class UpdateHabitRequest(BaseModel):
     # Literal にすると Pydantic が 422 を返してしまい、仕様の 400 FORBIDDEN_ACTION と不整合になる
     action: str
     title: Optional[str] = None
+    description: Optional[str] = None
+    frequency: Optional[HabitFrequency] = None
     scheduled_time: Optional[str] = None
     goal_id: Optional[str] = None
     display_order: Optional[int] = None
+    is_active: Optional[bool] = None
     # 量・時刻系（manual_edit でのみ更新される想定）
     metric_type: Optional[HabitMetricType] = None
     target_value: Optional[float] = None
@@ -428,6 +443,16 @@ class UpdateHabitRequest(BaseModel):
     proof_type: Optional[Literal["none", "photo", "auto"]] = None
     source_kind: Optional[str] = None
     xp_base: Optional[int] = None
+
+
+class ReorderHabitsRequest(BaseModel):
+    """
+    【習慣並び替えリクエスト】
+    渡された順序で display_order を 0..n-1 に振り直す。
+    Sprint A-dnd: ドラッグ＆ドロップで並び替えた結果を 1 リクエストで送る。
+    """
+
+    ordered_ids: list[str] = Field(..., min_length=0)
 
 
 class UpdateHabitLogRequest(BaseModel):
@@ -611,6 +636,43 @@ class KpiCreate(BaseModel):
     unit: Optional[str] = Field(None, max_length=20)  # REQ-KPI-004
     tracking_frequency: TrackingFrequency  # REQ-KPI-003
     display_order: int = 0
+
+
+class SuggestKpisRequest(BaseModel):
+    """
+    【AI KPI 提案リクエスト】Sprint G3: 指定 Goal に対する KPI 候補を AI が提案する。
+    """
+
+    goal_id: str
+
+
+class AiKpiSuggestion(BaseModel):
+    """
+    【AI KPI 提案 1 件】Sprint G3。LLM が JSON で吐いたものをパースしてこの形に詰める。
+    """
+
+    title: str = Field(..., max_length=200)
+    metric_type: MetricType
+    tracking_frequency: TrackingFrequency
+    target_value: Optional[float] = None
+    unit: Optional[str] = None
+    reason: str = Field(..., max_length=400)
+    link_habit_ids: list[str] = []
+
+
+class KpiUpdate(BaseModel):
+    """
+    【KPI 更新リクエスト】Sprint G1: 個別 KPI の編集。
+    全フィールド optional。送られたフィールドだけ更新する。
+    """
+
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = None
+    metric_type: Optional[MetricType] = None
+    target_value: Optional[float] = None
+    unit: Optional[str] = Field(None, max_length=20)
+    tracking_frequency: Optional[TrackingFrequency] = None
+    display_order: Optional[int] = None
 
 
 class KpiResponse(BaseModel):

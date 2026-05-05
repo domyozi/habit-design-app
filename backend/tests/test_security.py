@@ -7,6 +7,9 @@ TC-001〜TC-008 のテストケースを実装する
 - get_current_user(): FastAPI依存関数（Bearer認証）
 - 認証エンドポイント: /api/me (テスト用エンドポイント)
 """
+import base64
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -111,12 +114,38 @@ class TestVerifyToken:
         # 【結果検証】: Noneが返されること（有効期限なしトークンの拒否確認）
         assert result is None  # 【確認内容】: expクレームなしトークンはNoneを返す 🟡
 
+    def test_unsupported_algorithm_returns_none(self):
+        """
+        alg=none のような許可外アルゴリズムは、署名検証前に拒否する。
+        """
+        header = {"alg": "none", "typ": "JWT"}
+        payload = {
+            "sub": "00000000-0000-0000-0000-000000000001",
+            "aud": "authenticated",
+            "exp": 4_102_444_800,
+        }
+
+        def encode_part(value: dict) -> str:
+            raw = json.dumps(value, separators=(",", ":")).encode("utf-8")
+            return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+        unsigned_token = f"{encode_part(header)}.{encode_part(payload)}."
+
+        assert verify_token(unsigned_token) is None
+
 
 class TestAuthEndpoint:
     """
     認証エンドポイント の統合テスト
     対象: get_current_user() 依存関数 + /api/me エンドポイント
     """
+
+    def test_security_headers_present(self, client):
+        response = client.get("/")
+
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
 
     def test_valid_bearer_token_returns_200(self, client, valid_token):
         """
@@ -143,13 +172,13 @@ class TestAuthEndpoint:
         assert "user_id" in data  # 【確認内容】: レスポンスにuser_idキーが存在する 🔵
         assert data["user_id"] == "00000000-0000-0000-0000-000000000001"  # 【確認内容】: 正しいuser_idが返される 🔵
 
-    def test_no_auth_header_returns_403(self, client):
+    def test_no_auth_header_returns_401(self, client):
         """
-        TC-005: 未認証リクエストで403が返される
+        TC-005: 未認証リクエストで401が返される
 
         【テスト目的】: Authorizationヘッダーなしのリクエストが拒否されること
         【テスト内容】: ヘッダーなしのHTTPリクエストを送信
-        【期待される動作】: HTTP 403 (FastAPI HTTPBearerが先に403を返す)
+        【期待される動作】: HTTP 401
         🔵 信頼性レベル: auth-flow-testcases.md TC-005より
         """
         # 【テストデータ準備】: なし（ヘッダーなしリクエスト）
@@ -158,8 +187,16 @@ class TestAuthEndpoint:
         # 【実際の処理実行】: ヘッダーなしで/api/meにGETリクエスト
         response = client.get("/api/me")
 
-        # 【結果検証】: HTTP 403が返されること（HTTPBearerによる自動拒否）
-        assert response.status_code == 403  # 【確認内容】: ヘッダーなしで403 Forbidden 🔵
+        # 【結果検証】: HTTP 401が返されること（HTTPBearerによる自動拒否）
+        assert response.status_code == 401  # 【確認内容】: ヘッダーなしで401 Unauthorized 🔵
+
+    def test_query_token_is_not_accepted(self, client, valid_token):
+        """
+        JWTをURL queryに乗せる認証は、ログや履歴への漏えいを避けるため拒否する。
+        """
+        response = client.get(f"/api/ai/weekly-review/stream?token={valid_token}")
+
+        assert response.status_code == 403
 
     def test_invalid_bearer_token_returns_401(self, client, invalid_token):
         """

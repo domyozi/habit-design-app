@@ -1,0 +1,21 @@
+-- Migration: Google OAuth トークンの暗号化対応に伴う既存平文 row のクリア
+-- 対応するアプリ変更: backend/app/core/security.py の encrypt_token / decrypt_token、
+-- backend/app/services/google_token_service.py の save/fetch にラップ。
+--
+-- なぜ nuke するか:
+--   既存の access_token / refresh_token は平文。新しい Fernet 暗号化のもとでは
+--   そのままだと「鍵で復号できない値」が混在し、復号エラー → 静かな fallback で
+--   平文として使い続ける挙動になる。MVP ドライラン規模（数人）なので、再連携
+--   コストよりも「以後すべてのトークンが暗号化されている」状態の安全性を優先する。
+--
+-- 影響:
+--   - 既に Google Calendar 連携済のユーザーは Settings から「再連携」が必要
+--   - 数人規模なので Slack / 口頭で案内すれば十分
+--
+-- ロールバック:
+--   token は Google 側にあるので、ユーザーの再連携でいつでも復元可能。
+--   このマイグレーション自体に DDL 変更はないため、ロールバック不要。
+
+-- access_token / refresh_token は NOT NULL 制約があるため UPDATE できない。
+-- 行ごと DELETE して、UI 上「未連携」状態に戻す。再連携で encrypt 経由で再保存される。
+DELETE FROM google_oauth_tokens;

@@ -16,7 +16,7 @@
 """
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from app.core.security import get_current_user
@@ -37,6 +37,19 @@ def _get_mandala_id(supabase, user_id: str) -> str | None:
         .execute()
     )
     return result.data[0]["id"] if result.data else None
+
+
+def _ensure_owned_wanna_be(supabase, wanna_be_id: str, user_id: str) -> None:
+    result = (
+        supabase.table("wanna_be")
+        .select("id")
+        .eq("id", wanna_be_id)
+        .eq("user_id", user_id)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=422, detail="wanna_be_id is unknown or unauthorized")
 
 
 @router.get("/mandala")
@@ -63,6 +76,9 @@ async def save_mandala(
     user_id: str = Depends(get_current_user),
 ):
     supabase = get_supabase()
+    if request.wanna_be_id is not None:
+        _ensure_owned_wanna_be(supabase, request.wanna_be_id, user_id)
+
     existing = (
         supabase.table("mandala_charts")
         .select("id")
@@ -80,6 +96,7 @@ async def save_mandala(
             supabase.table("mandala_charts")
             .update(update_data)
             .eq("id", record_id)
+            .eq("user_id", user_id)
             .execute()
         )
         saved = result.data[0] if result.data else existing.data[0]
@@ -129,12 +146,13 @@ async def patch_daily_check(
         supabase.table("mandala_charts")
         .select("daily_checks")
         .eq("id", record_id)
+        .eq("user_id", user_id)
         .execute()
     )
     all_checks: dict = (current.data[0].get("daily_checks") or {}) if current.data else {}
     all_checks[date] = payload
 
-    supabase.table("mandala_charts").update({"daily_checks": all_checks}).eq("id", record_id).execute()
+    supabase.table("mandala_charts").update({"daily_checks": all_checks}).eq("id", record_id).eq("user_id", user_id).execute()
     return all_checks[date]
 
 
@@ -172,10 +190,11 @@ async def patch_tracked(
         supabase.table("mandala_charts")
         .select("tracked_actions")
         .eq("id", record_id)
+        .eq("user_id", user_id)
         .execute()
     )
     tracked: dict = (current.data[0].get("tracked_actions") or {}) if current.data else {}
     tracked.update(payload)
 
-    supabase.table("mandala_charts").update({"tracked_actions": tracked}).eq("id", record_id).execute()
+    supabase.table("mandala_charts").update({"tracked_actions": tracked}).eq("id", record_id).eq("user_id", user_id).execute()
     return tracked

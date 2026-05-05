@@ -29,7 +29,7 @@ async def list_notes(user_id: str = Depends(get_current_user)):
         .order("updated_at", desc=True)
         .execute()
     )
-    return result.data
+    return result.data or []
 
 
 @router.post("", status_code=201)
@@ -40,6 +40,7 @@ async def create_note(payload: dict, user_id: str = Depends(get_current_user)):
         "user_id": user_id,
         "title": payload.get("title", ""),
         "body": payload.get("body", ""),
+        "pinned": bool(payload.get("pinned", False)),
         "order_index": int(payload.get("order_index", 0)),
     }
     result = supabase.table("notes").insert(record).execute()
@@ -75,3 +76,4 @@ async def delete_note(note_id: str, user_id: str = Depends(get_current_user)):
     supabase.table("notes").update(
         {"deleted_at": datetime.now(timezone.utc).isoformat()}
     ).eq("id", note_id).eq("user_id", user_id).execute()
+    return None

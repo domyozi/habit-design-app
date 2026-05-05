@@ -5,18 +5,23 @@ TASK-0004: 認証フロー実装
 【機能概要】:
 - verify_token(): JWTトークンを検証してuser_idを返す
 - get_current_user(): FastAPI依存関数（Bearer認証でuser_idを取得）
+- encrypt_token() / decrypt_token(): Google OAuth トークンの対称暗号化（Fernet）
 
 🔵 信頼性レベル: auth-flow-requirements.md セクション2・TASK-0004.md より
 """
+import logging
 import time
 from typing import Any, Optional
 
 import httpx
-from fastapi import Depends, HTTPException, Query
+from cryptography.fernet import Fernet, InvalidToken
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # 【HTTPBearerインスタンス】: Authorization: Bearer <token> ヘッダーを自動解析
 # auto_error=True でヘッダーなしのリクエストには 403 を返す 🔵
@@ -25,6 +30,8 @@ http_bearer_optional = HTTPBearer(auto_error=False)
 
 _JWKS_CACHE: dict[str, Any] = {"expires_at": 0.0, "keys": []}
 _JWKS_CACHE_TTL_SECONDS = 300
+_SUPPORTED_HS_ALGORITHMS = {"HS256"}
+_SUPPORTED_JWKS_ALGORITHMS = {"RS256", "ES256"}
 
 
 def _get_cached_jwks() -> list[dict[str, Any]]:
@@ -53,10 +60,15 @@ def _get_verification_key(token: str) -> tuple[str | dict[str, Any], list[str]]:
     Supabase の旧HS256 secret と、新しい非対称署名JWKS の両方を受け入れる。
     """
     header = jwt.get_unverified_header(token)
-    algorithm = header.get("alg", "HS256")
+    algorithm = header.get("alg")
 
-    if algorithm == "HS256":
+    if algorithm in _SUPPORTED_HS_ALGORITHMS:
+        if not settings.SUPABASE_JWT_SECRET:
+            raise JWTError("Missing JWT secret")
         return settings.SUPABASE_JWT_SECRET, ["HS256"]
+
+    if algorithm not in _SUPPORTED_JWKS_ALGORITHMS:
+        raise JWTError("Unsupported signing algorithm")
 
     key_id = header.get("kid")
     if not key_id:
@@ -160,14 +172,13 @@ async def get_current_user(
 
 
 async def get_current_user_from_header_or_query(
-    token: str | None = Query(default=None),
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer_optional),
 ) -> str:
     """
-    EventSource のように Authorization ヘッダーを付けにくいケース向けに、
-    Bearer ヘッダーか query token のどちらかで認証する。
+    Streaming endpoints are authenticated with Bearer headers only.
+    JWTs in query strings are rejected to avoid leaking tokens through URLs.
     """
-    raw_token = credentials.credentials if credentials else token
+    raw_token = credentials.credentials if credentials else None
 
     if raw_token is None:
         raise HTTPException(
@@ -183,3 +194,64 @@ async def get_current_user_from_header_or_query(
         )
 
     return user_id
+
+
+# ─── OAuth トークン対称暗号化（Fernet） ──────────────────────────────────
+# Google OAuth の access_token / refresh_token を DB に保管する際、平文ではなく
+# Fernet で暗号化してから格納する。鍵は settings.OAUTH_TOKEN_ENC_KEY（env 経由）。
+# 鍵未設定（dev 想定）の場合は warning を出して平文をそのまま返す ＝ 後方互換動作。
+# 復号失敗時は None を返し、呼び出し側で再連携を促す。
+
+_FERNET_INSTANCE: Optional[Fernet] = None
+_FERNET_WARNED_NO_KEY = False
+
+
+def _get_fernet() -> Optional[Fernet]:
+    """OAUTH_TOKEN_ENC_KEY からシングルトンの Fernet を返す。鍵未設定なら None。"""
+    global _FERNET_INSTANCE, _FERNET_WARNED_NO_KEY
+    if _FERNET_INSTANCE is not None:
+        return _FERNET_INSTANCE
+    key = settings.OAUTH_TOKEN_ENC_KEY
+    if not key:
+        if not _FERNET_WARNED_NO_KEY:
+            logger.warning(
+                "OAUTH_TOKEN_ENC_KEY is not set. Google OAuth tokens are stored in plaintext. "
+                "Set OAUTH_TOKEN_ENC_KEY before production deployment.",
+            )
+            _FERNET_WARNED_NO_KEY = True
+        return None
+    try:
+        _FERNET_INSTANCE = Fernet(key.encode() if isinstance(key, str) else key)
+    except Exception:  # noqa: BLE001
+        logger.error("OAUTH_TOKEN_ENC_KEY is malformed (must be a valid Fernet key)")
+        return None
+    return _FERNET_INSTANCE
+
+
+def encrypt_token(plaintext: str) -> str:
+    """OAuth トークンを暗号化。鍵未設定なら平文をそのまま返す（dev fallback）。"""
+    if not plaintext:
+        return plaintext
+    f = _get_fernet()
+    if f is None:
+        return plaintext
+    return f.encrypt(plaintext.encode()).decode()
+
+
+def decrypt_token(value: Optional[str]) -> Optional[str]:
+    """暗号化トークンを復号。鍵未設定 / 平文（旧 row）はそのまま返す。復号失敗は None。"""
+    if value is None or value == "":
+        return value
+    f = _get_fernet()
+    if f is None:
+        # 鍵未設定なら value は平文として扱う
+        return value
+    try:
+        return f.decrypt(value.encode()).decode()
+    except InvalidToken:
+        # Fernet トークンとして妥当でない = 旧 row（平文）か、鍵が違う。
+        # 旧 row の場合: そのまま返してアクセスを通す（次回 save 時に暗号化される）。
+        # 鍵ローテーション後で復号できない場合: 再連携が必要だが、ここでは fallback として
+        # 平文扱いで返す（呼び出し側の Google API 呼び出しが失敗 → 再連携誘導される）。
+        logger.warning("decrypt_token: invalid token, returning as-is (legacy plaintext or key rotation)")
+        return value

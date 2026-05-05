@@ -155,16 +155,16 @@ class TestGetHabits:
         assert data["success"] is True  # 【確認内容】: success=true 🔵
         assert data["data"] == []  # 【確認内容】: 空リスト 🔵
 
-    def test_get_habits_no_auth_returns_403(self, client):
+    def test_get_habits_no_auth_returns_401(self, client):
         """
-        TC-013: 未認証リクエストで 403
+        TC-013: 未認証リクエストで 401
 
         【テスト目的】: Bearer ヘッダーなしは拒否されること
-        【期待される動作】: 403
+        【期待される動作】: 401
         🔵 信頼性レベル: NFR-101 より
         """
         response = client.get("/api/habits")
-        assert response.status_code == 403  # 【確認内容】: 未認証で403 🔵
+        assert response.status_code == 401  # 【確認内容】: 未認証で401 🔵
 
 
 # ==================================================
@@ -280,7 +280,7 @@ class TestUpdateHabit:
                 .execute.return_value.data = _make_habit()
             # UPDATE
             mock_sb.table.return_value.update.return_value \
-                .eq.return_value.execute.return_value.data = [updated_habit]
+                .eq.return_value.eq.return_value.execute.return_value.data = [updated_habit]
 
             response = client.patch(
                 f"/api/habits/{TEST_HABIT_ID}",
@@ -309,7 +309,7 @@ class TestUpdateHabit:
                 .eq.return_value.eq.return_value.single.return_value \
                 .execute.return_value.data = _make_habit()
             mock_sb.table.return_value.update.return_value \
-                .eq.return_value.execute.return_value.data = [updated_habit]
+                .eq.return_value.eq.return_value.execute.return_value.data = [updated_habit]
 
             response = client.patch(
                 f"/api/habits/{TEST_HABIT_ID}",
@@ -320,6 +320,48 @@ class TestUpdateHabit:
         assert response.status_code == 200  # 【確認内容】: manual_editは許可 🔵
         data = response.json()
         assert data["data"]["title"] == "ランニング45分"  # 【確認内容】: タイトルが更新 🔵
+
+    def test_update_habit_manual_edit_settings_fields(self, client, valid_token):
+        """
+        TC-005b: manual_edit で設定系フィールドを更新
+
+        【テスト目的】: 既存 habits スキーマの設定項目を PATCH で通せること
+        【期待される動作】: description/frequency/display_order/is_active が update に含まれる
+        """
+        updated_habit = _make_habit(title="朝の散歩")
+        updated_habit["description"] = "起床後に外へ出る"
+        updated_habit["frequency"] = "weekdays"
+        updated_habit["display_order"] = 4
+        updated_habit["is_active"] = False
+
+        with patch("app.api.routes.habits.get_supabase") as mock_get_supabase:
+            mock_sb = MagicMock()
+            mock_get_supabase.return_value = mock_sb
+            mock_sb.table.return_value.select.return_value \
+                .eq.return_value.eq.return_value.single.return_value \
+                .execute.return_value.data = _make_habit()
+            mock_sb.table.return_value.update.return_value \
+                .eq.return_value.eq.return_value.execute.return_value.data = [updated_habit]
+
+            response = client.patch(
+                f"/api/habits/{TEST_HABIT_ID}",
+                json={
+                    "action": "manual_edit",
+                    "title": "朝の散歩",
+                    "description": "起床後に外へ出る",
+                    "frequency": "weekdays",
+                    "display_order": 4,
+                    "is_active": False,
+                },
+                headers={"Authorization": f"Bearer {valid_token}"}
+            )
+
+        assert response.status_code == 200
+        update_payload = mock_sb.table.return_value.update.call_args.args[0]
+        assert update_payload["description"] == "起床後に外へ出る"
+        assert update_payload["frequency"] == "weekdays"
+        assert update_payload["display_order"] == 4
+        assert update_payload["is_active"] is False
 
     def test_update_habit_add_habit_action(self, client, valid_token):
         """
@@ -338,7 +380,7 @@ class TestUpdateHabit:
                 .eq.return_value.eq.return_value.single.return_value \
                 .execute.return_value.data = _make_habit()
             mock_sb.table.return_value.update.return_value \
-                .eq.return_value.execute.return_value.data = [updated_habit]
+                .eq.return_value.eq.return_value.execute.return_value.data = [updated_habit]
 
             response = client.patch(
                 f"/api/habits/{TEST_HABIT_ID}",
@@ -365,7 +407,7 @@ class TestUpdateHabit:
                 .eq.return_value.eq.return_value.single.return_value \
                 .execute.return_value.data = _make_habit()
             mock_sb.table.return_value.update.return_value \
-                .eq.return_value.execute.return_value.data = [updated_habit]
+                .eq.return_value.eq.return_value.execute.return_value.data = [updated_habit]
 
             response = client.patch(
                 f"/api/habits/{TEST_HABIT_ID}",

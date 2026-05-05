@@ -21,12 +21,15 @@ from app.core.security import get_current_user
 from app.core.supabase import get_supabase
 from app.models.schemas import (
     APIResponse,
+    CreateGoalRequest,
     Goal,
     GoalWithKgiResponse,
     SaveGoalsRequest,
     SetKgiRequest,
+    UpdateGoalRequest,
     UpdateKgiCurrentValueRequest,
 )
+from fastapi import Response
 
 # 【設計方針】:
 # Pydantic の max_length=3 ではなくルーターで件数チェックを行う理由:
@@ -36,8 +39,23 @@ from app.models.schemas import (
 
 router = APIRouter()
 
-# 【目標最大件数】: REQ-204 に基づく制約値
-MAX_GOALS = 3
+# 【目標最大件数】: 元仕様 REQ-204 では 3 件。
+# Sprint G1.5: 5 件に緩和（副業・健康・人間関係・学び・趣味… で 3 件はすぐ超えるため）。
+# AI 提案フロー（POST /goals）にも適用される共通上限。
+MAX_GOALS = 5
+
+
+def _ensure_owned_wanna_be(supabase, wanna_be_id: str, user_id: str) -> None:
+    result = (
+        supabase.table("wanna_be")
+        .select("id")
+        .eq("id", wanna_be_id)
+        .eq("user_id", user_id)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=422, detail="wanna_be_id is unknown or unauthorized")
 
 
 def build_goal_with_kgi_response(goal_data: dict) -> GoalWithKgiResponse:
@@ -130,6 +148,8 @@ async def save_goals(
         )
 
     supabase = get_supabase()
+    if request.wanna_be_id is not None:
+        _ensure_owned_wanna_be(supabase, request.wanna_be_id, user_id)
 
     # 【既存目標の非活性化】: 現在 is_active=true の目標を全て false に更新
     # これにより新しい目標セットへの置き換えを実現する
@@ -156,6 +176,126 @@ async def save_goals(
         status_code=201,
         content=APIResponse(success=True, data=saved_goals).model_dump(mode="json"),
     )
+
+
+@router.post("/goals/single", status_code=201)
+async def create_single_goal(
+    request: CreateGoalRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【POST /goals/single】Sprint G1: 既存 Goal を破壊せず 1 件追加する個別作成 API。
+    POST /goals (bulk) は既存を全て非活性化するため、UI 上の「+ NEW GOAL」用にこちらを使う。
+    最大 MAX_GOALS 件チェックは active な goals 件数で行う。
+    """
+    supabase = get_supabase()
+
+    if request.wanna_be_id is not None:
+        _ensure_owned_wanna_be(supabase, request.wanna_be_id, user_id)
+
+    # 既存 active goal の件数チェック（REQ-204 上限 3 件）
+    existing = (
+        supabase.table("goals")
+        .select("id, display_order")
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    rows = existing.data or []
+    if len(rows) >= MAX_GOALS:
+        raise AppError(
+            code="VALIDATION_ERROR",
+            message=f"目標は最大{MAX_GOALS}件まで設定できます",
+            status_code=400,
+        )
+
+    # display_order が指定されてなければ既存 max + 1
+    if request.display_order is None:
+        next_order = (max((r["display_order"] or 0) for r in rows) + 1) if rows else 0
+    else:
+        next_order = request.display_order
+
+    new_goal = {
+        "user_id": user_id,
+        "wanna_be_id": request.wanna_be_id,
+        "title": request.title,
+        "description": request.description,
+        "display_order": next_order,
+        "is_active": True,
+    }
+    result = supabase.table("goals").insert(new_goal).execute()
+    saved = Goal(**result.data[0])
+    return JSONResponse(
+        status_code=201,
+        content=APIResponse(success=True, data=saved).model_dump(mode="json"),
+    )
+
+
+@router.patch("/goals/{goal_id}")
+async def update_goal(
+    goal_id: str,
+    request: UpdateGoalRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【PATCH /goals/{goal_id}】Sprint G1: 個別 Goal の編集。
+    title/description/display_order/is_active を任意に更新する。KGI 属性は別 endpoint。
+    """
+    supabase = get_supabase()
+
+    existing = (
+        supabase.table("goals")
+        .select("id")
+        .eq("id", goal_id)
+        .eq("user_id", user_id)
+        .single()
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    update_data = request.model_dump(exclude_none=True)
+    if not update_data:
+        # 何も更新しないリクエスト → 200 で現状を返す
+        current = (
+            supabase.table("goals").select("*").eq("id", goal_id).single().execute()
+        )
+        return JSONResponse(
+            content=APIResponse(success=True, data=Goal(**current.data)).model_dump(mode="json"),
+        )
+
+    result = (
+        supabase.table("goals")
+        .update(update_data)
+        .eq("id", goal_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return JSONResponse(
+        content=APIResponse(success=True, data=Goal(**result.data[0])).model_dump(mode="json"),
+    )
+
+
+@router.delete("/goals/{goal_id}", status_code=204)
+async def delete_goal(
+    goal_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【DELETE /goals/{goal_id}】Sprint G1: 論理削除（is_active=false）。
+    紐付く KPI は別途 KPI の論理削除で対応する想定（cascade はしない）。
+    """
+    supabase = get_supabase()
+    result = (
+        supabase.table("goals")
+        .update({"is_active": False})
+        .eq("id", goal_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return Response(status_code=204)
 
 
 @router.patch("/goals/{goal_id}/kgi")

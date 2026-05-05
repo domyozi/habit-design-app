@@ -66,6 +66,7 @@ async def process_voice_input(
         .execute()
     )
     user_habits = habits_result.data or []
+    allowed_habit_ids = {habit["id"] for habit in user_habits}
 
     # 【AI分類】: Claude APIでテキストを分類
     try:
@@ -93,6 +94,7 @@ async def process_voice_input(
         user_id=user_id,
         log_date=log_date,
         original_text=request.text,
+        allowed_habit_ids=allowed_habit_ids,
     )
 
 
@@ -102,13 +104,14 @@ async def _handle_classification(
     user_id: str,
     log_date: date,
     original_text: str,
+    allowed_habit_ids: set[str],
 ):
     """
     【分類後処理】: 分類タイプに応じてDB操作を実行する
     🔵 信頼性レベル: REQ-401/402/403・EDGE-003 より
     """
     if classification.type == "checklist":
-        return await _handle_checklist(supabase, classification, user_id, log_date)
+        return await _handle_checklist(supabase, classification, user_id, log_date, allowed_habit_ids)
 
     if classification.type in ("journaling", "daily_report", "kpi_update"):
         return await _handle_journal(
@@ -126,7 +129,13 @@ async def _handle_classification(
     )
 
 
-async def _handle_checklist(supabase, classification: ClassificationResult, user_id: str, log_date: date):
+async def _handle_checklist(
+    supabase,
+    classification: ClassificationResult,
+    user_id: str,
+    log_date: date,
+    allowed_habit_ids: set[str],
+):
     """
     【チェックリスト処理】: 各習慣のログを更新し、ストリーク・バッジも更新する
     🔵 信頼性レベル: REQ-401/403 より
@@ -137,6 +146,14 @@ async def _handle_checklist(supabase, classification: ClassificationResult, user
     for habit_result in (classification.habit_results or []):
         habit_id = habit_result.habit_id
         completed = habit_result.completed
+
+        if habit_id not in allowed_habit_ids:
+            failed_habits.append({
+                "habit_id": habit_id,
+                "habit_title": habit_result.habit_title,
+                "error": "Habit is not owned by current user or is inactive",
+            })
+            continue
 
         try:
             # 【ログUPSERT】
@@ -162,10 +179,10 @@ async def _handle_checklist(supabase, classification: ClassificationResult, user
                 current_streak = streak_service.calculate_streak(
                     supabase, habit_id, user_id, log_date
                 )
-                streak_service.update_streak(supabase, habit_id, current_streak)
+                streak_service.update_streak(supabase, habit_id, current_streak, user_id)
                 badge_service.check_and_award_badges(supabase, user_id, habit_id, current_streak)
             else:
-                supabase.table("habits").update({"current_streak": 0}).eq("id", habit_id).execute()
+                supabase.table("habits").update({"current_streak": 0}).eq("id", habit_id).eq("user_id", user_id).execute()
 
             updated_habits.append(log)
 
@@ -174,7 +191,7 @@ async def _handle_checklist(supabase, classification: ClassificationResult, user
             failed_habits.append({
                 "habit_id": habit_id,
                 "habit_title": habit_result.habit_title,
-                "error": str(e),
+                "error": "update_failed",
             })
 
     return APIResponse(

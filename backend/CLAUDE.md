@@ -6,13 +6,14 @@ FastAPI + Python 3.12 によるバックエンドプロジェクト。
 
 ## エージェント間の連携ルール
 
-- `backend/` は Claude (TSUMIKI) 専管。Codex・AIDesigner は読み取り専用。
-- **API を変更したら必ず先にドキュメントを更新する**（Codex が古い仕様で実装しないよう）
+- `backend/` は Claude Code (TSUMIKI) が実装する。AIDesigner は読み取り専用。
+- フロントエンド（`frontend-v2/`）も Claude Code が担当するため、API 変更はフロント実装側にもそのまま波及する。
+- **API を変更したら必ず先にドキュメントを更新する**（フロント側で古い仕様を参照しないよう）
   - `docs/design/habit-design-app/api-endpoints.md` を更新
   - `docs/design/habit-design-app/interfaces.ts` を更新
-  - `/CODEX.md` の「Claude からの共有指示」に変更内容を追記
+  - 旧運用の名残として `/CODEX.md` の「Claude からの共有指示」に追記する慣行があったが、現行は不要（参照用に残置のみ）
 - `backend/app/models/schemas.py` が型定義の「正」。`interfaces.ts` と常に整合させる。
-- 新しいエンドポイントを追加した場合は Swagger UI (`/docs`) で動作確認してから Codex に通知する。
+- 新しいエンドポイントを追加した場合は Swagger UI (`/docs`) で動作確認してからフロント実装に進む。
 
 ## 開発コマンド
 

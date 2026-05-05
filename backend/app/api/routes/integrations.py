@@ -9,8 +9,10 @@
   GET  /api/integrations/token        - Shortcuts 用トークンを取得（JWT）
   POST /api/integrations/token/regenerate - トークンを再生成（JWT）
 """
+import hashlib
+import logging
+import secrets
 import time
-import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -19,6 +21,8 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
 from app.models.schemas import HealthMetricItem, HealthBatchRequest
+
+logger = logging.getLogger(__name__)
 
 # レート制限: 1時間あたり最大 120 リクエスト（iOS Shortcuts は1日1〜4回程度）
 _INTEGRATIONS_RATE_LIMIT_MAX = 120
@@ -51,12 +55,47 @@ ALLOWED_METRICS = {
 }
 
 
-def _get_user_by_shortcuts_token(token: str) -> Optional[str]:
-    """shortcuts_token で user_id を取得する。"""
+def _generate_shortcuts_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _hash_shortcuts_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _store_shortcuts_token_hash(user_id: str, token: str) -> None:
     supabase = get_supabase()
+    supabase.table("user_profiles").update({
+        "shortcuts_token_hash": _hash_shortcuts_token(token),
+        "shortcuts_token": None,
+    }).eq("id", user_id).execute()
+
+
+def _migrate_legacy_shortcuts_token(user_id: str, token: str) -> None:
+    try:
+        _store_shortcuts_token_hash(user_id, token)
+    except Exception:
+        logger.exception("Failed to migrate legacy Shortcuts token")
+
+
+def _get_user_by_shortcuts_token(token: str) -> Optional[str]:
+    """Shortcuts トークンで user_id を取得する。DB上ではハッシュで照合する。"""
+    supabase = get_supabase()
+    token_hash = _hash_shortcuts_token(token)
+
+    try:
+        result = supabase.table("user_profiles").select("id").eq("shortcuts_token_hash", token_hash).single().execute()
+        return result.data["id"] if result.data else None
+    except Exception:
+        pass
+
     try:
         result = supabase.table("user_profiles").select("id").eq("shortcuts_token", token).single().execute()
-        return result.data["id"] if result.data else None
+        if not result.data:
+            return None
+        user_id = result.data["id"]
+        _migrate_legacy_shortcuts_token(user_id, token)
+        return user_id
     except Exception:
         return None
 
@@ -98,30 +137,34 @@ def _insert_metric(user_id: str, metric: str, value: float, unit: Optional[str],
 
 
 def _parse_recorded_at(recorded_at_str: Optional[str]) -> datetime:
-    try:
-        return datetime.fromisoformat(recorded_at_str) if recorded_at_str else datetime.now(timezone.utc)
-    except (ValueError, TypeError):
+    if not recorded_at_str:
         return datetime.now(timezone.utc)
+
+    try:
+        recorded_at = datetime.fromisoformat(recorded_at_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Invalid recorded_at")
+
+    if recorded_at.tzinfo is None:
+        return recorded_at.replace(tzinfo=timezone.utc)
+    return recorded_at
 
 
 @router.post("/log", status_code=201)
 async def log_health_metric(
-    payload: dict,
+    payload: HealthMetricItem,
     user_id: str = Depends(_resolve_user),
 ):
     """単一の健康データを記録する。JWT または X-Shortcuts-Token で認証。"""
     _enforce_integrations_rate_limit(user_id)
-    metric = payload.get("metric", "")
-    if metric not in ALLOWED_METRICS:
-        raise HTTPException(status_code=400, detail=f"Unknown metric: {metric}. Allowed: {sorted(ALLOWED_METRICS)}")
+    if payload.metric not in ALLOWED_METRICS:
+        raise HTTPException(status_code=400, detail=f"Unknown metric: {payload.metric}. Allowed: {sorted(ALLOWED_METRICS)}")
 
-    value = float(payload.get("value", 0))
-    unit = payload.get("unit")
-    recorded_at = _parse_recorded_at(payload.get("recorded_at"))
+    recorded_at = _parse_recorded_at(payload.recorded_at)
 
-    _insert_metric(user_id, metric, value, unit, recorded_at)
+    _insert_metric(user_id, payload.metric, payload.value, payload.unit, recorded_at)
 
-    return {"saved": True, "metric": metric, "value": value, "unit": unit}
+    return {"saved": True, "metric": payload.metric, "value": payload.value, "unit": payload.unit}
 
 
 @router.post("/batch", status_code=201)
@@ -142,8 +185,9 @@ async def batch_log_health_metrics(
             recorded_at = _parse_recorded_at(item.recorded_at)
             _insert_metric(user_id, item.metric, item.value, item.unit, recorded_at)
             saved.append(item.metric)
-        except Exception as e:
-            errors.append({"metric": item.metric, "error": str(e)})
+        except Exception:
+            logger.exception("Failed to insert health metric")
+            errors.append({"metric": item.metric, "error": "save_failed"})
 
     return {"saved_count": len(saved), "saved": saved, "errors": errors}
 
@@ -216,17 +260,24 @@ async def get_health_summary(
 async def get_shortcuts_token(
     user_id: str = Depends(get_current_user),
 ):
-    """ユーザーの Shortcuts 用トークンを取得する（なければ生成）。"""
+    """ユーザーの Shortcuts 用トークン状態を取得する（なければ生成し、その場だけ返す）。"""
     supabase = get_supabase()
-    result = supabase.table("user_profiles").select("shortcuts_token").eq("id", user_id).single().execute()
-    token = result.data.get("shortcuts_token") if result.data else None
+    result = supabase.table("user_profiles").select("shortcuts_token_hash,shortcuts_token").eq("id", user_id).single().execute()
+    profile = result.data or {}
 
-    if not token:
-        new_token = str(uuid.uuid4())
-        supabase.table("user_profiles").update({"shortcuts_token": new_token}).eq("id", user_id).execute()
-        token = new_token
+    token_hash = profile.get("shortcuts_token_hash")
+    legacy_token = profile.get("shortcuts_token")
 
-    return {"token": str(token)}
+    if token_hash:
+        return {"configured": True}
+
+    if legacy_token:
+        _migrate_legacy_shortcuts_token(user_id, str(legacy_token))
+        return {"configured": True}
+
+    new_token = _generate_shortcuts_token()
+    _store_shortcuts_token_hash(user_id, new_token)
+    return {"configured": True, "token": new_token}
 
 
 @router.post("/token/regenerate")
@@ -234,7 +285,6 @@ async def regenerate_shortcuts_token(
     user_id: str = Depends(get_current_user),
 ):
     """Shortcuts 用トークンを再生成する。"""
-    new_token = str(uuid.uuid4())
-    supabase = get_supabase()
-    supabase.table("user_profiles").update({"shortcuts_token": new_token}).eq("id", user_id).execute()
-    return {"token": new_token}
+    new_token = _generate_shortcuts_token()
+    _store_shortcuts_token_hash(user_id, new_token)
+    return {"configured": True, "token": new_token}

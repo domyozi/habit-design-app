@@ -97,19 +97,19 @@ class TestGetUserProfile:
         assert data["success"] is False  # 【確認内容】: success=false 🔵
         assert data["error"]["code"] == "NOT_FOUND"  # 【確認内容】: NOT_FOUNDエラーコード 🔵
 
-    def test_get_profile_no_auth_returns_403(self, client):
+    def test_get_profile_no_auth_returns_401(self, client):
         """
-        TC-010: 認証なしで403
+        TC-010: 認証なしで401
 
-        【テスト目的】: Authorization ヘッダーなしで 403 が返ること
+        【テスト目的】: Authorization ヘッダーなしで 401 が返ること
         【テスト内容】: ヘッダーなしリクエスト
-        【期待される動作】: HTTP 403（BUG-0002: HTTPBearer auto_error=True の動作）
+        【期待される動作】: HTTP 401
         🔵 信頼性レベル: NFR-101 / BUG-0002より
         """
-        # 【初期条件設定】: Authorization ヘッダーなし（BUG-0002: 403が返る既知の動作）
+        # 【初期条件設定】: Authorization ヘッダーなし
         response = client.get("/api/users/me")
-        # 【結果検証】: 403（BUG-0002: 理想は401だが現状403）
-        assert response.status_code == 403  # 【確認内容】: 未認証で403 🔵
+        # 【結果検証】: 401
+        assert response.status_code == 401  # 【確認内容】: 未認証で401 🔵
 
     def test_get_profile_invalid_token_returns_401(self, client, invalid_token):
         """

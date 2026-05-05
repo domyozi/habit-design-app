@@ -124,13 +124,13 @@ class TestWannaBeAnalyze:
         assert response.status_code == 200  # 【確認内容】: SSEなので200 🔵
         assert "AI_UNAVAILABLE" in response.text  # 【確認内容】: AI障害エラーがSSEで返る 🔵
 
-    def test_wanna_be_analyze_no_auth_returns_403(self, client):
-        """未認証で 403"""
+    def test_wanna_be_analyze_no_auth_returns_401(self, client):
+        """未認証で 401"""
         response = client.post(
             "/api/wanna-be/analyze",
             json={"text": "健康的なライフスタイル"},
         )
-        assert response.status_code == 403  # 【確認内容】: 未認証で403 🔵
+        assert response.status_code == 401  # 【確認内容】: 未認証で401 🔵
 
 
 # ==================================================
