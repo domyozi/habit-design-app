@@ -17,7 +17,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import os
 import secrets
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -47,22 +49,54 @@ def _state_secret() -> bytes:
     return hashlib.sha256(b"google-oauth-state:" + base).digest()
 
 
+# OAuth state は CSRF 対策に加え、リプレイ攻撃軽減のため 10 分の TTL を持たせる。
+# payload に発行時刻 (iat、unix sec) を含め、HMAC で改ざん検知。
+_STATE_TTL_SEC = 10 * 60
+
+
 def _make_state(user_id: str) -> str:
     nonce = secrets.token_urlsafe(16)
-    payload = f"{user_id}.{nonce}".encode("utf-8")
+    iat = str(int(time.time()))
+    payload = f"{user_id}.{nonce}.{iat}".encode("utf-8")
     sig = hmac.new(_state_secret(), payload, hashlib.sha256).hexdigest()
-    return f"{user_id}.{nonce}.{sig}"
+    return f"{user_id}.{nonce}.{iat}.{sig}"
 
 
 def _verify_state(state: str) -> Optional[str]:
-    try:
-        user_id, nonce, sig = state.split(".")
-    except ValueError:
-        return None
-    expected = hmac.new(_state_secret(), f"{user_id}.{nonce}".encode("utf-8"), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, sig):
-        return None
-    return user_id
+    parts = state.split(".")
+    # 旧形式 (user_id, nonce, sig) と新形式 (user_id, nonce, iat, sig) の両方を受け入れる
+    # ただし旧形式は dev でのみ許容（migration 期）。production では拒否。
+    if len(parts) == 4:
+        user_id, nonce, iat_s, sig = parts
+        expected = hmac.new(
+            _state_secret(),
+            f"{user_id}.{nonce}.{iat_s}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            return None
+        try:
+            iat = int(iat_s)
+        except ValueError:
+            return None
+        if time.time() - iat > _STATE_TTL_SEC:
+            # 期限切れ
+            return None
+        return user_id
+    if len(parts) == 3:
+        # 旧形式（TTL なし）。production では拒否。
+        if os.getenv("ENV", "").lower() == "production":
+            return None
+        user_id, nonce, sig = parts
+        expected = hmac.new(
+            _state_secret(),
+            f"{user_id}.{nonce}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            return None
+        return user_id
+    return None
 
 
 @router.post("/oauth/start")

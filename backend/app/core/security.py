@@ -10,6 +10,7 @@ TASK-0004: 認証フロー実装
 🔵 信頼性レベル: auth-flow-requirements.md セクション2・TASK-0004.md より
 """
 import logging
+import os
 import time
 from typing import Any, Optional
 
@@ -22,6 +23,12 @@ from jose import JWTError, jwt
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _is_production() -> bool:
+    """`ENV=production` のときだけ True。strict モード判定に使う。
+    main.py の IS_PRODUCTION とは独立に評価したいため関数化。"""
+    return os.getenv("ENV", "").lower() == "production"
 
 # 【HTTPBearerインスタンス】: Authorization: Bearer <token> ヘッダーを自動解析
 # auto_error=True でヘッダーなしのリクエストには 403 を返す 🔵
@@ -207,12 +214,20 @@ _FERNET_WARNED_NO_KEY = False
 
 
 def _get_fernet() -> Optional[Fernet]:
-    """OAUTH_TOKEN_ENC_KEY からシングルトンの Fernet を返す。鍵未設定なら None。"""
+    """OAUTH_TOKEN_ENC_KEY からシングルトンの Fernet を返す。
+    production では鍵未設定 / malformed は起動時に raise している前提（main.py で gate）
+    だが、このモジュール単独使用に備え warning + None で防御的に動く。"""
     global _FERNET_INSTANCE, _FERNET_WARNED_NO_KEY
     if _FERNET_INSTANCE is not None:
         return _FERNET_INSTANCE
     key = settings.OAUTH_TOKEN_ENC_KEY
     if not key:
+        if _is_production():
+            raise RuntimeError(
+                "OAUTH_TOKEN_ENC_KEY is required in production. "
+                "Generate one with `python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"` "
+                "and set it in the deployment environment."
+            )
         if not _FERNET_WARNED_NO_KEY:
             logger.warning(
                 "OAUTH_TOKEN_ENC_KEY is not set. Google OAuth tokens are stored in plaintext. "
@@ -223,35 +238,45 @@ def _get_fernet() -> Optional[Fernet]:
     try:
         _FERNET_INSTANCE = Fernet(key.encode() if isinstance(key, str) else key)
     except Exception:  # noqa: BLE001
+        if _is_production():
+            raise RuntimeError("OAUTH_TOKEN_ENC_KEY is malformed (must be a valid Fernet key)")
         logger.error("OAUTH_TOKEN_ENC_KEY is malformed (must be a valid Fernet key)")
         return None
     return _FERNET_INSTANCE
 
 
 def encrypt_token(plaintext: str) -> str:
-    """OAuth トークンを暗号化。鍵未設定なら平文をそのまま返す（dev fallback）。"""
+    """OAuth トークンを暗号化。
+    - production: 鍵が無ければ _get_fernet が raise するので必ず暗号化される（fail-closed）
+    - dev: 鍵未設定なら平文をそのまま返す（dev fallback）
+    """
     if not plaintext:
         return plaintext
     f = _get_fernet()
     if f is None:
+        # _is_production() なら _get_fernet が raise しているのでここに来ない
         return plaintext
     return f.encrypt(plaintext.encode()).decode()
 
 
 def decrypt_token(value: Optional[str]) -> Optional[str]:
-    """暗号化トークンを復号。鍵未設定 / 平文（旧 row）はそのまま返す。復号失敗は None。"""
+    """暗号化トークンを復号。
+    - production: 復号失敗 = 不正な値。**None を返す**（呼び出し側で再連携誘導）
+    - dev: 復号失敗 = 旧 row の平文と判断し、そのまま返す（後方互換）
+    """
     if value is None or value == "":
         return value
     f = _get_fernet()
     if f is None:
-        # 鍵未設定なら value は平文として扱う
+        # 鍵未設定なら value は平文として扱う（dev のみ。production では _get_fernet が raise）
         return value
     try:
         return f.decrypt(value.encode()).decode()
     except InvalidToken:
-        # Fernet トークンとして妥当でない = 旧 row（平文）か、鍵が違う。
-        # 旧 row の場合: そのまま返してアクセスを通す（次回 save 時に暗号化される）。
-        # 鍵ローテーション後で復号できない場合: 再連携が必要だが、ここでは fallback として
-        # 平文扱いで返す（呼び出し側の Google API 呼び出しが失敗 → 再連携誘導される）。
-        logger.warning("decrypt_token: invalid token, returning as-is (legacy plaintext or key rotation)")
+        if _is_production():
+            # production: 復号できない値は信頼しない。再連携を促すため None を返す。
+            logger.warning("decrypt_token: invalid token in production, returning None to force re-auth")
+            return None
+        # dev: 旧 row（平文）の可能性を優先し、そのまま返す（後方互換）
+        logger.warning("decrypt_token: invalid token, returning as-is (legacy plaintext, dev only)")
         return value

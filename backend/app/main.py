@@ -26,6 +26,39 @@ from scheduler.weekly_review import setup_scheduler
 
 load_dotenv()
 
+# ─── 環境判定 ─────────────────────────────────────────────────
+# Railway 等で `ENV=production` を設定したときだけ strict モードを有効化する。
+# 未設定 / development では従来通りの緩い動作（dev 体験を壊さない）。
+IS_PRODUCTION = os.getenv("ENV", "").lower() == "production"
+
+
+def _assert_production_env() -> None:
+    """production では起動時に必須 env が揃っているか厳格チェックする。
+    typo / 設定漏れを deploy 後に気付く事故を未然に防ぐ。"""
+    required = [
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_JWT_SECRET",
+        "ANTHROPIC_API_KEY",
+        "FRONTEND_URL",
+        "OAUTH_TOKEN_ENC_KEY",
+        # Google OAuth は Calendar 連携がデフォルト機能なので必須扱い
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REDIRECT_URI",
+        "GOOGLE_OAUTH_FE_RETURN_URL",
+    ]
+    missing = [k for k in required if not os.getenv(k)]
+    if missing:
+        raise RuntimeError(
+            f"ENV=production だが以下の環境変数が未設定です: {', '.join(missing)}. "
+            f"Railway Variables を確認してください。"
+        )
+
+
+if IS_PRODUCTION:
+    _assert_production_env()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,11 +86,20 @@ async def lifespan(app: FastAPI):
     app.state.supabase = None
 
 
+# production では /docs /redoc /openapi.json を無効化する。
+# attack surface を狭め、内部スキーマの漏洩を防ぐ。dev では引き続き有効。
+_docs_kwargs = (
+    {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    if IS_PRODUCTION
+    else {}
+)
+
 app = FastAPI(
     title="Habit Design App API",
     description="未来の自分から逆算して習慣を設計・トラッキングするアプリのAPI",
     version="0.1.0",
     lifespan=lifespan,
+    **_docs_kwargs,
 )
 
 # 【エラーハンドラー登録】: 全エラーを ErrorResponse 形式に統一 🔵
