@@ -683,7 +683,10 @@ async def coach_stream(
 
         accumulated = ""
         try:
-            async for chunk in ai_service.stream_message(
+            # stream_message_events は text と web_search_started を流す。
+            # web 検索が始まったら frontend へ thinking_trace を emit して、
+            # ThinkingTrace UI が「Web 検索中」シマーを表示できるようにする。
+            async for ev in ai_service.stream_message_events(
                 messages=messages,
                 system_prompt=system_prompt,
                 # JSON action 出力で 1024 だと途中で切れて extract 失敗 → memory 更新が
@@ -702,8 +705,16 @@ async def coach_stream(
                     "max_uses": 3,
                 }],
             ):
-                accumulated += chunk
-                yield _sse({"type": "text_chunk", "content": chunk})
+                if ev.get("type") == "text":
+                    chunk = ev.get("content", "")
+                    accumulated += chunk
+                    yield _sse({"type": "text_chunk", "content": chunk})
+                elif ev.get("type") == "web_search_started":
+                    payload: dict = {"type": "thinking_trace", "step": "web_searching"}
+                    q = ev.get("query")
+                    if q:
+                        payload["query"] = q
+                    yield _sse(payload)
         except ai_service.AIUnavailableError as e:
             logger.error("coach-stream: claude unavailable: %s", e)
             yield _sse({"type": "error", "code": "STREAM_FAILED", "message": str(e)})

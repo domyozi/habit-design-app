@@ -134,6 +134,71 @@ async def stream_message(
         raise AIUnavailableError("Claude API is unavailable") from e
 
 
+async def stream_message_events(
+    messages: list[dict[str, str]],
+    system_prompt: str | None = None,
+    max_tokens: int = 1024,
+    async_client=None,
+    model: str = "claude-haiku-4-5-20251001",
+    tools: list[dict] | None = None,
+) -> AsyncGenerator[dict, None]:
+    """
+    stream_message のリッチ版。テキストチャンクに加えて server-side tool 利用も
+    検知して event として yield する。Coach UI で「web 検索中」表示を出すために
+    必要（Anthropic SDK の text_stream はテキストしか流さないため別経路）。
+
+    Yields:
+        - {"type": "text", "content": "..."}
+        - {"type": "web_search_started", "query": "<検索クエリ>" | None}
+
+    Raises:
+        AIUnavailableError: Claude API 利用不能
+    """
+    import anthropic
+
+    if async_client is None:
+        async_client = anthropic.AsyncAnthropic(
+            api_key=os.getenv("ANTHROPIC_API_KEY", "")
+        )
+
+    kwargs: dict = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+    if system_prompt:
+        kwargs["system"] = system_prompt
+    if tools:
+        kwargs["tools"] = tools
+
+    try:
+        async with async_client.messages.stream(**kwargs) as stream:
+            async for event in stream:
+                etype = getattr(event, "type", None)
+                if etype == "content_block_start":
+                    block = getattr(event, "content_block", None)
+                    btype = getattr(block, "type", None) if block else None
+                    # Anthropic 純正 web_search はサーバ側ツール扱い (server_tool_use)
+                    if btype == "server_tool_use":
+                        name = getattr(block, "name", None)
+                        if name == "web_search":
+                            inp = getattr(block, "input", None)
+                            query = None
+                            if isinstance(inp, dict):
+                                query = inp.get("query")
+                            yield {"type": "web_search_started", "query": query}
+                elif etype == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    dtype = getattr(delta, "type", None) if delta else None
+                    if dtype == "text_delta":
+                        text = getattr(delta, "text", "")
+                        if text:
+                            yield {"type": "text", "content": text}
+    except anthropic.APIError as e:
+        logger.error("Claude API障害 (stream_message_events): %s", str(e))
+        raise AIUnavailableError("Claude API is unavailable") from e
+
+
 async def analyze_wanna_be(
     wanna_be_text: str,
     async_client=None,
