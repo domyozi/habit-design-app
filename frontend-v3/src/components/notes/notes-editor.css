@@ -1,0 +1,616 @@
+.notes-editor-shell {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* Sprint notes-toolbar: Notion / DocBase 風のフラットツールバー。
+   - メニューバーとして画面端まで広げるため、左右 padding を持たせて full-width 化
+   - 既定はボーダーなし、hover で paperWarm 着色
+   - グループは notes-toolbar-group + notes-toolbar-divider で視覚的に区切る
+   - ボタンの font は inherit（mono は記号系のみ）にして字面を整える */
+.notes-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 24px;
+  background: rgba(248, 247, 243, 0.96);
+  border-top: 1px solid rgba(34, 34, 32, 0.08);
+  border-bottom: 1px solid rgba(34, 34, 32, 0.08);
+}
+
+.notes-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.notes-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(34, 34, 32, 0.12);
+}
+
+.notes-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(38, 37, 34, 0.78);
+  font: 600 13px/1 inherit;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.notes-toolbar button.is-bold { font-weight: 800; }
+.notes-toolbar button.is-italic { font-style: italic; font-family: serif; }
+.notes-toolbar button.is-underline { text-decoration: underline; text-underline-offset: 2px; }
+.notes-toolbar button.is-strike { text-decoration: line-through; }
+
+/* Sprint notes-color: 文字色 / 背景色 picker。 */
+.notes-color-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.notes-color-picker > button {
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 7px 1px;
+}
+
+.notes-color-icon-text {
+  font: 800 13px/1 inherit;
+  color: #262522;
+}
+
+.notes-color-icon-hl {
+  font: 800 13px/1 inherit;
+  background: linear-gradient(to top, #fde68a 50%, transparent 50%);
+  padding: 0 1px;
+}
+
+.notes-color-picker-active {
+  display: block;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.notes-color-picker-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  width: 168px;
+  padding: 8px;
+  background: #f8f7f3;
+  border: 1px solid rgba(34, 34, 32, 0.18);
+  border-radius: 4px;
+  box-shadow: 0 14px 30px rgba(35, 30, 20, 0.18);
+}
+
+.notes-color-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.notes-color-picker-grid button {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(34, 34, 32, 0.16);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
+  height: auto;
+  background: transparent;
+  transition: transform 80ms ease, border-color 80ms ease;
+}
+
+.notes-color-picker-grid button:hover {
+  transform: scale(1.08);
+  border-color: rgba(34, 34, 32, 0.45);
+}
+
+.notes-color-picker-grid button.is-selected {
+  border-color: #ba6f31;
+  box-shadow: 0 0 0 2px rgba(186, 111, 49, 0.35);
+}
+
+.notes-color-picker-clear {
+  margin-top: 8px;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(34, 34, 32, 0.14);
+  background: transparent;
+  color: rgba(38, 37, 34, 0.65);
+  font: 600 10px/1 inherit;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.notes-color-picker-clear:hover {
+  background: rgba(34, 34, 32, 0.04);
+  color: #262522;
+}
+
+/* highlight mark のレンダリング（背景色） */
+.notes-editor-prosemirror mark {
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+/* Sprint notes-bubble: テキスト選択時に floating で出る小ツールバー。 */
+.notes-bubble-toolbar {
+  position: fixed;
+  z-index: 70;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: #f8f7f3;
+  border: 1px solid rgba(34, 34, 32, 0.18);
+  box-shadow: 0 14px 30px rgba(35, 30, 20, 0.18);
+  border-radius: 5px;
+}
+
+.notes-bubble-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(38, 37, 34, 0.78);
+  font: 600 12px/1 inherit;
+  cursor: pointer;
+}
+
+.notes-bubble-toolbar button.is-bold { font-weight: 800; }
+.notes-bubble-toolbar button.is-italic { font-style: italic; font-family: serif; }
+.notes-bubble-toolbar button.is-underline { text-decoration: underline; text-underline-offset: 2px; }
+.notes-bubble-toolbar button.is-strike { text-decoration: line-through; }
+
+.notes-bubble-toolbar button:hover {
+  background: rgba(34, 34, 32, 0.06);
+  color: #1e1d1a;
+}
+
+.notes-bubble-toolbar button.is-active {
+  background: rgba(186, 111, 49, 0.12);
+  color: #9b4f2f;
+}
+
+.notes-toolbar button:hover {
+  background: rgba(34, 34, 32, 0.06);
+  color: #1e1d1a;
+}
+
+.notes-toolbar button.is-active {
+  background: rgba(186, 111, 49, 0.12);
+  color: #9b4f2f;
+}
+
+.notes-toolbar button:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.notes-toolbar-select {
+  height: 28px;
+  padding: 0 24px 0 8px;
+  border: 1px solid rgba(34, 34, 32, 0.14);
+  border-radius: 4px;
+  background:
+    linear-gradient(45deg, transparent 50%, rgba(34, 34, 32, 0.5) 50%) calc(100% - 10px) 50% / 5px 5px no-repeat,
+    transparent;
+  color: #262522;
+  font: 600 12px/1 inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.notes-toolbar-select:hover {
+  background:
+    linear-gradient(45deg, transparent 50%, rgba(34, 34, 32, 0.5) 50%) calc(100% - 10px) 50% / 5px 5px no-repeat,
+    rgba(34, 34, 32, 0.04);
+}
+
+.notes-file-input {
+  display: none;
+}
+
+.notes-editor-prosemirror {
+  min-height: 56vh;
+  /* toolbar が full-width になったので本文側で左右 padding を持って可読幅を担保。 */
+  padding: 20px 40px 56px;
+  color: #262522;
+  /* Sprint notes-typo: 全体的に詰めて読みやすく。本文 14.5px、見出しも比例縮小。 */
+  font-size: 14.5px;
+  line-height: 1.62;
+  outline: none;
+}
+
+.notes-editor-prosemirror > *:first-child {
+  margin-top: 0;
+}
+
+.notes-editor-prosemirror p {
+  margin: 0.38em 0;
+}
+
+.notes-editor-prosemirror h1,
+.notes-editor-prosemirror h2,
+.notes-editor-prosemirror h3 {
+  margin: 1.2em 0 0.4em;
+  line-height: 1.28;
+  color: #1e1d1a;
+}
+
+.notes-editor-prosemirror h1 {
+  font-size: 22px;
+}
+
+.notes-editor-prosemirror h2 {
+  font-size: 18px;
+}
+
+.notes-editor-prosemirror h3 {
+  font-size: 15.5px;
+}
+
+/* Sprint notes-link: Notion 風の inline link。本文と同色に保ち、控えめな下線で表現。
+   従来の青リンクは UI の中で浮きすぎるので、テキスト自身の延長として馴染ませる。 */
+.notes-editor-prosemirror a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(186, 111, 49, 0.42);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: text-decoration-color 120ms ease;
+}
+
+.notes-editor-prosemirror a:hover {
+  text-decoration-color: rgba(186, 111, 49, 0.85);
+}
+
+.notes-editor-prosemirror ul,
+.notes-editor-prosemirror ol {
+  padding-left: 1.7em;
+  margin: 0.42em 0;
+}
+
+.notes-editor-prosemirror li {
+  margin: 0.18em 0;
+  padding-left: 0.24em;
+}
+
+.notes-editor-prosemirror ol {
+  list-style: decimal;
+  list-style-position: outside;
+}
+
+.notes-editor-prosemirror ul:not([data-type="taskList"]) {
+  list-style: disc;
+  list-style-position: outside;
+}
+
+.notes-editor-prosemirror li > p {
+  margin: 0.16em 0;
+}
+
+.notes-editor-prosemirror li > * {
+  vertical-align: top;
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+
+/* Sprint notes-task-align v2: 1 行目の text 中心と checkbox 中心を厳密に揃える。
+   - li 自体は flex-start で揃え（複数行対応）
+   - label を 1 行分の高さに固定（line-height * font-size = 14.5 * 1.62 ≈ 23.5px）
+   - その内側で checkbox を center 配置 → 1 行目の text 視覚中心と一致 */
+.notes-editor-prosemirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0.45em 0;
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  /* 1 行目の line-box の高さに合わせる。本文 font 14.5px × line-height 1.62 ≒ 23.5px */
+  height: 1.62em;
+  line-height: 1;
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+
+/* Sprint notes-checkbox-design: 角丸の枠線スタイル。文字サイズに対して 1.05〜1.15em で
+   バランスが取れる。チェック時は accent で塗りつぶし + 白い ✓。 */
+.notes-editor-prosemirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.1em;
+  height: 1.1em;
+  margin: 0;
+  border: 1.5px solid rgba(34, 34, 32, 0.42);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  flex: 0 0 auto;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] li > label input[type="checkbox"]:hover {
+  border-color: rgba(186, 111, 49, 0.65);
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: #ba6f31;
+  border-color: #ba6f31;
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 0.32em;
+  height: 0.6em;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.notes-editor-prosemirror ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  color: rgba(38, 37, 34, 0.46);
+  text-decoration: line-through;
+}
+
+.notes-editor-prosemirror blockquote {
+  margin: 1em 0;
+  padding-left: 14px;
+  border-left: 3px solid #ba6f31;
+  color: rgba(38, 37, 34, 0.72);
+}
+
+.notes-editor-prosemirror code {
+  padding: 2px 4px;
+  background: rgba(34, 34, 32, 0.08);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+.notes-editor-prosemirror pre {
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(34, 34, 32, 0.14);
+  background: #eeece5;
+}
+
+.notes-editor-prosemirror img {
+  max-width: 100%;
+}
+
+.notes-image-node {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0.18em 0;
+  line-height: 0;
+  vertical-align: bottom;
+}
+
+.notes-image-node img {
+  display: block;
+  max-width: 100%;
+  border: 1px solid rgba(34, 34, 32, 0.12);
+  user-select: none;
+}
+
+.notes-image-node[data-selected="true"] img {
+  outline: 2px solid rgba(186, 111, 49, 0.55);
+  outline-offset: 2px;
+}
+
+.notes-image-resize-handle {
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  z-index: 2;
+  width: 11px;
+  height: 34px;
+  background: #ba6f31;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.notes-editor-prosemirror li .notes-image-node {
+  margin: 0.12em 0 0.2em;
+}
+
+.notes-editor-prosemirror .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: rgba(38, 37, 34, 0.34);
+  pointer-events: none;
+}
+
+.notes-slash-menu {
+  position: fixed;
+  z-index: 80;
+  width: 260px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid rgba(34, 34, 32, 0.18);
+  background: #f8f7f3;
+  box-shadow: 0 18px 45px rgba(35, 30, 20, 0.18);
+}
+
+.notes-slash-title {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(34, 34, 32, 0.1);
+  color: rgba(38, 37, 34, 0.52);
+  font: 700 10px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.16em;
+}
+
+.notes-slash-menu button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 36px 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 9px 11px;
+  border: 0;
+  background: transparent;
+  color: #262522;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notes-slash-menu button:hover,
+.notes-slash-menu button.is-active {
+  background: rgba(186, 111, 49, 0.12);
+}
+
+.notes-slash-menu button span {
+  grid-row: span 2;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(34, 34, 32, 0.12);
+  font: 700 11px/1 "JetBrains Mono", ui-monospace, monospace;
+}
+
+.notes-slash-menu button strong {
+  font-size: 13px;
+}
+
+.notes-slash-menu button small {
+  color: rgba(38, 37, 34, 0.52);
+  font-size: 11px;
+}
+
+.notes-copy-toast {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 90;
+  padding: 10px 14px;
+  background: #171716;
+  color: #f8f7f3;
+  font: 700 10px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.16em;
+}
+
+/* Sprint notes-link-popover: 選択直下にフロート表示する URL 入力 popover。
+   Notion 風に input + 適用 / 解除 を 1 行に並べる。 */
+.notes-link-popover {
+  position: fixed;
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #f8f7f3;
+  border: 1px solid rgba(34, 34, 32, 0.18);
+  box-shadow: 0 14px 30px rgba(35, 30, 20, 0.16);
+  border-radius: 4px;
+}
+
+.notes-link-popover input {
+  width: 280px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(34, 34, 32, 0.16);
+  background: #fff;
+  color: #262522;
+  font: 600 12px/1 inherit;
+  outline: none;
+  border-radius: 3px;
+}
+
+.notes-link-popover input:focus {
+  border-color: rgba(186, 111, 49, 0.65);
+}
+
+.notes-link-popover button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(34, 34, 32, 0.16);
+  background: #fff;
+  color: #262522;
+  font: 700 11px/1 inherit;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.notes-link-popover button:hover {
+  background: rgba(34, 34, 32, 0.04);
+}
+
+.notes-link-popover button.notes-link-popover-apply {
+  background: #ba6f31;
+  border-color: #ba6f31;
+  color: #fff;
+}
+
+.notes-link-popover button.notes-link-popover-apply:hover {
+  background: #a5612a;
+}
+
+.notes-link-popover button.notes-link-popover-remove {
+  color: rgba(38, 37, 34, 0.7);
+}
+
+.notes-anchor-flash {
+  outline: 2px solid rgba(186, 111, 49, 0.5);
+  background: rgba(186, 111, 49, 0.08);
+}
+
+.notes-editor-meta {
+  padding: 10px 0 18px;
+  color: rgba(38, 37, 34, 0.48);
+  font: 700 10px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+}

@@ -1,0 +1,87 @@
+/* Sprint loading-ux: 世界観に合わせた warm shimmer。
+   paper #fbf8f1 → paperWarm #f5ecdb → 控えめ accent tint の 3 段帯を流す。 */
+
+@keyframes skel-shimmer {
+  0% { background-position: -180% 0; }
+  100% { background-position: 180% 0; }
+}
+
+.skel {
+  display: inline-block;
+  background-color: rgba(34, 34, 32, 0.06);
+  background-image: linear-gradient(
+    90deg,
+    rgba(245, 236, 219, 0) 0%,
+    rgba(245, 236, 219, 0.85) 32%,
+    rgba(186, 111, 49, 0.06) 50%,
+    rgba(245, 236, 219, 0.85) 68%,
+    rgba(245, 236, 219, 0) 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: skel-shimmer 1.6s ease-in-out infinite;
+}
+
+.skel-line {
+  vertical-align: middle;
+}
+
+.skel-bars {
+  padding: 4px 0;
+}
+
+.skel-bars + .skel-bars {
+  margin-top: 12px;
+}
+
+.skel-bars-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.skel-goal-card {
+  border: 1px solid rgba(34, 34, 32, 0.12);
+  background: #fbf8f1;
+}
+
+.skel-goal-card + .skel-goal-card {
+  margin-top: 16px;
+}
+
+.skel-goal-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(34, 34, 32, 0.06);
+}
+
+.skel-goal-body {
+  padding: 12px 18px 16px;
+}
+
+/* LoadingPulse: 3 ドットが順に膨らむ。アプリの accent #ba6f31 を使う。 */
+@keyframes skel-pulse-bounce {
+  0%, 100% { transform: scale(0.55); opacity: 0.35; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.skel-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 700 10px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  color: rgba(38, 37, 34, 0.55);
+}
+
+.skel-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ba6f31;
+  animation: skel-pulse-bounce 980ms ease-in-out infinite;
+}
+
+.skel-pulse-label {
+  margin-left: 4px;
+}
