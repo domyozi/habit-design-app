@@ -148,11 +148,14 @@ async def root():
     【認証不要】: NFR-102 に従い、/ は認証なしでアクセス可能
     🔵 信頼性レベル: NFR-102 より
     """
-    return {
+    body: dict[str, str] = {
         "message": "Habit Design App API is running",
         "version": "0.1.0",
-        "docs": "/docs",
     }
+    # production では /docs が無効化されているのでリンクを返さない（誤誘導防止）
+    if not IS_PRODUCTION:
+        body["docs"] = "/docs"
+    return body
 
 
 @app.get("/health")
