@@ -645,11 +645,14 @@ async def coach_stream(
 
     # 観測性: <user_memory> セクションだけを抜き出してログ。AI に届いた memory が
     # どう embed されているかを後追い検証できるようにする（Sprint 6.5.3-fix2）。
+    # production では PII（identity / patterns / profile / insights）が含まれるため
+    # debug レベルに下げる。dev 開発ではそのまま見える。
     import re
 
     mem_match = re.search(r"<user_memory>(.*?)</user_memory>", system_prompt, re.DOTALL)
     if mem_match:
-        logger.info("coach-stream user_memory:\n%s", mem_match.group(0))
+        logger.debug("coach-stream user_memory:\n%s", mem_match.group(0))
+    # メタ情報のみは production でも残す（PII 無し、運用に必要）
     logger.info(
         "coach-stream mode=%s user_input_len=%d system_prompt_len=%d",
         mode, len(user_input), len(system_prompt),

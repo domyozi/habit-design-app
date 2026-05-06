@@ -77,6 +77,42 @@ _PENDING_KINDS = {
     "habit",
 }
 
+# AI 出力 string 値の最大長。これを超える値は切り詰める（DoS / DB 圧迫対策）。
+# UI 側は短い表示しか想定していないので 1000 字でも十分余裕。
+_MAX_STR_LEN = 1000
+
+
+def _sanitize_str(value: object) -> object:
+    """AI 出力に含まれる string 値を安全側に倒す:
+    - HTML 制御文字を escape（FE で innerHTML 経路があった場合の保険）
+    - 異常に長い値は切り詰め
+    list / dict はネストしてサニタイズ。それ以外は素通し（数値・bool 等）。
+    """
+    if isinstance(value, str):
+        # XSS 防御の保険として HTML エスケープ。
+        # FE は基本 textContent / React で render するので二重防御。
+        s = (
+            value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#39;")
+        )
+        if len(s) > _MAX_STR_LEN:
+            s = s[:_MAX_STR_LEN] + "…"
+        return s
+    if isinstance(value, list):
+        return [_sanitize_str(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _sanitize_str(v) for k, v in value.items()}
+    return value
+
+
+def _sanitize_payload(payload: dict) -> dict:
+    """pending_action.payload 全体を再帰的にサニタイズ。"""
+    return {k: _sanitize_str(v) for k, v in payload.items()}
+
 
 def to_pending_action_rows(filtered: dict) -> list[dict]:
     """confidence フィルタ済みの action payload から coach_pending_actions に
@@ -99,7 +135,7 @@ def to_pending_action_rows(filtered: dict) -> list[dict]:
         kind = "pt_close" if action == "close" else "pt_update"
         rows.append({
             "kind": kind,
-            "payload": {**pt},
+            "payload": _sanitize_payload({**pt}),
             "confidence": float(pt.get("confidence") or 0),
         })
 
@@ -108,14 +144,14 @@ def to_pending_action_rows(filtered: dict) -> list[dict]:
             continue
         rows.append({
             "kind": "habit_today_complete",
-            "payload": {**c},
+            "payload": _sanitize_payload({**c}),
             "confidence": float(c.get("confidence") or 0),
         })
 
     if isinstance(filtered.get("memory_patch"), dict):
         rows.append({
             "kind": "memory_patch",
-            "payload": filtered["memory_patch"],
+            "payload": _sanitize_payload(filtered["memory_patch"]),
             "confidence": 0.9,
         })
 
@@ -125,7 +161,7 @@ def to_pending_action_rows(filtered: dict) -> list[dict]:
         # FE 側は label / due / reason を期待する
         rows.append({
             "kind": "task",
-            "payload": {**t},
+            "payload": _sanitize_payload({**t}),
             "confidence": float(t.get("confidence") or 0),
         })
 
@@ -135,7 +171,7 @@ def to_pending_action_rows(filtered: dict) -> list[dict]:
         # FE 側は label / frequency / scheduled_time を期待する
         rows.append({
             "kind": "habit",
-            "payload": {**h},
+            "payload": _sanitize_payload({**h}),
             "confidence": float(h.get("confidence") or 0),
         })
 

@@ -540,11 +540,22 @@ def build_coach_prompt(ctx: dict, mode: str, user_input: str) -> tuple[str, str]
         user = f"モード: BRIEFING（ユーザー入力なし）。{MODE_CUE['BRIEFING']}"
     else:
         cue = MODE_CUE.get(mode, "")
+        # Prompt injection 防御: ユーザー入力に `</user_input>` を入れて
+        # prompt 構造を破壊する攻撃を塞ぐため、XML 特殊文字をエスケープする。
+        # (`<` → `&lt;`、`>` → `&gt;`、`&` → `&amp;`)
+        # これによりユーザー入力中の `</user_input>` も `&lt;/user_input&gt;` になり、
+        # 区切りタグとして解釈されない。
+        safe_user_input = (
+            user_input
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
         user = (
             f"モード: {mode}\n"
             f"\n"
             f"<user_input>\n"
-            f"{user_input}\n"
+            f"{safe_user_input}\n"
             f"</user_input>\n"
             f"\n"
             f"{cue}"

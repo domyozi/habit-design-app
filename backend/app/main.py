@@ -134,6 +134,12 @@ async def add_security_headers(request: Request, call_next):
         "Content-Security-Policy-Report-Only",
         "default-src 'self'; base-uri 'self'; frame-ancestors 'none'",
     )
+    # HSTS: production だけ強制（dev で http://localhost に max-age が残ると後で困る）
+    if IS_PRODUCTION:
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+        )
     return response
 
 
