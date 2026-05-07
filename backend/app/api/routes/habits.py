@@ -131,12 +131,28 @@ async def get_habits(
         # 【マッピング】: habit_id → ログ の辞書を作成
         today_logs_map = {log["habit_id"]: log for log in logs if log["habit_id"] in habit_ids}
 
-    # 【レスポンス構築】: 各習慣に today_log を付与
+    # Sprint v4-prep P3b: habit_goals junction から goal_ids を populate。
+    # 1 query で全 habit 分まとめて取って、メモリで habit_id → list[goal_id] にマップ。
+    goal_ids_map: dict[str, list[str]] = {}
+    if habits:
+        habit_ids = [h["id"] for h in habits]
+        hg_result = (
+            supabase.table("habit_goals")
+            .select("habit_id, goal_id")
+            .eq("user_id", user_id)
+            .in_("habit_id", habit_ids)
+            .execute()
+        )
+        for row in hg_result.data or []:
+            goal_ids_map.setdefault(row["habit_id"], []).append(row["goal_id"])
+
+    # 【レスポンス構築】: 各習慣に today_log と goal_ids を付与
     habits_with_log = []
     for habit in habits:
         habit_data = dict(habit)
         if include_today_log:
             habit_data["today_log"] = today_logs_map.get(habit["id"])
+        habit_data["goal_ids"] = goal_ids_map.get(habit["id"], [])
         habits_with_log.append(habit_data)
 
     return APIResponse(success=True, data=habits_with_log).model_dump(mode="json")
@@ -306,6 +322,70 @@ async def update_habit(
     updated = result.data[0] if result.data else existing.data
 
     return APIResponse(success=True, data=Habit(**updated)).model_dump(mode="json")
+
+
+@router.put("/habits/{habit_id}/goals", status_code=200)
+async def set_habit_goals(
+    habit_id: str,
+    request: dict,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【PUT /habits/{habit_id}/goals】Sprint v4-prep P3b:
+    habit ↔ goal の N:N 紐付けを一括差し替え。
+
+    Request body: {"goal_ids": ["uuid", "uuid", ...]}
+    - habit_goals テーブルの該当 habit の行を全削除 → 新リストで INSERT
+    - 各 goal_id は user_id で検証（他人の Goal に紐付けようとしたら 422）
+    - habits.goal_id (legacy primary) は変更しない（呼び出し元の責任）
+
+    Advanced モード時のみフロントから呼ばれる前提。OFF 時は使われない。
+    """
+    supabase = get_supabase()
+
+    # 所有者確認
+    _get_habit_or_raise(supabase, habit_id, user_id)
+
+    raw_goal_ids = request.get("goal_ids")
+    if not isinstance(raw_goal_ids, list):
+        raise AppError(
+            code="VALIDATION_ERROR",
+            message="goal_ids must be a list",
+            status_code=400,
+        )
+    goal_ids: list[str] = []
+    for gid in raw_goal_ids:
+        if not isinstance(gid, str) or not gid:
+            continue
+        # 重複は dedup
+        if gid not in goal_ids:
+            goal_ids.append(gid)
+
+    # 各 goal_id が user 所有であることを確認（不正な ID を弾く）
+    if goal_ids:
+        check = (
+            supabase.table("goals")
+            .select("id")
+            .eq("user_id", user_id)
+            .in_("id", goal_ids)
+            .execute()
+        )
+        owned = {row["id"] for row in (check.data or [])}
+        unknown = [gid for gid in goal_ids if gid not in owned]
+        if unknown:
+            raise AppError(
+                code="VALIDATION_ERROR",
+                message=f"goal_ids contain unauthorized or unknown ids: {unknown}",
+                status_code=422,
+            )
+
+    # 既存 habit_goals 行を削除して再 INSERT (atomic ではないが Phase 1 では許容)
+    supabase.table("habit_goals").delete().eq("habit_id", habit_id).eq("user_id", user_id).execute()
+    if goal_ids:
+        rows = [{"habit_id": habit_id, "goal_id": gid, "user_id": user_id} for gid in goal_ids]
+        supabase.table("habit_goals").insert(rows).execute()
+
+    return APIResponse(success=True, data={"habit_id": habit_id, "goal_ids": goal_ids}).model_dump(mode="json")
 
 
 @router.delete("/habits/{habit_id}", status_code=204)

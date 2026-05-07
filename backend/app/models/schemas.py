@@ -176,6 +176,10 @@ class Habit(BaseModel):
     proof_type: Literal["none", "photo", "auto"] = "none"
     source_kind: str = "manual"
     xp_base: int = 10
+    # Sprint v4-prep P3b: habit_goals junction から populate される、
+    # この habit が貢献する Goal の ID リスト。Advanced モード時のみ意味を持つ。
+    # 旧 goal_id (= primary) も含めて全て入る。
+    goal_ids: list[str] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
