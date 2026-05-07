@@ -88,6 +88,11 @@ def _adapt_habit(
         "unit": h.get("unit"),
         "metric_type": h.get("metric_type", "binary"),
         "goal_ids": goal_ids or [],
+        # Sprint v5: KPI 統合 4 列 + 表示時間帯
+        "aggregation_kind": h.get("aggregation_kind", "count"),
+        "aggregation_period": h.get("aggregation_period", "daily"),
+        "period_target": h.get("period_target"),
+        "display_window": h.get("display_window", "anytime"),
     }
 
 
