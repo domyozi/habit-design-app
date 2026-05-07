@@ -226,6 +226,15 @@ async def create_habit(
     else:
         # metric_type から aggregation 既定値を推論
         new_habit["aggregation"] = _default_aggregation(request.metric_type)
+    # Sprint v5: KPI 統合 4 列。指定がなければ DB の DEFAULT (count/daily/NULL/anytime) が入る。
+    if request.aggregation_kind is not None:
+        new_habit["aggregation_kind"] = request.aggregation_kind
+    if request.aggregation_period is not None:
+        new_habit["aggregation_period"] = request.aggregation_period
+    if request.period_target is not None:
+        new_habit["period_target"] = request.period_target
+    if request.display_window is not None:
+        new_habit["display_window"] = request.display_window
 
     result = supabase.table("habits").insert(new_habit).execute()
     created = result.data[0] if result.data else {}

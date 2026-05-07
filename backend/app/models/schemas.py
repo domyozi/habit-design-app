@@ -180,6 +180,15 @@ class Habit(BaseModel):
     # この habit が貢献する Goal の ID リスト。Advanced モード時のみ意味を持つ。
     # 旧 goal_id (= primary) も含めて全て入る。
     goal_ids: list[str] = []
+    # Sprint v5: KPI 完全吸収用の 4 列。migration add_habit_aggregation_and_display_window.sql。
+    # aggregation_kind: 'count' (達成回数) | 'sum' (累積値)
+    # aggregation_period: 'daily' | 'weekly' | 'monthly'
+    # period_target: count なら回数、sum なら unit ベースの累積値 (NULL=未設定)
+    # display_window: Today への表示時間帯 (morning=04-12, noon=12-18, evening=18-04, anytime=常時)
+    aggregation_kind: Literal["count", "sum"] = "count"
+    aggregation_period: Literal["daily", "weekly", "monthly"] = "daily"
+    period_target: Optional[float] = None
+    display_window: Literal["morning", "noon", "evening", "anytime"] = "anytime"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -428,6 +437,11 @@ class CreateHabitRequest(BaseModel):
     proof_type: Optional[Literal["none", "photo", "auto"]] = None
     source_kind: Optional[str] = None
     xp_base: Optional[int] = None
+    # Sprint v5: KPI 統合 4 列 (作成時は省略可、DB が default を入れる)
+    aggregation_kind: Optional[Literal["count", "sum"]] = None
+    aggregation_period: Optional[Literal["daily", "weekly", "monthly"]] = None
+    period_target: Optional[float] = None
+    display_window: Optional[Literal["morning", "noon", "evening", "anytime"]] = None
 
 
 class UpdateHabitRequest(BaseModel):
@@ -457,6 +471,11 @@ class UpdateHabitRequest(BaseModel):
     proof_type: Optional[Literal["none", "photo", "auto"]] = None
     source_kind: Optional[str] = None
     xp_base: Optional[int] = None
+    # Sprint v5: KPI 統合 4 列 (manual_edit のみで更新する想定)
+    aggregation_kind: Optional[Literal["count", "sum"]] = None
+    aggregation_period: Optional[Literal["daily", "weekly", "monthly"]] = None
+    period_target: Optional[float] = None
+    display_window: Optional[Literal["morning", "noon", "evening", "anytime"]] = None
 
 
 class ReorderHabitsRequest(BaseModel):
