@@ -86,6 +86,8 @@ async def create_ai_message(
     try:
         text = await create_message(
             messages=_to_anthropic_messages(request),
+            user_id=user_id,
+            feature="ai_coach_chat",
             system_prompt=request.system,
             max_tokens=request.max_tokens,
         )
@@ -118,6 +120,8 @@ async def stream_ai_message(
         try:
             async for chunk in stream_message(
                 messages=_to_anthropic_messages(body),
+                user_id=user_id,
+                feature="ai_coach_stream",
                 system_prompt=body.system,
                 max_tokens=body.max_tokens,
             ):
@@ -240,6 +244,7 @@ async def stream_weekly_review(
                 habits_summary=habits_summary,
                 failure_reasons=failure_reasons,
                 achievement_rate=achievement_rate,
+                user_id=user_id,
             ):
                 # doneチャンクからアクションを抽出
                 if '"type": "done"' in chunk or '"type":"done"' in chunk:

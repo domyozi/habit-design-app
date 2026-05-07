@@ -729,6 +729,8 @@ async def suggest_kpis(
     try:
         text = await ai_service.create_message(
             messages=[{"role": "user", "content": user_prompt}],
+            user_id=user_id,
+            feature="kpi_suggest",
             system_prompt=_SUGGEST_KPIS_SYSTEM_PROMPT,
             max_tokens=2048,
             model="claude-sonnet-4-6",

@@ -30,6 +30,7 @@ from app.models.schemas import (
     VoiceInputRequest,
 )
 from app.services import badge_service, streak_service
+from app.services.claude_logger import log_claude_call
 from app.services.voice_classifier import (
     AIUnavailableError,
     ClassificationResult,
@@ -69,14 +70,34 @@ async def process_voice_input(
     allowed_habit_ids = {habit["id"] for habit in user_habits}
 
     # 【AI分類】: Claude APIでテキストを分類
+    # voice_classifier は同期版 → asyncio.to_thread で逃がしてから claude_api_logs に記録
+    import asyncio
+    import time
+    from app.services.voice_classifier import ClaudeCallInfo
+
+    info: ClaudeCallInfo | None = None
+    started_at = time.monotonic()
     try:
-        classification = classify_voice_input(
-            text=request.text,
-            user_habits=user_habits,
-            log_date=log_date,
+        classification, info = await asyncio.to_thread(
+            classify_voice_input,
+            request.text,
+            user_habits,
+            log_date,
+            user_id=user_id,
         )
     except AIUnavailableError:
         # 【AI障害処理】: EDGE-001 - 503 を返し、通常機能継続を案内
+        # 失敗時も最低限のメタを記録（usage は取れないが status='error' で行を残す）
+        await log_claude_call(
+            user_id=user_id,
+            feature="voice_classify",
+            model="claude-haiku-4-5-20251001",
+            streaming=False,
+            usage=None,
+            latency_ms=int((time.monotonic() - started_at) * 1000),
+            status="error",
+            error_kind="AIUnavailableError",
+        )
         return JSONResponse(
             status_code=503,
             content=ErrorResponse(
@@ -85,6 +106,20 @@ async def process_voice_input(
                     message="AIサービスが一時的に利用できません。通常のトラッキング機能は継続して使用できます。",
                 )
             ).model_dump(),
+        )
+
+    # 成功 → ClaudeCallInfo を使ってログ記録
+    if info is not None:
+        await log_claude_call(
+            user_id=user_id,
+            feature="voice_classify",
+            model=info.model,
+            streaming=False,
+            usage=info.usage,
+            latency_ms=info.latency_ms,
+            status=info.status,
+            error_kind=info.error_kind,
+            request_id=info.request_id,
         )
 
     # 【分類後処理】: 分類タイプに応じた処理を実行

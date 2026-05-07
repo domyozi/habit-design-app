@@ -25,6 +25,11 @@ class Settings(BaseSettings):
 
     # 【外部API設定】: AI・メール通知用 🟡
     ANTHROPIC_API_KEY: str = ""
+    # Claude usage logging: Anthropic への metadata.user_id 用 salt
+    # SHA256(user_id + salt) で hash 化（生 UUID を Anthropic に渡さない）
+    # 生成: python -c "import secrets; print(secrets.token_hex(32))"
+    # production では未設定だと main.py の startup チェックでエラー
+    ANTHROPIC_USER_ID_SALT: str = ""
     RESEND_API_KEY: str = ""
 
     # 【Google OAuth (Phase 7.3 / Calendar 連携)】🟡

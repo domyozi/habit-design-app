@@ -219,6 +219,7 @@ async def _extract_and_persist_suggestions(
         avoid_labels=avoid_list,
         max_count=max_count,
         existing_habit_count=habit_count,
+        user_id=user_id,
     )
 
     # 5. 純粋な exact-match dedup のみ（データ整合性の最低限）
@@ -258,6 +259,8 @@ async def _ask_claude_for_suggestions(
     avoid_labels: Optional[list[str]] = None,
     max_count: int = MAX_PER_EXTRACTION,
     existing_habit_count: int = 0,
+    *,
+    user_id: str,
 ) -> list[tuple[str, str]]:
     """
     ジャーナル本文から行動候補を抽出し、習慣化(habit) / 個別タスク(task) に分類する。
@@ -320,6 +323,8 @@ async def _ask_claude_for_suggestions(
     try:
         response_text = await create_message(
             messages=[{"role": "user", "content": f"<journal>\n{journal_text}\n</journal>"}],
+            user_id=user_id,
+            feature="habit_suggest",
             system_prompt=system,
             max_tokens=400,
         )

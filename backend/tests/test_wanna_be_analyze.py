@@ -36,7 +36,7 @@ class TestWannaBeAnalyze:
         【期待される動作】: StreamingResponse, SSEチャンク複数 + done イベント
         🔵 信頼性レベル: REQ-203・NFR-002 より
         """
-        async def mock_analyze_wanna_be(wanna_be_text, async_client=None):
+        async def mock_analyze_wanna_be(wanna_be_text, *, user_id, async_client=None):
             yield 'data: {"type": "chunk", "content": "目標を分析しています..."}\n\n'
             yield 'data: {"type": "chunk", "content": "1. 健康的な生活"}\n\n'
             yield 'data: {"type": "done", "suggested_goals": [{"title": "毎日運動する", "description": "30分のランニング"}]}\n\n'
@@ -91,7 +91,7 @@ class TestWannaBeAnalyze:
         """
         from app.services.ai_service import AIUnavailableError
 
-        async def mock_analyze_raises(wanna_be_text, async_client=None):
+        async def mock_analyze_raises(wanna_be_text, *, user_id, async_client=None):
             raise AIUnavailableError("APIエラー")
             yield  # ジェネレータにするために必要
 
@@ -149,7 +149,7 @@ class TestWeeklyReviewStream:
         🔵 信頼性レベル: REQ-702 より
         """
         async def mock_generate_weekly_review(
-            habits_summary, failure_reasons, achievement_rate, async_client=None
+            habits_summary, failure_reasons, achievement_rate, *, user_id, async_client=None
         ):
             yield 'data: {"type": "chunk", "content": "今週の分析..."}\n\n'
             yield 'data: {"type": "done", "actions": [], "achievement_rate": 75.0}\n\n'
@@ -191,7 +191,7 @@ class TestWeeklyReviewStream:
         """
         from app.services.ai_service import AIUnavailableError
 
-        async def mock_raises(habits_summary, failure_reasons, achievement_rate, async_client=None):
+        async def mock_raises(habits_summary, failure_reasons, achievement_rate, *, user_id, async_client=None):
             raise AIUnavailableError("APIエラー")
             yield
 
@@ -249,11 +249,16 @@ class TestAnalyzeWannaBe:
         mock_stream.text_stream = mock_text_stream()
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
+        # Phase 1: stream.get_final_message() で usage を取得するので mock 必要
+        mock_final = MagicMock()
+        mock_final.usage = None
+        mock_final.id = "msg_test"
+        mock_stream.get_final_message = AsyncMock(return_value=mock_final)
         mock_client.messages.stream.return_value = mock_stream
 
         async def run():
             chunks = []
-            async for chunk in analyze_wanna_be("健康的な生活", async_client=mock_client):
+            async for chunk in analyze_wanna_be("健康的な生活", user_id=TEST_USER_ID, async_client=mock_client):
                 chunks.append(chunk)
             return chunks
 
@@ -289,6 +294,11 @@ class TestAnalyzeWannaBe:
         mock_stream.text_stream = mock_text_stream()
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
+        # Phase 1: stream.get_final_message() で usage を取得するので mock 必要
+        mock_final = MagicMock()
+        mock_final.usage = None
+        mock_final.id = "msg_test"
+        mock_stream.get_final_message = AsyncMock(return_value=mock_final)
         mock_client.messages.stream.return_value = mock_stream
 
         user_email = "user@example.com"
@@ -296,7 +306,7 @@ class TestAnalyzeWannaBe:
         wanna_be_text = "健康的な生活を送りたい"
 
         async def run():
-            async for _ in analyze_wanna_be(wanna_be_text, async_client=mock_client):
+            async for _ in analyze_wanna_be(wanna_be_text, user_id=user_id, async_client=mock_client):
                 pass
 
         asyncio.run(run())
@@ -304,5 +314,6 @@ class TestAnalyzeWannaBe:
         # APIコール引数を確認
         call_kwargs = str(mock_client.messages.stream.call_args)
         assert user_email not in call_kwargs  # 【確認内容】: メールアドレスなし 🔵
+        # 生 user_id は metadata に乗らない（hashed_user_id 経由なので raw UUID は含まれない）
         assert user_id not in call_kwargs  # 【確認内容】: ユーザーIDなし 🔵
         assert wanna_be_text in call_kwargs  # 【確認内容】: Wanna Beテキストは含まれる 🔵

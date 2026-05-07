@@ -92,7 +92,7 @@ async def analyze_wanna_be_endpoint(
     async def sse_generator():
         """【SSEジェネレータ】: Claude APIのストリームをSSEフォーマットで送信"""
         try:
-            async for chunk in analyze_wanna_be(wanna_be_text=request.text):
+            async for chunk in analyze_wanna_be(wanna_be_text=request.text, user_id=user_id):
                 yield chunk
         except AIUnavailableError:
             import json

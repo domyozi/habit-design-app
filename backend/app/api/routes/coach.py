@@ -693,6 +693,8 @@ async def coach_stream(
             # ThinkingTrace UI が「Web 検索中」シマーを表示できるようにする。
             async for ev in ai_service.stream_message_events(
                 messages=messages,
+                user_id=user_id,
+                feature="coach_stream",
                 system_prompt=system_prompt,
                 # JSON action 出力で 1024 だと途中で切れて extract 失敗 → memory 更新が
                 # silent に失われる現象が観測されたため引き上げ（Sprint 6.5.3-fix2）。

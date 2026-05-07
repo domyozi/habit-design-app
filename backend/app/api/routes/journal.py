@@ -135,7 +135,7 @@ async def _process_memory_extraction(user_id: str, session_text: str) -> None:
         )
         current_ctx = existing.data[0] if existing.data else None
 
-        patch = await extract_memory_facts(session_text, current_ctx)
+        patch = await extract_memory_facts(session_text, current_ctx, user_id=user_id)
         if not patch:
             return
 

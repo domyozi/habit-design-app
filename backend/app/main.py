@@ -40,6 +40,8 @@ def _assert_production_env() -> None:
         "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_JWT_SECRET",
         "ANTHROPIC_API_KEY",
+        # Claude usage logging: per-user metadata 用の hash salt（生 UUID を Anthropic に渡さない）
+        "ANTHROPIC_USER_ID_SALT",
         "FRONTEND_URL",
         "OAUTH_TOKEN_ENC_KEY",
         # Google OAuth は Calendar 連携がデフォルト機能なので必須扱い

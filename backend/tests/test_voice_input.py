@@ -8,11 +8,28 @@
 🔵 信頼性レベル: TASK-0009要件定義・REQ-401/402/403・EDGE-001/003 より
 """
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
+
+
+def _mock_call_info():
+    """ClaudeCallInfo の minimal stub（route テスト用）。"""
+    from app.services.voice_classifier import ClaudeCallInfo
+    return ClaudeCallInfo(
+        model="claude-haiku-4-5-20251001",
+        usage=SimpleNamespace(
+            input_tokens=10, output_tokens=5,
+            cache_read_input_tokens=0, cache_creation_input_tokens=0,
+        ),
+        latency_ms=100,
+        status="ok",
+        error_kind=None,
+        request_id="msg_test",
+    )
 TEST_HABIT_ID = "00000000-0000-0000-0000-000000000020"
 TODAY = str(date.today())
 
@@ -78,7 +95,7 @@ class TestVoiceInputEndpoint:
         )
 
         with patch("app.api.routes.voice_input.get_supabase") as mock_get_supabase, \
-             patch("app.api.routes.voice_input.classify_voice_input", return_value=checklist_result), \
+             patch("app.api.routes.voice_input.classify_voice_input", return_value=(checklist_result, _mock_call_info())), \
              patch("app.api.routes.voice_input.streak_service") as mock_streak, \
              patch("app.api.routes.voice_input.badge_service") as mock_badge:
 
@@ -128,7 +145,7 @@ class TestVoiceInputEndpoint:
         )
 
         with patch("app.api.routes.voice_input.get_supabase") as mock_get_supabase, \
-             patch("app.api.routes.voice_input.classify_voice_input", return_value=checklist_result), \
+             patch("app.api.routes.voice_input.classify_voice_input", return_value=(checklist_result, _mock_call_info())), \
              patch("app.api.routes.voice_input.streak_service") as mock_streak, \
              patch("app.api.routes.voice_input.badge_service") as mock_badge:
 
@@ -175,7 +192,7 @@ class TestVoiceInputEndpoint:
         }
 
         with patch("app.api.routes.voice_input.get_supabase") as mock_get_supabase, \
-             patch("app.api.routes.voice_input.classify_voice_input", return_value=journaling_result):
+             patch("app.api.routes.voice_input.classify_voice_input", return_value=(journaling_result, _mock_call_info())):
 
             mock_sb = MagicMock()
             mock_get_supabase.return_value = mock_sb
@@ -213,7 +230,7 @@ class TestVoiceInputEndpoint:
         unknown_result = ClassificationResult(type="unknown", content="謎のテキスト")
 
         with patch("app.api.routes.voice_input.get_supabase") as mock_get_supabase, \
-             patch("app.api.routes.voice_input.classify_voice_input", return_value=unknown_result):
+             patch("app.api.routes.voice_input.classify_voice_input", return_value=(unknown_result, _mock_call_info())):
 
             mock_sb = MagicMock()
             mock_get_supabase.return_value = mock_sb
@@ -309,10 +326,11 @@ class TestClassifyVoiceInput:
             {"id": "筋トレID", "title": "筋トレ"},
         ]
 
-        result = classify_voice_input(
+        result, _info = classify_voice_input(
             text="早起き達成、筋トレはできなかった",
             user_habits=habits,
             log_date=date.today(),
+            user_id=TEST_USER_ID,
             anthropic_client=mock_client,
         )
 
@@ -338,10 +356,11 @@ class TestClassifyVoiceInput:
         )
         mock_client.messages.create.return_value = mock_response
 
-        result = classify_voice_input(
+        result, _info = classify_voice_input(
             text="今日は気分が良かった。集中できた。",
             user_habits=[],
             log_date=date.today(),
+            user_id=TEST_USER_ID,
             anthropic_client=mock_client,
         )
 
@@ -363,10 +382,11 @@ class TestClassifyVoiceInput:
         mock_response.content[0].text = "これはJSONではないテキストです"
         mock_client.messages.create.return_value = mock_response
 
-        result = classify_voice_input(
+        result, _info = classify_voice_input(
             text="テスト入力",
             user_habits=[],
             log_date=date.today(),
+            user_id=TEST_USER_ID,
             anthropic_client=mock_client,
         )
 
@@ -392,6 +412,7 @@ class TestClassifyVoiceInput:
                 text="早起き達成",
                 user_habits=[],
                 log_date=date.today(),
+                user_id=TEST_USER_ID,
                 anthropic_client=mock_client,
             )
 
@@ -418,6 +439,7 @@ class TestClassifyVoiceInput:
             text="テスト",
             user_habits=[{"id": TEST_HABIT_ID, "title": "習慣名"}],
             log_date=date.today(),
+            user_id=TEST_USER_ID,
             anthropic_client=mock_client,
         )
 

@@ -8,14 +8,22 @@ TASK-0009: 音声入力AI分類サービス実装
 - Claude API障害時は AIUnavailableError をraise（EDGE-001）
 - JSON出力を強制し、パースエラー時は unknown に分類
 
+【Phase 1 ログ基盤】:
+- 同期 Anthropic() を維持しつつ、usage / latency / status を NamedTuple で
+  caller に返す。caller (routes/voice_input.py) 側で `await log_claude_call(...)`
+  する設計（同期関数を async 化する破壊的変更を避けるため）
+
 🔵 信頼性レベル: REQ-401/402/403・EDGE-001/003 より
 """
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Literal, Optional
+from typing import Literal, NamedTuple, Optional
+
+from app.core.anthropic_metadata import hashed_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +46,16 @@ class ClassificationResult:
     type: ClassificationType
     habit_results: Optional[list] = None  # checklist時のみ HabitCheckResult のリスト
     content: Optional[str] = None  # journaling/daily_report時のテキスト
+
+
+class ClaudeCallInfo(NamedTuple):
+    """Claude API 呼び出しのメタ情報。caller がログ記録に使う。"""
+    model: str
+    usage: object  # anthropic.types.Usage 互換 or None
+    latency_ms: int
+    status: str  # "ok" / "error"
+    error_kind: Optional[str]
+    request_id: Optional[str]
 
 
 class AIUnavailableError(Exception):
@@ -83,24 +101,31 @@ def classify_voice_input(
     text: str,
     user_habits: list,
     log_date: date,
+    *,
+    user_id: str,
     anthropic_client=None,
-) -> ClassificationResult:
+) -> tuple[ClassificationResult, ClaudeCallInfo]:
     """
     【音声入力分類】: テキストをClaude APIで分類する
     【個人情報除外】: 習慣タイトルのみ送信（ID、メール等は含めない）（REQ-605）
     【障害対応】: Claude API障害時は AIUnavailableError をraise（EDGE-001）
 
+    Phase 1 logging: ClaudeCallInfo を一緒に返す。caller (routes/voice_input.py) が
+    `await log_claude_call(...)` で記録する責務を持つ。
+
     Args:
         text: 分類対象テキスト
         user_habits: ユーザーの習慣リスト（dict のリスト）
         log_date: 記録日
+        user_id: Supabase user UUID（Anthropic metadata + ログ用）
         anthropic_client: Anthropic クライアント（テスト用に注入可能）
 
     Returns:
-        ClassificationResult: 分類結果
+        (ClassificationResult, ClaudeCallInfo): 分類結果と呼び出しメタ情報
 
     Raises:
-        AIUnavailableError: Claude APIが利用不能な場合
+        AIUnavailableError: Claude APIが利用不能な場合（その場合でも caller は
+            ClaudeCallInfo(status="error") を別経路で記録すべきだが、本関数は raise する）
     """
     import anthropic
 
@@ -123,12 +148,23 @@ def classify_voice_input(
 
 上記の入力テキストを分類してください。"""
 
+    model = "claude-haiku-4-5-20251001"
+    start = time.monotonic()
     try:
         response = anthropic_client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=1024,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
+            metadata={"user_id": hashed_user_id(user_id)},
+        )
+
+        usage = getattr(response, "usage", None)
+        request_id = getattr(response, "id", None)
+        latency_ms = int((time.monotonic() - start) * 1000)
+        info_ok = ClaudeCallInfo(
+            model=model, usage=usage, latency_ms=latency_ms,
+            status="ok", error_kind=None, request_id=request_id,
         )
 
         response_text = response.content[0].text.strip()
@@ -138,7 +174,7 @@ def classify_voice_input(
             result_dict = json.loads(response_text)
         except json.JSONDecodeError:
             logger.warning("Claude APIのレスポンスがJSONでありませんでした: %s", response_text)
-            return ClassificationResult(type="unknown", content=text)
+            return ClassificationResult(type="unknown", content=text), info_ok
 
         result_type = result_dict.get("type", "unknown")
 
@@ -146,7 +182,7 @@ def classify_voice_input(
         valid_types = {"checklist", "journaling", "daily_report", "kpi_update", "unknown"}
         if result_type not in valid_types:
             logger.warning("未知の分類タイプ: %s", result_type)
-            return ClassificationResult(type="unknown", content=text)
+            return ClassificationResult(type="unknown", content=text), info_ok
 
         if result_type == "checklist":
             raw_results = result_dict.get("habit_results", [])
@@ -159,11 +195,14 @@ def classify_voice_input(
                 )
                 for r in raw_results
             ]
-            return ClassificationResult(type="checklist", habit_results=habit_results)
+            return ClassificationResult(type="checklist", habit_results=habit_results), info_ok
 
-        return ClassificationResult(
-            type=result_type,
-            content=result_dict.get("content", text),
+        return (
+            ClassificationResult(
+                type=result_type,
+                content=result_dict.get("content", text),
+            ),
+            info_ok,
         )
 
     except anthropic.APIError as e:

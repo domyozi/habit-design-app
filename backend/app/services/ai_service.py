@@ -7,12 +7,24 @@ TASK-0010: Claude AI統合・Wanna Be分析+週次レビューSSEストリーミ
 - 送信データは統計・タイトル等に限定（個人情報除外 REQ-605）
 - Claude API障害時は AIUnavailableError をraise（EDGE-001）
 
+【Phase 1 ログ基盤】:
+- 全 wrapper に user_id / feature を必須引数として追加
+- metadata.user_id には hashed_user_id(user_id) を渡す
+- streaming は stream.get_final_message().usage で usage 取得、
+  cancel 時は current_message_snapshot.usage で部分 usage 取得
+- finally で必ず log_claude_call を await（fire-and-forget は generator 切断で消える）
+
 🔵 信頼性レベル: REQ-203/602/702・NFR-002・design-interview.md Q5 より
 """
+import asyncio
 import json
 import logging
 import os
+import time
 from typing import AsyncGenerator
+
+from app.core.anthropic_metadata import hashed_user_id
+from app.services.claude_logger import log_claude_call
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +66,9 @@ class AIUnavailableError(Exception):
 
 async def create_message(
     messages: list[dict[str, str]],
+    *,
+    user_id: str,
+    feature: str,
     system_prompt: str | None = None,
     max_tokens: int = 1024,
     async_client=None,
@@ -63,6 +78,8 @@ async def create_message(
     Browser clients must not call Anthropic directly. This server-side wrapper
     keeps the API key in backend environment variables and returns plain text.
     Sprint G3: model 引数追加（KPI 提案など分析系は Sonnet を指定したい）
+
+    Phase 1 logging: user_id / feature 必須化、usage を claude_api_logs に記録。
     """
     import anthropic
 
@@ -75,12 +92,20 @@ async def create_message(
         "model": model,
         "max_tokens": max_tokens,
         "messages": messages,
+        "metadata": {"user_id": hashed_user_id(user_id)},
     }
     if system_prompt:
         kwargs["system"] = system_prompt
 
+    start = time.monotonic()
+    status = "ok"
+    error_kind: str | None = None
+    usage = None
+    request_id: str | None = None
     try:
         response = await async_client.messages.create(**kwargs)
+        usage = getattr(response, "usage", None)
+        request_id = getattr(response, "id", None)
         text_blocks = [
             block.text
             for block in response.content
@@ -88,12 +113,31 @@ async def create_message(
         ]
         return "".join(text_blocks)
     except anthropic.APIError as e:
+        status, error_kind = "error", type(e).__name__
         logger.error("Claude API障害 (create_message): %s", str(e))
         raise AIUnavailableError("Claude API is unavailable") from e
+    except Exception as e:
+        status, error_kind = "error", type(e).__name__
+        raise
+    finally:
+        await log_claude_call(
+            user_id=user_id,
+            feature=feature,
+            model=model,
+            streaming=False,
+            usage=usage,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status=status,
+            error_kind=error_kind,
+            request_id=request_id,
+        )
 
 
 async def stream_message(
     messages: list[dict[str, str]],
+    *,
+    user_id: str,
+    feature: str,
     system_prompt: str | None = None,
     max_tokens: int = 1024,
     async_client=None,
@@ -107,6 +151,9 @@ async def stream_message(
     Sprint 6.5.4: tools パラメータを追加。web_search 等のサーバ側ツールを Claude に
     使わせたい場合に渡す。tool 結果は SDK 内部で処理されてアシスタントの応答に組み込まれ、
     text_stream には最終的なテキストだけが流れる。
+
+    Phase 1 logging: stream.get_final_message().usage で完全 usage 取得、
+    cancel 時は current_message_snapshot.usage で部分取得。
     """
     import anthropic
 
@@ -119,23 +166,66 @@ async def stream_message(
         "model": model,
         "max_tokens": max_tokens,
         "messages": messages,
+        "metadata": {"user_id": hashed_user_id(user_id)},
     }
     if system_prompt:
         kwargs["system"] = system_prompt
     if tools:
         kwargs["tools"] = tools
 
+    start = time.monotonic()
+    status = "ok"
+    error_kind: str | None = None
+    usage = None
+    request_id: str | None = None
     try:
         async with async_client.messages.stream(**kwargs) as stream:
-            async for text in stream.text_stream:
-                yield text
+            try:
+                async for text in stream.text_stream:
+                    yield text
+            except (asyncio.CancelledError, GeneratorExit):
+                status = "cancelled"
+                snap = getattr(stream, "current_message_snapshot", None)
+                if snap is not None:
+                    usage = getattr(snap, "usage", None)
+                raise
+            # 正常終了 → final message から完全 usage を取得
+            final = await stream.get_final_message()
+            usage = getattr(final, "usage", None)
+            request_id = getattr(final, "id", None)
     except anthropic.APIError as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
         logger.error("Claude API障害 (stream_message): %s", str(e))
         raise AIUnavailableError("Claude API is unavailable") from e
+    except (asyncio.CancelledError, GeneratorExit):
+        # text_stream 抜けた後で起きた cancel
+        if status != "cancelled":
+            status = "cancelled"
+        raise
+    except Exception as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
+        raise
+    finally:
+        await log_claude_call(
+            user_id=user_id,
+            feature=feature,
+            model=model,
+            streaming=True,
+            usage=usage,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status=status,
+            error_kind=error_kind,
+            request_id=request_id,
+        )
 
 
 async def stream_message_events(
     messages: list[dict[str, str]],
+    *,
+    user_id: str,
+    feature: str,
     system_prompt: str | None = None,
     max_tokens: int = 1024,
     async_client=None,
@@ -165,42 +255,82 @@ async def stream_message_events(
         "model": model,
         "max_tokens": max_tokens,
         "messages": messages,
+        "metadata": {"user_id": hashed_user_id(user_id)},
     }
     if system_prompt:
         kwargs["system"] = system_prompt
     if tools:
         kwargs["tools"] = tools
 
+    start = time.monotonic()
+    status = "ok"
+    error_kind: str | None = None
+    usage = None
+    request_id: str | None = None
     try:
         async with async_client.messages.stream(**kwargs) as stream:
-            async for event in stream:
-                etype = getattr(event, "type", None)
-                if etype == "content_block_start":
-                    block = getattr(event, "content_block", None)
-                    btype = getattr(block, "type", None) if block else None
-                    # Anthropic 純正 web_search はサーバ側ツール扱い (server_tool_use)
-                    if btype == "server_tool_use":
-                        name = getattr(block, "name", None)
-                        if name == "web_search":
-                            inp = getattr(block, "input", None)
-                            query = None
-                            if isinstance(inp, dict):
-                                query = inp.get("query")
-                            yield {"type": "web_search_started", "query": query}
-                elif etype == "content_block_delta":
-                    delta = getattr(event, "delta", None)
-                    dtype = getattr(delta, "type", None) if delta else None
-                    if dtype == "text_delta":
-                        text = getattr(delta, "text", "")
-                        if text:
-                            yield {"type": "text", "content": text}
+            try:
+                async for event in stream:
+                    etype = getattr(event, "type", None)
+                    if etype == "content_block_start":
+                        block = getattr(event, "content_block", None)
+                        btype = getattr(block, "type", None) if block else None
+                        # Anthropic 純正 web_search はサーバ側ツール扱い (server_tool_use)
+                        if btype == "server_tool_use":
+                            name = getattr(block, "name", None)
+                            if name == "web_search":
+                                inp = getattr(block, "input", None)
+                                query = None
+                                if isinstance(inp, dict):
+                                    query = inp.get("query")
+                                yield {"type": "web_search_started", "query": query}
+                    elif etype == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        dtype = getattr(delta, "type", None) if delta else None
+                        if dtype == "text_delta":
+                            text = getattr(delta, "text", "")
+                            if text:
+                                yield {"type": "text", "content": text}
+            except (asyncio.CancelledError, GeneratorExit):
+                status = "cancelled"
+                snap = getattr(stream, "current_message_snapshot", None)
+                if snap is not None:
+                    usage = getattr(snap, "usage", None)
+                raise
+            final = await stream.get_final_message()
+            usage = getattr(final, "usage", None)
+            request_id = getattr(final, "id", None)
     except anthropic.APIError as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
         logger.error("Claude API障害 (stream_message_events): %s", str(e))
         raise AIUnavailableError("Claude API is unavailable") from e
+    except (asyncio.CancelledError, GeneratorExit):
+        if status != "cancelled":
+            status = "cancelled"
+        raise
+    except Exception as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
+        raise
+    finally:
+        await log_claude_call(
+            user_id=user_id,
+            feature=feature,
+            model=model,
+            streaming=True,
+            usage=usage,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status=status,
+            error_kind=error_kind,
+            request_id=request_id,
+        )
 
 
 async def analyze_wanna_be(
     wanna_be_text: str,
+    *,
+    user_id: str,
     async_client=None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -210,6 +340,7 @@ async def analyze_wanna_be(
 
     Args:
         wanna_be_text: Wanna Beのテキスト
+        user_id: Supabase user UUID（ログ + Anthropic metadata 用）
         async_client: AsyncAnthropic クライアント（テスト用に注入可能）
 
     Yields:
@@ -226,17 +357,34 @@ async def analyze_wanna_be(
         )
 
     full_text = ""
+    model = "claude-haiku-4-5-20251001"
+    start = time.monotonic()
+    status = "ok"
+    error_kind: str | None = None
+    usage = None
+    request_id: str | None = None
 
     try:
         async with async_client.messages.stream(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=2048,
             system=_WANNA_BE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": f"私の「なりたい自分」:\n{wanna_be_text}"}],
+            metadata={"user_id": hashed_user_id(user_id)},
         ) as stream:
-            async for text in stream.text_stream:
-                full_text += text
-                yield f"data: {json.dumps({'type': 'chunk', 'content': text}, ensure_ascii=False)}\n\n"
+            try:
+                async for text in stream.text_stream:
+                    full_text += text
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': text}, ensure_ascii=False)}\n\n"
+            except (asyncio.CancelledError, GeneratorExit):
+                status = "cancelled"
+                snap = getattr(stream, "current_message_snapshot", None)
+                if snap is not None:
+                    usage = getattr(snap, "usage", None)
+                raise
+            final = await stream.get_final_message()
+            usage = getattr(final, "usage", None)
+            request_id = getattr(final, "id", None)
 
         # 【目標JSON抽出】: ストリーム完了後にGoalsJSONをパース
         suggested_goals = _extract_goals_json(full_text)
@@ -244,14 +392,38 @@ async def analyze_wanna_be(
         yield f"data: {json.dumps({'type': 'done', 'suggested_goals': suggested_goals}, ensure_ascii=False)}\n\n"
 
     except anthropic.APIError as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
         logger.error("Claude API障害 (analyze_wanna_be): %s", str(e))
         raise AIUnavailableError("Claude API is unavailable") from e
+    except (asyncio.CancelledError, GeneratorExit):
+        if status != "cancelled":
+            status = "cancelled"
+        raise
+    except Exception as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
+        raise
+    finally:
+        await log_claude_call(
+            user_id=user_id,
+            feature="wanna_be_analyze",
+            model=model,
+            streaming=True,
+            usage=usage,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status=status,
+            error_kind=error_kind,
+            request_id=request_id,
+        )
 
 
 async def generate_weekly_review(
     habits_summary: list,
     failure_reasons: list,
     achievement_rate: float,
+    *,
+    user_id: str,
     async_client=None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -262,6 +434,7 @@ async def generate_weekly_review(
         habits_summary: 習慣ごとの達成サマリー（タイトル・達成率・ストリーク）
         failure_reasons: 未達成理由のリスト（テキストのみ）
         achievement_rate: 週間達成率（%）
+        user_id: Supabase user UUID（ログ + Anthropic metadata 用）
         async_client: AsyncAnthropic クライアント（テスト用に注入可能）
 
     Yields:
@@ -286,17 +459,34 @@ async def generate_weekly_review(
 
     user_message = f"今週の習慣データ:\n{json.dumps(user_data, ensure_ascii=False, indent=2)}"
     full_text = ""
+    model = "claude-haiku-4-5-20251001"
+    start = time.monotonic()
+    status = "ok"
+    error_kind: str | None = None
+    usage = None
+    request_id: str | None = None
 
     try:
         async with async_client.messages.stream(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=2048,
             system=_WEEKLY_REVIEW_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
+            metadata={"user_id": hashed_user_id(user_id)},
         ) as stream:
-            async for text in stream.text_stream:
-                full_text += text
-                yield f"data: {json.dumps({'type': 'chunk', 'content': text}, ensure_ascii=False)}\n\n"
+            try:
+                async for text in stream.text_stream:
+                    full_text += text
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': text}, ensure_ascii=False)}\n\n"
+            except (asyncio.CancelledError, GeneratorExit):
+                status = "cancelled"
+                snap = getattr(stream, "current_message_snapshot", None)
+                if snap is not None:
+                    usage = getattr(snap, "usage", None)
+                raise
+            final = await stream.get_final_message()
+            usage = getattr(final, "usage", None)
+            request_id = getattr(final, "id", None)
 
         # 【アクションJSON抽出】: ストリーム完了後にActionsJSONをパース
         suggested_actions = _extract_actions_json(full_text)
@@ -304,8 +494,30 @@ async def generate_weekly_review(
         yield f"data: {json.dumps({'type': 'done', 'actions': suggested_actions, 'achievement_rate': achievement_rate}, ensure_ascii=False)}\n\n"
 
     except anthropic.APIError as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
         logger.error("Claude API障害 (generate_weekly_review): %s", str(e))
         raise AIUnavailableError("Claude API is unavailable") from e
+    except (asyncio.CancelledError, GeneratorExit):
+        if status != "cancelled":
+            status = "cancelled"
+        raise
+    except Exception as e:
+        if status != "cancelled":
+            status, error_kind = "error", type(e).__name__
+        raise
+    finally:
+        await log_claude_call(
+            user_id=user_id,
+            feature="weekly_review",
+            model=model,
+            streaming=True,
+            usage=usage,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status=status,
+            error_kind=error_kind,
+            request_id=request_id,
+        )
 
 
 def _extract_goals_json(text: str) -> list:
@@ -441,14 +653,20 @@ _MEMORY_EXTRACTION_MIN_LENGTH = 80
 async def extract_memory_facts(
     session_text: str,
     current_ctx: dict | None,
+    *,
+    user_id: str,
     async_client=None,
 ) -> dict | None:
     """
     【メモリ抽出】: ジャーナル投稿テキストから user_context への差分パッチを抽出する。
 
+    内部で create_message を使う。**二重ログ防止**のため、本関数は独自に log_claude_call
+    を呼ばず、create_message に feature="memory_extract" を渡して識別する。
+
     Args:
         session_text: 抽出対象の投稿テキスト（content など）
         current_ctx: 既存の user_context レコード（identity / patterns / values_keywords / insights）
+        user_id: Supabase user UUID（内側 create_message へのログ識別子）
         async_client: AsyncAnthropic（テスト用に注入可能）
 
     Returns:
@@ -504,6 +722,8 @@ async def extract_memory_facts(
     try:
         response = await create_message(
             messages=[{"role": "user", "content": user_prompt}],
+            user_id=user_id,
+            feature="memory_extract",
             system_prompt=system_prompt,
             max_tokens=512,
             async_client=async_client,

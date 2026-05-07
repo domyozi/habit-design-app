@@ -59,7 +59,7 @@ async def test_rejected_labels_are_passed_to_avoid_list():
 
     captured = {"avoid_labels": None}
 
-    async def fake_ask(*, journal_text, avoid_labels, max_count, existing_habit_count):
+    async def fake_ask(*, journal_text, avoid_labels, max_count, existing_habit_count, user_id):
         captured["avoid_labels"] = list(avoid_labels)
         return []
 
@@ -90,7 +90,7 @@ async def test_rejected_label_is_not_reinserted_even_if_ai_returns_it():
     rejected_label = "夜更かしを記録する"
     existing = [_make_suggestion(rejected_label, status="rejected")]
 
-    async def fake_ask(*, journal_text, avoid_labels, max_count, existing_habit_count):
+    async def fake_ask(*, journal_text, avoid_labels, max_count, existing_habit_count, user_id):
         # Claude が avoid を破って同じ label を返してきたケース
         return [(rejected_label, "habit")]
 
@@ -123,7 +123,7 @@ async def test_new_label_still_inserted_when_avoid_contains_rejected():
     existing = [_make_suggestion("古いラベル", status="rejected")]
     new_label = "朝の散歩を続ける"
 
-    async def fake_ask(*, journal_text, avoid_labels, max_count, existing_habit_count):
+    async def fake_ask(*, journal_text, avoid_labels, max_count, existing_habit_count, user_id):
         return [(new_label, "habit")]
 
     with patch("app.api.routes.habit_suggestions.get_supabase") as mock_get_sb, \
