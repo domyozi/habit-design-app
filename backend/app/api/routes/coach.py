@@ -344,11 +344,14 @@ async def get_coach_context(
         return row.data or []
 
     def _fetch_kpis():
+        # Sprint v4-prep P4-followup: migrated 済 KPI は milestone Goal として goals
+        # テーブルに既に存在するので、coach の文脈に二重で含めないよう除外する。
         row = (
             supabase.table("kpis")
             .select("*")
             .eq("user_id", user_id)
             .eq("is_active", True)
+            .is_("migrated_to_goal_id", "null")
             .order("display_order")
             .execute()
         )

@@ -143,12 +143,13 @@ async def get_today_kpis(
     supabase = get_supabase()
     today = str(date.today())
 
-    # アクティブな KPI 取得
+    # アクティブな KPI 取得 (P4-followup: migrated 済は milestone Goal に移行済なので除外)
     kpis_result = (
         supabase.table("kpis")
         .select("*")
         .eq("user_id", user_id)
         .eq("is_active", True)
+        .is_("migrated_to_goal_id", "null")
         .execute()
     )
 
@@ -208,12 +209,15 @@ async def get_kpis(
     """
     supabase = get_supabase()
 
+    # Sprint v4-prep P4-followup: migrated 済 KPI は milestone Goal として
+    # goals テーブルに既に存在するので、レガシー UI で二重表示しないよう除外する。
     kpis_result = (
         supabase.table("kpis")
         .select("*")
         .eq("user_id", user_id)
         .eq("goal_id", goal_id)
         .eq("is_active", True)
+        .is_("migrated_to_goal_id", "null")
         .order("display_order")
         .execute()
     )
