@@ -22,6 +22,7 @@ begin
         ('ops_tasks', 'user_id', 'ops_tasks: own rows only'),
         ('tasks', 'user_id', 'tasks: own rows only'),
         ('primary_targets', 'user_id', 'primary_targets: own rows only'),
+        ('primary_target_days', 'user_id', 'primary_target_days: own rows only'),
         ('monthly_targets', 'user_id', 'monthly_targets: own rows only'),
         ('health_logs', 'user_id', 'health_logs_self_only'),
         ('mandala_charts', 'user_id', 'mandala_charts_self_only'),
