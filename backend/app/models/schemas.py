@@ -107,6 +107,8 @@ class UserProfile(BaseModel):
     notification_email: Optional[str] = None
     notification_enabled: bool = False
     age: Optional[int] = Field(default=None, ge=0, le=150)
+    # P0: Advanced モード toggle。ON で Goal 階層編集 / habit_goals 多対多 / Legacy KPI 画面が解放される
+    advanced_mode: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -139,6 +141,8 @@ class Goal(BaseModel):
     description: Optional[str] = None
     display_order: int = 0
     is_active: bool = True
+    # P1: 階層対応。NULL なら top-level、UUID なら子 Goal（milestone 等）
+    parent_goal_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -364,6 +368,8 @@ class UpdateUserProfileRequest(BaseModel):
     notification_email: Optional[str] = None
     notification_enabled: Optional[bool] = None
     age: Optional[int] = Field(None, ge=0, le=150)
+    # P0: Advanced モード toggle
+    advanced_mode: Optional[bool] = None
 
 
 class CreateGoalRequest(BaseModel):
@@ -376,6 +382,8 @@ class CreateGoalRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     display_order: Optional[int] = None
+    # P1: 階層対応。Advanced モード時のみ frontend から送られる
+    parent_goal_id: Optional[str] = None
 
 
 class UpdateGoalRequest(BaseModel):
@@ -388,6 +396,8 @@ class UpdateGoalRequest(BaseModel):
     description: Optional[str] = None
     display_order: Optional[int] = None
     is_active: Optional[bool] = None
+    # P1: 階層対応。Advanced モード時のみ送られる。NULL を明示的に送ると親解除
+    parent_goal_id: Optional[str] = None
 
 
 class CreateHabitRequest(BaseModel):
