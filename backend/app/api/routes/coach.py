@@ -64,6 +64,9 @@ def _adapt_habit(h: dict, today_log: dict | None = None) -> dict:
     Sprint 6.6: today_log を受け取り `today_completed` を埋める。
     `completed=true` を「ユーザーが今日マークした」と解釈（binary は user 操作、
     numeric/time は streak_service.is_achieved の結果が log.completed に入る）。
+
+    Sprint today-display: 完了表示時に「実際に記録した値」を出すため、
+    today_log の numeric_value / time_value も同梱する（reload 後も値が見える）。
     """
     return {
         "id": h.get("id"),
@@ -72,6 +75,8 @@ def _adapt_habit(h: dict, today_log: dict | None = None) -> dict:
         "longest_streak": h.get("longest_streak"),
         "scheduled_time": h.get("scheduled_time"),
         "today_completed": bool(today_log and today_log.get("completed")),
+        "today_numeric_value": today_log.get("numeric_value") if today_log else None,
+        "today_time_value": today_log.get("time_value") if today_log else None,
         "target_value": h.get("target_value"),
         "unit": h.get("unit"),
         "metric_type": h.get("metric_type", "binary"),
