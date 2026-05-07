@@ -223,6 +223,10 @@ async def create_single_goal(
         "display_order": next_order,
         "is_active": True,
     }
+    # Sprint v4-prep P3c: 親 Goal (Advanced モード時のみ frontend から送られる)。
+    # 未指定なら top-level として扱う（NULL）。
+    if request.parent_goal_id is not None:
+        new_goal["parent_goal_id"] = request.parent_goal_id
     result = supabase.table("goals").insert(new_goal).execute()
     saved = Goal(**result.data[0])
     return JSONResponse(
@@ -254,7 +258,10 @@ async def update_goal(
     if not existing.data:
         raise HTTPException(status_code=404, detail="Goal not found")
 
-    update_data = request.model_dump(exclude_none=True)
+    # Sprint v4-prep P3c: parent_goal_id を明示的に null で送ると親解除する必要があるため
+    # exclude_unset=True を使う（client が送ったフィールドだけ採用、None も含む）。
+    # それ以外のフィールドの semantics は変わらない。
+    update_data = request.model_dump(exclude_unset=True)
     if not update_data:
         # 何も更新しないリクエスト → 200 で現状を返す
         current = (
