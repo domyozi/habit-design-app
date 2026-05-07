@@ -169,23 +169,48 @@ def _habits_section(c: dict) -> str:
         scheduled = h.get("scheduled_time") or "-"
         target = h.get("target_value") if h.get("target_value") is not None else "-"
         unit = h.get("unit") or ""
+        # Sprint v4-prep: habit_goals (N:N) を coach に渡す。
+        # primary goal_id だけでなく、複数 goal に貢献している場合の関連性を coach が把握できる。
+        # 例: 「英語学習」が「TOEIC」と「転職」両方に紐づいているとき、coach はそれを根拠に提案できる。
+        goal_ids = h.get("goal_ids") or []
+        goals_str = ""
+        if goal_ids:
+            # 簡潔に最大 3 件まで
+            shown = goal_ids[:3]
+            extra = f"+{len(goal_ids) - 3}" if len(goal_ids) > 3 else ""
+            goals_str = f' goals=[{",".join(shown)}{extra}]'
         lines.append(
             f'- id={h.get("id")} title="{title}" streak={streak} '
-            f"today_done={today_done} scheduled={scheduled} target={target}{unit}"
+            f"today_done={today_done} scheduled={scheduled} target={target}{unit}{goals_str}"
         )
     inner = "\n".join(lines)
     return f'<active_habits count="{len(habits)}">\n{inner}\n</active_habits>'
 
 
-# Sprint G3-b: Goals + KPI を coach 文脈として渡す。
-# Coach が「TOEIC 820 のための KPI を提案して」「月20回瞑想は今 14/20 だね」のような
+# Sprint G3-b → v4-prep: Goals (+KPI legacy) を coach 文脈として渡す。
+# Coach が「TOEIC 820 のための milestone を提案して」「月20回瞑想は今 14/20 だね」のような
 # 具体的な会話を成立させるための情報源。
+#
+# v4-prep: parent_goal_id を出すようにし、KGI ⇄ Milestone のツリー構造を表現。
+# 親 Goal がある場合は子 Goal の行頭に "  ↳ " を付け、coach が階層を理解できるようにする。
 def _goals_section(c: dict) -> str:
     goals = c.get("goals") or []
     if not goals:
         return '<goals count="0">（未設定）</goals>'
-    lines: list[str] = []
-    for g in goals[:5]:  # 上限 5 件
+
+    # 階層を維持して描画するため、parent_goal_id でグループ化。
+    # 上限は top-level 5 件、各 top-level の子 5 件まで（token 節約）。
+    children_by_parent: dict[str, list[dict]] = {}
+    top_level: list[dict] = []
+    for g in goals:
+        parent = g.get("parent_goal_id")
+        if parent:
+            children_by_parent.setdefault(parent, []).append(g)
+        else:
+            top_level.append(g)
+
+    def _format_goal(g: dict, indent: str) -> list[str]:
+        out: list[str] = []
         title = g.get("title", "")
         bits: list[str] = [f'goal_id={g.get("id")} title="{title}"']
         if g.get("is_kgi"):
@@ -205,7 +230,8 @@ def _goals_section(c: dict) -> str:
                 kgi_bits.append(f"days_remaining={dr}")
             if kgi_bits:
                 bits.append(f"KGI({', '.join(kgi_bits)})")
-        lines.append("- " + " ".join(bits))
+        out.append(f"{indent}- " + " ".join(bits))
+        # Legacy KPI（Advanced ユーザー向け）。N:N habits 移行後は milestone Goal に置き換わる想定
         for k in g.get("kpis") or []:
             tv = k.get("target_value")
             tv_str = f"{tv}" if tv is not None else "-"
@@ -213,10 +239,18 @@ def _goals_section(c: dict) -> str:
             cur = k.get("current_period_count") or 0
             freq = k.get("tracking_frequency") or "monthly"
             n_habits = len(k.get("habit_ids") or [])
-            lines.append(
-                f'  · kpi_id={k.get("id")} "{k.get("title", "")}" '
+            out.append(
+                f'{indent}  · kpi_id={k.get("id")} "{k.get("title", "")}" '
                 f"freq={freq} target={tv_str}{unit} current={cur} habits={n_habits}"
             )
+        return out
+
+    lines: list[str] = []
+    for g in top_level[:5]:
+        lines.extend(_format_goal(g, ""))
+        # 子 Goal (milestone) を「  ↳ 」プレフィックスで列挙
+        for child in (children_by_parent.get(g.get("id") or "", [])[:5]):
+            lines.extend(_format_goal(child, "  ↳ "))
     return f'<goals count="{len(goals)}">\n' + "\n".join(lines) + "\n</goals>"
 
 

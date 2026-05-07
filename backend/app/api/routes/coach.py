@@ -58,7 +58,11 @@ def _now_local_fields(tz: str) -> dict:
     }
 
 
-def _adapt_habit(h: dict, today_log: dict | None = None) -> dict:
+def _adapt_habit(
+    h: dict,
+    today_log: dict | None = None,
+    goal_ids: list[str] | None = None,
+) -> dict:
     """FE CoachHabitSnapshot と shape を揃える。
 
     Sprint 6.6: today_log を受け取り `today_completed` を埋める。
@@ -67,6 +71,9 @@ def _adapt_habit(h: dict, today_log: dict | None = None) -> dict:
 
     Sprint today-display: 完了表示時に「実際に記録した値」を出すため、
     today_log の numeric_value / time_value も同梱する（reload 後も値が見える）。
+
+    Sprint v4-prep: habit_goals (N:N) を反映した goal_ids 配列も同梱。
+    coach prompt が「この habit はどの Goal に貢献しているか」を把握できるようにする。
     """
     return {
         "id": h.get("id"),
@@ -80,6 +87,7 @@ def _adapt_habit(h: dict, today_log: dict | None = None) -> dict:
         "target_value": h.get("target_value"),
         "unit": h.get("unit"),
         "metric_type": h.get("metric_type", "binary"),
+        "goal_ids": goal_ids or [],
     }
 
 
@@ -355,6 +363,17 @@ async def get_coach_context(
         )
         return row.data or []
 
+    # Sprint v4-prep: habit_goals (N:N) を coach context に含める。
+    # _adapt_habit で habit ごとの goal_ids 配列に展開する。
+    def _fetch_habit_goals():
+        row = (
+            supabase.table("habit_goals")
+            .select("habit_id, goal_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return row.data or []
+
     def _fetch_monthly_logs():
         # 月初〜今日の habit_logs（KPI 進捗集計用）。月単位 KPI までカバー。
         today_str = today_local_str
@@ -407,6 +426,7 @@ async def get_coach_context(
         goals_raw,
         kpis_raw,
         kpi_habits_raw,
+        habit_goals_raw,
         monthly_logs_raw,
     ) = await asyncio.gather(
         _safe("primary_targets", _fetch_pt),
@@ -419,6 +439,7 @@ async def get_coach_context(
         _safe("goals", _fetch_goals),
         _safe("kpis", _fetch_kpis),
         _safe("kpi_habits", _fetch_kpi_habits),
+        _safe("habit_goals", _fetch_habit_goals),
         _safe("habit_logs_month", _fetch_monthly_logs),
     )
     habits_raw = habits_raw or []
@@ -429,8 +450,13 @@ async def get_coach_context(
     goals_raw = goals_raw or []
     kpis_raw = kpis_raw or []
     kpi_habits_raw = kpi_habits_raw or []
+    habit_goals_raw = habit_goals_raw or []
     monthly_logs_raw = monthly_logs_raw or []
     today_logs_map = {log["habit_id"]: log for log in today_logs_raw if log.get("habit_id")}
+    # habit_id → goal_ids[] のマップを作成（_adapt_habit で参照）
+    habit_goal_ids_map: dict[str, list[str]] = {}
+    for row in habit_goals_raw:
+        habit_goal_ids_map.setdefault(row["habit_id"], []).append(row["goal_id"])
 
     user_context = None
     if ctx_raw:
@@ -444,7 +470,10 @@ async def get_coach_context(
             "profile": ctx_raw.get("profile"),
         }
 
-    habits = [_adapt_habit(h, today_logs_map.get(h["id"])) for h in habits_raw]
+    habits = [
+        _adapt_habit(h, today_logs_map.get(h["id"]), habit_goal_ids_map.get(h["id"], []))
+        for h in habits_raw
+    ]
 
     # Sprint G3-b: Goals + KPI を組み立てる。KPI 進捗は monthly_logs_raw から FE と同じロジックで集計。
     goals_with_kpis = _build_goals_with_kpis(
