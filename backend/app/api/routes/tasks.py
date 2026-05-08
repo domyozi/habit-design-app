@@ -29,6 +29,7 @@ PATCH_FIELDS = {
     "description",
     "habit_id",
     "note_id",
+    "goal_id",
     "status",
     "scheduled_at",
     "scheduled_end",
@@ -113,6 +114,7 @@ async def list_tasks(
     status: Optional[list[str]] = Query(default=None),
     note_id: Optional[str] = None,
     habit_id: Optional[str] = None,
+    goal_id: Optional[str] = None,
     user_id: str = Depends(get_current_user),
 ):
     statuses = _parse_statuses(status)
@@ -124,6 +126,8 @@ async def list_tasks(
         query = query.eq("note_id", note_id)
     if habit_id is not None:
         query = query.eq("habit_id", habit_id)
+    if goal_id is not None:
+        query = query.eq("goal_id", goal_id)
     result = query.order("created_at", desc=True).execute()
     return result.data or []
 

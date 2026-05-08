@@ -43,6 +43,10 @@ async def create_note(payload: dict, user_id: str = Depends(get_current_user)):
         "pinned": bool(payload.get("pinned", False)),
         "order_index": int(payload.get("order_index", 0)),
     }
+    # INBOX-link: Note ↔ Milestone (= parent_goal_id を持つ Goal) のリンク。
+    # null / 未指定はそのまま落とす（自由 Note 扱い）。
+    if "milestone_id" in payload:
+        record["milestone_id"] = payload.get("milestone_id")
     result = supabase.table("notes").insert(record).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create note")
@@ -52,7 +56,7 @@ async def create_note(payload: dict, user_id: str = Depends(get_current_user)):
 @router.patch("/{note_id}")
 async def patch_note(note_id: str, payload: dict, user_id: str = Depends(get_current_user)):
     supabase = get_supabase()
-    allowed = {"title", "body", "order_index", "pinned"}
+    allowed = {"title", "body", "order_index", "pinned", "milestone_id"}
     update_data = {k: v for k, v in payload.items() if k in allowed}
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")
