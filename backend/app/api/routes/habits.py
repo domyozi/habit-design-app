@@ -93,25 +93,30 @@ def _ensure_owned_goal(supabase, goal_id: str, user_id: str) -> None:
 @router.get("/habits")
 async def get_habits(
     include_today_log: bool = Query(default=True),
+    include_inactive: bool = Query(default=False),
     user_id: str = Depends(get_current_user),
 ):
     """
     【GET /habits】: 有効な習慣一覧を取得（今日のログ付き）
-    【フィルタ】: is_active=true かつログインユーザーのもののみ
+    【フィルタ】: 既定では is_active=true かつログインユーザーのもののみ
+    【include_inactive】: true の場合 is_active=false（アーカイブ済）も含めて返す。
+                       Habits 画面のアーカイブ復元 UI 用。default=False で既存呼び出し
+                       (Today / Signals / Coach) は無影響。
     【ログ付き】: include_today_log=true の場合、今日の habit_logs も取得
     🔵 信頼性レベル: REQ-301・api-endpoints.md より
     """
     supabase = get_supabase()
 
-    # 【習慣一覧取得】: is_active=true かつ自ユーザーの習慣を display_order 順に取得
-    result = (
+    # 【習慣一覧取得】: 自ユーザーの習慣を display_order 順に取得。
+    # include_inactive=False（既定）のときだけ is_active=true に絞る。
+    query = (
         supabase.table("habits")
         .select("*")
         .eq("user_id", user_id)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
     )
+    if not include_inactive:
+        query = query.eq("is_active", True)
+    result = query.order("display_order").execute()
     habits = result.data or []
 
     # 【今日のログ取得】: include_today_log=true の場合、今日分の habit_logs を取得
