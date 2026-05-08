@@ -8,7 +8,7 @@ Primary Target（ボス目標）API
 """
 from datetime import date as date_type, datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
@@ -57,11 +57,36 @@ async def upsert_primary_target(
     supabase = get_supabase()
     completed = bool(payload.get("completed", False))
     now = datetime.now(timezone.utc).isoformat()
+    today = date_type.today()
+    set_date_raw = payload.get("set_date") or str(today)
+
+    # PT close gate: 未来日 (today+1 以降) の Primary Target を upsert しようと
+    # しているとき、当日の PT がまだ completed=false なら拒否する。
+    # 「今日の PT が clean に閉じるまで翌日のフォーカスを書き換えるな」というポリシー。
+    # past 日 (日付訂正など履歴編集用途) は許可。
+    try:
+        set_date_parsed = date_type.fromisoformat(str(set_date_raw))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="set_date must be YYYY-MM-DD")
+
+    if set_date_parsed > today:
+        existing = (
+            supabase.table("primary_targets")
+            .select("value, set_date, completed")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        row = existing.data[0] if existing.data else None
+        if row and row.get("set_date") == str(today) and not row.get("completed"):
+            raise HTTPException(
+                status_code=400,
+                detail="先に今日の Primary Target を完了してから翌日以降の PT を設定してください",
+            )
 
     data = {
         "user_id": user_id,
         "value": payload.get("value", ""),
-        "set_date": payload.get("set_date", str(date_type.today())),
+        "set_date": str(set_date_parsed),
         "completed": completed,
         "completed_at": now if completed else None,
         "updated_at": now,
