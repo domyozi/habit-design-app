@@ -54,21 +54,26 @@ def _default_aggregation(metric_type: str) -> str:
     return "exists"
 
 
-def _get_habit_or_raise(supabase, habit_id: str, user_id: str) -> dict:
+def _get_habit_or_raise(
+    supabase,
+    habit_id: str,
+    user_id: str,
+    *,
+    include_archived: bool = False,
+) -> dict:
     """
     【所有者確認ヘルパー】: 習慣を取得し、存在・所有権を確認する
-    【404】: 習慣が存在しない（または is_active=false）の場合
+    【404】: 習慣が存在しない場合
+            既定 (include_archived=False) では is_active=false も 404 扱いにする。
+            update_habit からのアーカイブ復元（is_active=true への切替）では
+            include_archived=True を渡してアーカイブ済も対象にする。
     【403】: ログインユーザーの習慣でない場合
     🔵 信頼性レベル: NFR-101 より
     """
-    result = (
-        supabase.table("habits")
-        .select("*")
-        .eq("id", habit_id)
-        .eq("is_active", True)
-        .single()
-        .execute()
-    )
+    query = supabase.table("habits").select("*").eq("id", habit_id)
+    if not include_archived:
+        query = query.eq("is_active", True)
+    result = query.single().execute()
     if not result.data:
         raise NotFoundError("習慣")
     if result.data["user_id"] != user_id:
@@ -321,7 +326,9 @@ async def update_habit(
     supabase = get_supabase()
 
     # 【所有者確認】: 習慣の存在と所有権を確認（404/403 を自動発生）
-    existing = _get_habit_or_raise(supabase, habit_id, user_id)
+    # include_archived=True でアーカイブ済（is_active=false）も対象にする。
+    # is_active=true への PATCH = アーカイブ復元の要件のため。
+    existing = _get_habit_or_raise(supabase, habit_id, user_id, include_archived=True)
 
     # 【更新データ構築】: action フィールドを除いた None 以外のフィールドのみ更新
     update_data = request.model_dump(exclude_none=True, exclude={"action"})
