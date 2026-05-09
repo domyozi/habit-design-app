@@ -341,3 +341,44 @@ def test_to_pending_action_rows_drops_update_without_target_id():
     }
     rows = to_pending_action_rows(filtered)
     assert rows == []
+
+
+# ─── Slice C: task_delete ────────────────────────────────────────
+
+
+def test_filter_by_confidence_keeps_task_deletes():
+    """Slice C で追加した task_deletes も confidence でフィルタリングされる。"""
+    payload = {
+        "task_deletes": [
+            {"task_id": "t1", "confidence": 0.8, "reason": "cancel"},
+            {"task_id": "t2", "confidence": 0.4, "reason": "low"},  # drop
+        ],
+    }
+    out = filter_by_confidence(payload)
+    assert "task_deletes" in out
+    assert len(out["task_deletes"]) == 1
+    assert out["task_deletes"][0]["task_id"] == "t1"
+
+
+def test_to_pending_action_rows_task_delete_emits_kind():
+    filtered = {
+        "task_deletes": [
+            {"task_id": "t1", "confidence": 0.8, "reason": "ユーザー発話: キャンセル"},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "task_delete"
+    assert rows[0]["payload"]["task_id"] == "t1"
+    assert isinstance(rows[0]["confidence"], float)
+
+
+def test_to_pending_action_rows_drops_task_delete_without_id():
+    """task_id 欠落の delete は drop（ID 無しに削除を走らせるのは危険）。"""
+    filtered = {
+        "task_deletes": [
+            {"reason": "削除", "confidence": 0.9},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert rows == []

@@ -47,13 +47,15 @@ def filter_by_confidence(payload: dict) -> dict:
     if isinstance(pt, dict) and float(pt.get("confidence") or 0) >= CONFIDENCE_THRESHOLD:
         out["primary_target"] = pt
 
-    # Slice B: habit_updates / task_updates も同等に confidence フィルタを通す。
+    # Slice B/C: 編集系 (habit_updates / task_updates) と削除系 (task_deletes) も
+    # 同等に confidence フィルタを通す。
     for key in (
         "tasks",
         "habits",
         "habit_today_completes",
         "habit_updates",
         "task_updates",
+        "task_deletes",
         "confirmation_prompts",
     ):
         rows = payload.get(key)
@@ -86,6 +88,8 @@ _PENDING_KINDS = {
     # Slice B: 既存 entity の編集提案
     "habit_update",
     "task_update",
+    # Slice C: 削除提案カード（task のみ。habit / goal は policy 上 ✕）
+    "task_delete",
 }
 
 # AI 出力 string 値の最大長。これを超える値は切り詰める（DoS / DB 圧迫対策）。
@@ -206,6 +210,19 @@ def to_pending_action_rows(filtered: dict) -> list[dict]:
             continue
         rows.append({
             "kind": "task_update",
+            "payload": _sanitize_payload({**t}),
+            "confidence": float(t.get("confidence") or 0),
+        })
+
+    # Slice C: task の削除提案。task_id 必須。
+    # 破壊的なので prompt 側で confidence ≥ 0.7 + confirmation_prompt 必須を強制する。
+    for t in filtered.get("task_deletes") or []:
+        if not isinstance(t, dict):
+            continue
+        if not t.get("task_id"):
+            continue
+        rows.append({
+            "kind": "task_delete",
             "payload": _sanitize_payload({**t}),
             "confidence": float(t.get("confidence") or 0),
         })

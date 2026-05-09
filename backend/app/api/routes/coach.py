@@ -43,6 +43,8 @@ PENDING_KINDS = {
     # Slice B: 既存 entity の編集提案
     "habit_update",
     "task_update",
+    # Slice C: 削除提案（task のみ）
+    "task_delete",
 }
 PENDING_STATUSES_RESOLVABLE = {"accepted", "rejected", "expired"}
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
@@ -676,8 +678,9 @@ _PAYLOAD_OWNER_CHECKS: dict[str, tuple[str, str, str]] = {
     # Slice B: 既存 entity の編集提案。AI が指す ID が当該 user のものか確認する。
     "habit_update": ("habit_id", "habits", "id"),
     "task_update": ("task_id", "tasks", "id"),
-    # Slice C 以降: "habit_delete": ("habit_id", "habits", "id"),
-    #              "goal_edit":    ("goal_id",  "goals",  "id"), ...
+    # Slice C: 削除提案
+    "task_delete": ("task_id", "tasks", "id"),
+    # Slice D 以降: "goal_edit":    ("goal_id",  "goals",  "id"), ...
 }
 
 

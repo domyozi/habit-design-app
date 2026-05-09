@@ -369,3 +369,43 @@ async def test_create_pending_action_rejects_foreign_habit_update():
                 user_id=TEST_USER_ID,
             )
         assert exc.value.status_code == 403
+
+
+def test_payload_owner_ok_handles_task_delete():
+    """Slice C: task_delete も _PAYLOAD_OWNER_CHECKS で tasks テーブルを引く。"""
+    from app.api.routes import coach as coach_module
+
+    mock_sb = MagicMock()
+    _wire_owner_lookup(mock_sb, table_name="tasks", owned=True)
+    assert coach_module._payload_owner_ok(
+        mock_sb, "task_delete", {"task_id": "t1"}, TEST_USER_ID
+    ) is True
+
+    mock_sb2 = MagicMock()
+    _wire_owner_lookup(mock_sb2, table_name="tasks", owned=False)
+    assert coach_module._payload_owner_ok(
+        mock_sb2, "task_delete", {"task_id": "victim"}, TEST_USER_ID
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_create_pending_action_rejects_foreign_task_delete():
+    """task_delete payload に他人の task_id を仕込むと 403 で reject される。"""
+    from app.api.routes import coach as coach_module
+    from fastapi import HTTPException
+
+    with patch.object(coach_module, "get_supabase") as mock_get_sb:
+        mock_sb = MagicMock()
+        mock_get_sb.return_value = mock_sb
+        _wire_owner_lookup(mock_sb, table_name="tasks", owned=False)
+
+        with pytest.raises(HTTPException) as exc:
+            await coach_module.create_pending_action(
+                body=coach_module.PendingActionCreate(
+                    kind="task_delete",
+                    payload={"task_id": "victim-uuid"},
+                    confidence=0.9,
+                ),
+                user_id=TEST_USER_ID,
+            )
+        assert exc.value.status_code == 403
