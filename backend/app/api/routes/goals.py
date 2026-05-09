@@ -98,22 +98,25 @@ def build_goal_with_kgi_response(goal_data: dict) -> GoalWithKgiResponse:
 @router.get("/goals")
 async def get_goals(
     include_kgi: bool = Query(False),
+    include_inactive: bool = Query(False),
     user_id: str = Depends(get_current_user),
 ):
     """
-    【GET /goals】: アクティブな長期目標一覧を取得
+    【GET /goals】: 長期目標一覧を取得（デフォルトは active のみ）
     include_kgi=true の場合は KGI 計算フィールド（達成率・残り日数・期限超過）を付与
+    include_inactive=true の場合は archived (is_active=false) も含めて返す
+    （Goals 画面下部の「アーカイブ済み」セクションが復元 UI のために利用する）
     🔵 信頼性レベル: REQ-203・REQ-DASH-001・api-endpoints.md より
     """
     supabase = get_supabase()
-    result = (
+    query = (
         supabase.table("goals")
         .select("*")
         .eq("user_id", user_id)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
     )
+    if not include_inactive:
+        query = query.eq("is_active", True)
+    result = query.order("display_order").execute()
     if include_kgi:
         goals = [build_goal_with_kgi_response(g) for g in result.data]
         return JSONResponse(
@@ -286,20 +289,58 @@ async def update_goal(
 @router.delete("/goals/{goal_id}", status_code=204)
 async def delete_goal(
     goal_id: str,
+    cascade: bool = Query(False),
     user_id: str = Depends(get_current_user),
 ):
     """
     【DELETE /goals/{goal_id}】Sprint G1: 論理削除（is_active=false）。
-    紐付く KPI は別途 KPI の論理削除で対応する想定（cascade はしない）。
+    KPI は別途 KPI の論理削除で対応する想定。
+    cascade=true の場合は parent_goal_id を辿る BFS で子孫 Goal も
+    まとめて is_active=false にする (Goals 画面の「子も一緒にアーカイブ」)。
     """
     supabase = get_supabase()
-    result = (
-        supabase.table("goals")
-        .update({"is_active": False})
-        .eq("id", goal_id)
-        .eq("user_id", user_id)
-        .execute()
-    )
+    if cascade:
+        # MAX_GOALS=5 なので全件取得しても十分軽い。
+        # parent_goal_id の自己参照は DB 制約で禁止されていないため visited で循環防御。
+        all_active = (
+            supabase.table("goals")
+            .select("id, parent_goal_id")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        rows = all_active.data or []
+        children_by_parent: dict[str, list[str]] = {}
+        for row in rows:
+            parent = row.get("parent_goal_id")
+            if parent:
+                children_by_parent.setdefault(parent, []).append(row["id"])
+        target_ids: list[str] = [goal_id]
+        visited: set[str] = {goal_id}
+        queue: list[str] = [goal_id]
+        while queue:
+            current = queue.pop(0)
+            for child_id in children_by_parent.get(current, []):
+                if child_id in visited:
+                    continue
+                visited.add(child_id)
+                target_ids.append(child_id)
+                queue.append(child_id)
+        result = (
+            supabase.table("goals")
+            .update({"is_active": False})
+            .in_("id", target_ids)
+            .eq("user_id", user_id)
+            .execute()
+        )
+    else:
+        result = (
+            supabase.table("goals")
+            .update({"is_active": False})
+            .eq("id", goal_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
     if not result.data:
         raise HTTPException(status_code=404, detail="Goal not found")
     return Response(status_code=204)
