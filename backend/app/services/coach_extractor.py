@@ -47,8 +47,8 @@ def filter_by_confidence(payload: dict) -> dict:
     if isinstance(pt, dict) and float(pt.get("confidence") or 0) >= CONFIDENCE_THRESHOLD:
         out["primary_target"] = pt
 
-    # Slice B/C/D: 編集系 (habit_updates / task_updates / goal_updates) と
-    # 削除系 (task_deletes) と新規 Goal (goals) も同等に confidence フィルタを通す。
+    # Slice B/C/D/E: 編集系 (habit_updates / task_updates / goal_updates)、
+    # 削除系 (task_deletes / memory_clears)、新規 Goal (goals) も confidence フィルタ。
     for key in (
         "tasks",
         "habits",
@@ -58,6 +58,7 @@ def filter_by_confidence(payload: dict) -> dict:
         "task_deletes",
         "goals",
         "goal_updates",
+        "memory_clears",
         "confirmation_prompts",
     ):
         rows = payload.get(key)
@@ -95,6 +96,8 @@ _PENDING_KINDS = {
     # Slice D: 中長期 Goal の新規 / 編集（削除は policy 上 ✕）
     "goal",
     "goal_update",
+    # Slice E: Memory の特定キー削除（merge ではなく明示的に null へ書き戻す）
+    "memory_clear",
 }
 
 # AI 出力 string 値の最大長。これを超える値は切り詰める（DoS / DB 圧迫対策）。
@@ -255,6 +258,28 @@ def to_pending_action_rows(filtered: dict) -> list[dict]:
             "kind": "goal_update",
             "payload": _sanitize_payload({**g}),
             "confidence": float(g.get("confidence") or 0),
+        })
+
+    # Slice E: Memory の特定キー削除提案。fields に top-level 1〜N キーを並べる。
+    # 許可キー: identity / patterns / values_keywords / insights / goal_summary
+    # profile は per-key merge endpoint 仕様の都合でスコープ外（プロフィール削除は
+    # ユーザーが Memory 画面で手で行う）。fields が空 / 不正なら drop。
+    _ALLOWED_CLEAR_FIELDS = {
+        "identity", "patterns", "values_keywords", "insights", "goal_summary",
+    }
+    for m in filtered.get("memory_clears") or []:
+        if not isinstance(m, dict):
+            continue
+        raw_fields = m.get("fields")
+        if not isinstance(raw_fields, list):
+            continue
+        valid = [f for f in raw_fields if isinstance(f, str) and f in _ALLOWED_CLEAR_FIELDS]
+        if not valid:
+            continue
+        rows.append({
+            "kind": "memory_clear",
+            "payload": _sanitize_payload({**m, "fields": valid}),
+            "confidence": float(m.get("confidence") or 0),
         })
 
     # 安全弁: kind が想定外のものは drop

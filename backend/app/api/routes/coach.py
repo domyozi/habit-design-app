@@ -48,6 +48,8 @@ PENDING_KINDS = {
     # Slice D: 中長期 Goal の新規 / 編集
     "goal",
     "goal_update",
+    # Slice E: Memory 特定キーの削除（merge ではなく明示的 null 書き戻し）
+    "memory_clear",
 }
 PENDING_STATUSES_RESOLVABLE = {"accepted", "rejected", "expired"}
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]

@@ -440,3 +440,58 @@ def test_to_pending_action_rows_drops_goal_without_required_fields():
     }
     rows = to_pending_action_rows(filtered)
     assert rows == []
+
+
+# ─── Slice E: memory_clears ─────────────────────────────────────
+
+
+def test_filter_by_confidence_keeps_memory_clears():
+    payload = {
+        "memory_clears": [
+            {"fields": ["patterns"], "confidence": 0.8},
+            {"fields": ["identity"], "confidence": 0.3},  # drop
+        ],
+    }
+    out = filter_by_confidence(payload)
+    assert "memory_clears" in out
+    assert len(out["memory_clears"]) == 1
+    assert out["memory_clears"][0]["fields"] == ["patterns"]
+
+
+def test_to_pending_action_rows_memory_clear_emits_kind():
+    filtered = {
+        "memory_clears": [
+            {"fields": ["patterns", "identity"], "confidence": 0.8, "reason": "r"},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "memory_clear"
+    assert rows[0]["payload"]["fields"] == ["patterns", "identity"]
+
+
+def test_to_pending_action_rows_memory_clear_filters_disallowed_fields():
+    """profile や sub-key 指定は許可されない。fields に許可外しか無ければ row 自体を drop。"""
+    filtered = {
+        "memory_clears": [
+            {"fields": ["profile"], "confidence": 0.9},  # 許可外 → drop
+            {"fields": ["insights.morning"], "confidence": 0.9},  # sub-key → drop
+            {"fields": ["patterns", "profile"], "confidence": 0.9},  # patterns だけ残る
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    # 1 件目と 2 件目は valid fields が空なので drop、3 件目だけ採用
+    assert len(rows) == 1
+    assert rows[0]["payload"]["fields"] == ["patterns"]
+
+
+def test_to_pending_action_rows_drops_memory_clear_without_fields():
+    """fields 配列が無い / 空の memory_clear は drop。"""
+    filtered = {
+        "memory_clears": [
+            {"confidence": 0.9, "reason": "x"},
+            {"fields": [], "confidence": 0.9},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert rows == []
