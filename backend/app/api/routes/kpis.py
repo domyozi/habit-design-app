@@ -787,9 +787,9 @@ JSON 配列のみ。説明文は付けない。コードフェンスは使わな
   {
     "title": "短い習慣名（例: 朝 30 分のランニング）",
     "frequency": "daily" | "weekdays" | "weekends" | "custom",
-    "metric_type": "binary" | "numeric" | "percentage" | "time",
+    "metric_type": "binary" | "numeric_min" | "numeric_max" | "duration",
     "target_value": number | null,
-    "unit": "回" | "分" | "km" | "kg" | "%" | など | null,
+    "unit": "回" | "分" | "km" | "kg" | "ページ" | "問" など | null,
     "scheduled_time": "HH:MM" | null,
     "reason": "なぜこの習慣が Goal 達成に効くかの 1〜2 文"
   }
@@ -799,11 +799,12 @@ JSON 配列のみ。説明文は付けない。コードフェンスは使わな
 # 守ること
 - existing_habits に既にあるものは提案しない（重複禁止）
 - frequency は基本 "daily"。週末だけ等の特殊例だけ "weekdays"/"weekends"/"custom"
-- metric_type:
-  - 「やる/やらない」だけ判定する習慣は "binary"（target_value=null）
-  - 数値で測れるなら "numeric"（例: ランニング 5km）+ unit
-  - 達成率なら "percentage"（target_value=80, unit="%"）
-  - 時間で測るなら "time"（target_value=30, unit="分"）
+- metric_type は次の 4 つから選ぶ:
+  - "binary": やる/やらない だけ判定する習慣（target_value=null, unit=null）
+  - "numeric_min": 「○○ 以上やる」（例: 5km 以上走る → target_value=5, unit="km"）
+  - "numeric_max": 「○○ 以下に抑える」（例: スマホ 2 時間以下 → target_value=2, unit="時間"）
+  - "duration": 所要時間で測る習慣（例: 30 分の瞑想 → target_value=30, unit="分"）
+- range / time_before / time_after は今回は使わない
 - scheduled_time は「朝 7:00 にやる」など時刻が明確なときだけ。曖昧なら null
 - 提案件数は最低 2、最多 4
 - ユーザーの user_context（identity / values / patterns）を踏まえてパーソナライズ
