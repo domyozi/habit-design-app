@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
 from app.models.schemas import (
+    AiHabitSuggestion,
     AiKpiSuggestion,
     APIResponse,
     KpiChartDataPoint,
@@ -36,6 +37,7 @@ from app.models.schemas import (
     KpiUpdate,
     KpiWithTodayStatus,
     LinkKpiHabitsRequest,
+    SuggestHabitsRequest,
     SuggestKpisRequest,
 )
 from app.services import ai_service
@@ -765,6 +767,206 @@ async def suggest_kpis(
             suggestions.append(sug)
         except Exception as e:
             _logger.warning("[suggest-kpis] item validation failed: %s | item=%s", e, s)
+            continue
+
+    return APIResponse(success=True, data=suggestions).model_dump(mode="json")
+
+
+# ────────────────────────────────────────────────────────────────────
+# AI 習慣提案: Goal 達成に貢献する習慣候補を 2〜4 件返す。
+# /ai/suggest-kpis を雛形にして、出力 shape を Habit 用に差し替えただけ。
+# DB 書き込みなし（採用時にフロントが POST /api/habits を叩く）。
+
+_SUGGEST_HABITS_SYSTEM_PROMPT = """あなたは長期目標達成のコーチです。
+渡された Goal を達成するために、ユーザーが日々取り組める **習慣 (Habit)** を **2〜4 件** 提案してください。
+
+# 出力形式（必須）
+JSON 配列のみ。説明文は付けない。コードフェンスは使わない。
+```
+[
+  {
+    "title": "短い習慣名（例: 朝 30 分のランニング）",
+    "frequency": "daily" | "weekdays" | "weekends" | "custom",
+    "metric_type": "binary" | "numeric" | "percentage" | "time",
+    "target_value": number | null,
+    "unit": "回" | "分" | "km" | "kg" | "%" | など | null,
+    "scheduled_time": "HH:MM" | null,
+    "reason": "なぜこの習慣が Goal 達成に効くかの 1〜2 文"
+  }
+]
+```
+
+# 守ること
+- existing_habits に既にあるものは提案しない（重複禁止）
+- frequency は基本 "daily"。週末だけ等の特殊例だけ "weekdays"/"weekends"/"custom"
+- metric_type:
+  - 「やる/やらない」だけ判定する習慣は "binary"（target_value=null）
+  - 数値で測れるなら "numeric"（例: ランニング 5km）+ unit
+  - 達成率なら "percentage"（target_value=80, unit="%"）
+  - 時間で測るなら "time"（target_value=30, unit="分"）
+- scheduled_time は「朝 7:00 にやる」など時刻が明確なときだけ。曖昧なら null
+- 提案件数は最低 2、最多 4
+- ユーザーの user_context（identity / values / patterns）を踏まえてパーソナライズ
+- 既存 KPI が参考データとして渡されるが、KPI 自体は習慣ではないので提案には含めない
+"""
+
+
+def _parse_habit_suggestions(text: str) -> list[dict]:
+    """LLM 出力から JSON 配列を取り出す。コードフェンス／前後余計テキストに耐える。"""
+    fence = re.search(r"```(?:json)?\s*([\[{][\s\S]*?[\]}])\s*```", text)
+    if fence:
+        candidate = fence.group(1)
+    else:
+        m = re.search(r"\[[\s\S]*\]", text)
+        if not m:
+            return []
+        candidate = m.group(0)
+    try:
+        data = json.loads(candidate)
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception as e:
+        _logger.warning("[suggest-habits] JSON parse failed: %s | text=%s", e, text[:300])
+        return []
+
+
+@router.post("/ai/suggest-habits")
+async def suggest_habits(
+    request: SuggestHabitsRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    【POST /ai/suggest-habits】指定 Goal の達成に貢献する習慣候補を AI が提案。
+    """
+    supabase = get_supabase()
+
+    # Goal 取得
+    goal_result = (
+        supabase.table("goals")
+        .select("*")
+        .eq("id", request.goal_id)
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .single()
+        .execute()
+    )
+    if not goal_result.data:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    goal = goal_result.data
+
+    # 既存 habits（重複防止のため AI に渡す）
+    habits_result = (
+        supabase.table("habits")
+        .select("title, frequency, metric_type, scheduled_time, target_value, unit")
+        .eq("user_id", user_id)
+        .eq("is_active", True)
+        .order("display_order")
+        .execute()
+    )
+    existing_habits = habits_result.data or []
+
+    # 既存 KPI（参考情報）
+    existing_kpis_result = (
+        supabase.table("kpis")
+        .select("title, metric_type, tracking_frequency, target_value, unit")
+        .eq("user_id", user_id)
+        .eq("goal_id", request.goal_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    existing_kpis = existing_kpis_result.data or []
+
+    # user_context（パーソナライズ用）
+    ctx_result = (
+        supabase.table("user_context")
+        .select("identity, values_keywords, goal_summary, patterns, profile")
+        .eq("user_id", user_id)
+        .single()
+        .execute()
+    )
+    ctx = ctx_result.data or {}
+
+    # ユーザープロンプト構築
+    parts: list[str] = []
+    parts.append("# Goal\n")
+    parts.append(f"- title: {goal.get('title')}")
+    if goal.get("description"):
+        parts.append(f"- description: {goal['description']}")
+    if goal.get("target_value") is not None:
+        unit = goal.get("unit") or ""
+        parts.append(f"- target_value: {goal['target_value']}{unit}")
+    if goal.get("target_date"):
+        parts.append(f"- target_date: {goal['target_date']}")
+    if goal.get("metric_type"):
+        parts.append(f"- metric_type: {goal['metric_type']}")
+
+    parts.append("\n# existing_habits（重複禁止）")
+    if existing_habits:
+        for h in existing_habits:
+            parts.append(
+                f"- 「{h['title']}」 ({h.get('frequency')}, {h.get('metric_type')}, time={h.get('scheduled_time') or '-'}, target={h.get('target_value')}{h.get('unit') or ''})"
+            )
+    else:
+        parts.append("- (なし)")
+
+    parts.append("\n# existing_kpis（参考。これは習慣ではないので提案には含めない）")
+    if existing_kpis:
+        for k in existing_kpis:
+            parts.append(
+                f"- {k['title']} ({k.get('tracking_frequency')}, {k.get('metric_type')}, target={k.get('target_value')}{k.get('unit') or ''})"
+            )
+    else:
+        parts.append("- (なし)")
+
+    parts.append("\n# user_context")
+    if ctx.get("identity"):
+        parts.append(f"- identity: {ctx['identity']}")
+    if ctx.get("goal_summary"):
+        parts.append(f"- goal_summary: {ctx['goal_summary']}")
+    vk = ctx.get("values_keywords")
+    if isinstance(vk, list) and vk:
+        parts.append(f"- values: {', '.join(vk[:8])}")
+    pat = ctx.get("patterns")
+    if isinstance(pat, list) and pat:
+        parts.append(f"- patterns: {', '.join(pat[:5])}")
+
+    user_prompt = "\n".join(parts)
+
+    # LLM 呼び出し（分析系なので Sonnet を指定）
+    try:
+        text = await ai_service.create_message(
+            messages=[{"role": "user", "content": user_prompt}],
+            user_id=user_id,
+            feature="habit_suggest",
+            system_prompt=_SUGGEST_HABITS_SYSTEM_PROMPT,
+            max_tokens=2048,
+            model="claude-sonnet-4-6",
+        )
+    except ai_service.AIUnavailableError as e:
+        raise HTTPException(status_code=503, detail="AI service unavailable") from e
+
+    raw = _parse_habit_suggestions(text)
+
+    suggestions: list[AiHabitSuggestion] = []
+    for s in raw:
+        try:
+            sug = AiHabitSuggestion(
+                title=str(s.get("title", ""))[:200] or "提案習慣",
+                frequency=s.get("frequency") or "daily",
+                metric_type=s.get("metric_type") or "binary",
+                target_value=(
+                    float(s["target_value"])
+                    if s.get("target_value") is not None and s.get("target_value") != ""
+                    else None
+                ),
+                unit=(str(s["unit"]) if s.get("unit") else None),
+                scheduled_time=(str(s["scheduled_time"]) if s.get("scheduled_time") else None),
+                reason=str(s.get("reason", ""))[:400],
+            )
+            suggestions.append(sug)
+        except Exception as e:
+            _logger.warning("[suggest-habits] item validation failed: %s | item=%s", e, s)
             continue
 
     return APIResponse(success=True, data=suggestions).model_dump(mode="json")

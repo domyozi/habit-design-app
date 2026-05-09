@@ -693,6 +693,29 @@ class AiKpiSuggestion(BaseModel):
     link_habit_ids: list[str] = []
 
 
+class SuggestHabitsRequest(BaseModel):
+    """
+    【AI 習慣提案リクエスト】指定 Goal の達成に貢献する習慣候補を AI に提案させる。
+    """
+
+    goal_id: str
+
+
+class AiHabitSuggestion(BaseModel):
+    """
+    【AI 習慣提案 1 件】Goal 達成に貢献する習慣を LLM が JSON で返したものをこの形に詰める。
+    DB 書き込みなし。フロントは採用時に POST /api/habits を叩いて作成する。
+    """
+
+    title: str = Field(..., max_length=200)
+    frequency: HabitFrequency = "daily"
+    metric_type: HabitMetricType = "binary"
+    target_value: Optional[float] = None
+    unit: Optional[str] = Field(None, max_length=20)
+    scheduled_time: Optional[str] = Field(None, max_length=8)  # "HH:MM" or "HH:MM:SS"
+    reason: str = Field(..., max_length=400)
+
+
 class KpiUpdate(BaseModel):
     """
     【KPI 更新リクエスト】Sprint G1: 個別 KPI の編集。
