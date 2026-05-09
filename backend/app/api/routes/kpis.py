@@ -791,6 +791,7 @@ JSON 配列のみ。説明文は付けない。コードフェンスは使わな
     "target_value": number | null,
     "unit": "回" | "分" | "km" | "kg" | "ページ" | "問" など | null,
     "scheduled_time": "HH:MM" | null,
+    "target_mode": "daily" | "trajectory",
     "reason": "なぜこの習慣が Goal 達成に効くかの 1〜2 文"
   }
 ]
@@ -811,6 +812,12 @@ JSON 配列のみ。説明文は付けない。コードフェンスは使わな
   - "numeric_max": 「○○ 以下に抑える」（例: スマホ 2 時間以下 → target_value=2, unit="時間"）
   - "duration": 所要時間で測る習慣（例: 30 分の瞑想 → target_value=30, unit="分"）
 - range / time_before / time_after は今回は使わない
+- target_mode は次の 2 つから選ぶ:
+  - "daily": **毎日達成型**。1 日ごとに目標を満たせたかを見る (例: 毎日 10 ページ読む、5:30 に起床)。
+              binary は必ず daily。numeric の単位が 回/分/ページ/km など「日々の量」のときも daily。
+  - "trajectory": **推移型**。期日までに目標値へ近づけているかを軌跡で見る (例: 体重 72kg、TOEIC 820 点、貯金 100 万円)。
+              numeric の単位が kg/点/cm/円 のように「合計を意味しない最終状態」のときは trajectory。
+  - 迷ったら daily を選ぶ。binary は trajectory を選ばない。
 - scheduled_time は「朝 7:00 にやる」など時刻が明確なときだけ。曖昧なら null
 - 提案件数は最低 2、最多 4
 - ユーザーの user_context（identity / values / patterns）を踏まえてパーソナライズ
@@ -1008,6 +1015,8 @@ async def suggest_habits(
     suggestions: list[AiHabitSuggestion] = []
     for s in raw:
         try:
+            tm = s.get("target_mode")
+            tm_normalized = tm if tm in ("daily", "trajectory") else None
             sug = AiHabitSuggestion(
                 title=str(s.get("title", ""))[:200] or "提案習慣",
                 frequency=s.get("frequency") or "daily",
@@ -1019,6 +1028,7 @@ async def suggest_habits(
                 ),
                 unit=(str(s["unit"]) if s.get("unit") else None),
                 scheduled_time=(str(s["scheduled_time"]) if s.get("scheduled_time") else None),
+                target_mode=tm_normalized,
                 reason=str(s.get("reason", ""))[:400],
             )
             suggestions.append(sug)

@@ -189,6 +189,11 @@ class Habit(BaseModel):
     aggregation_period: Literal["daily", "weekly", "monthly"] = "daily"
     period_target: Optional[float] = None
     display_window: Literal["morning", "noon", "evening", "anytime"] = "anytime"
+    # Sprint habit-target-mode: 判定モード。
+    #   daily       = 毎日達成型 (streak / 達成日数を見る)
+    #   trajectory  = 推移型 (LineChart で軌跡を見る、達成判定はしない)
+    #   None        = auto-infer (metric_type+unit から推論)
+    target_mode: Optional[Literal["daily", "trajectory"]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -442,6 +447,8 @@ class CreateHabitRequest(BaseModel):
     aggregation_period: Optional[Literal["daily", "weekly", "monthly"]] = None
     period_target: Optional[float] = None
     display_window: Optional[Literal["morning", "noon", "evening", "anytime"]] = None
+    # Sprint habit-target-mode: daily / trajectory / None(auto)
+    target_mode: Optional[Literal["daily", "trajectory"]] = None
 
 
 class UpdateHabitRequest(BaseModel):
@@ -476,6 +483,8 @@ class UpdateHabitRequest(BaseModel):
     aggregation_period: Optional[Literal["daily", "weekly", "monthly"]] = None
     period_target: Optional[float] = None
     display_window: Optional[Literal["morning", "noon", "evening", "anytime"]] = None
+    # Sprint habit-target-mode: daily / trajectory / None(auto)
+    target_mode: Optional[Literal["daily", "trajectory"]] = None
 
 
 class ReorderHabitsRequest(BaseModel):
@@ -717,6 +726,8 @@ class AiHabitSuggestion(BaseModel):
     target_value: Optional[float] = None
     unit: Optional[str] = Field(None, max_length=20)
     scheduled_time: Optional[str] = Field(None, max_length=8)  # "HH:MM" or "HH:MM:SS"
+    # Sprint habit-target-mode: daily=毎日達成型 / trajectory=推移型。AI が判定して返す。
+    target_mode: Optional[Literal["daily", "trajectory"]] = None
     reason: str = Field(..., max_length=400)
 
 

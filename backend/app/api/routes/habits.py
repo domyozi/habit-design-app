@@ -245,6 +245,9 @@ async def create_habit(
         new_habit["period_target"] = request.period_target
     if request.display_window is not None:
         new_habit["display_window"] = request.display_window
+    # Sprint habit-target-mode: daily / trajectory / None(auto)
+    if request.target_mode is not None:
+        new_habit["target_mode"] = request.target_mode
 
     result = supabase.table("habits").insert(new_habit).execute()
     created = result.data[0] if result.data else {}
