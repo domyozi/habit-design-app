@@ -281,3 +281,91 @@ async def test_pending_action_full_cycle():
             user_id=TEST_USER_ID,
         )
         assert patched["status"] == "accepted"
+
+
+# ─── Slice A/B: payload owner check ─────────────────────────────
+
+
+def _wire_owner_lookup(mock_sb, *, table_name: str, owned: bool):
+    """`select(col).eq(col, id).eq("user_id", uid).limit(1).execute().data` を
+    owned True/False で返すミニ mock。"""
+    def table(name: str):
+        wrapper = MagicMock()
+        chain = wrapper.select.return_value.eq.return_value.eq.return_value.limit.return_value
+        if name == table_name:
+            chain.execute.return_value.data = [{"id": "owned-id"}] if owned else []
+        else:
+            chain.execute.return_value.data = []
+        return wrapper
+
+    mock_sb.table.side_effect = table
+
+
+def test_payload_owner_ok_returns_true_when_owned():
+    """Slice A: habit_update の habit_id を持つ habits 行が同 user_id で存在 → ok."""
+    from app.api.routes import coach as coach_module
+
+    mock_sb = MagicMock()
+    _wire_owner_lookup(mock_sb, table_name="habits", owned=True)
+    assert coach_module._payload_owner_ok(
+        mock_sb, "habit_update", {"habit_id": "h1"}, TEST_USER_ID
+    ) is True
+
+
+def test_payload_owner_ok_returns_false_when_not_owned():
+    """別 user 所有の habit_id を payload に仕込んでも owner check が false を返す。"""
+    from app.api.routes import coach as coach_module
+
+    mock_sb = MagicMock()
+    _wire_owner_lookup(mock_sb, table_name="habits", owned=False)
+    assert coach_module._payload_owner_ok(
+        mock_sb, "habit_update", {"habit_id": "victim"}, TEST_USER_ID
+    ) is False
+
+
+def test_payload_owner_ok_skips_unknown_kinds():
+    """_PAYLOAD_OWNER_CHECKS に登録されていない kind は素通し（True）。"""
+    from app.api.routes import coach as coach_module
+
+    mock_sb = MagicMock()
+    # supabase は呼ばれないはず
+    assert coach_module._payload_owner_ok(
+        mock_sb, "memory_patch", {"identity": "X"}, TEST_USER_ID
+    ) is True
+    assert coach_module._payload_owner_ok(
+        mock_sb, "task", {"label": "X"}, TEST_USER_ID
+    ) is True
+
+
+def test_payload_owner_ok_returns_true_when_id_missing():
+    """ID 欠落時はここでは弾かない（下流の apply で弾かれる想定）。"""
+    from app.api.routes import coach as coach_module
+
+    mock_sb = MagicMock()
+    assert coach_module._payload_owner_ok(
+        mock_sb, "habit_update", {}, TEST_USER_ID
+    ) is True
+
+
+@pytest.mark.asyncio
+async def test_create_pending_action_rejects_foreign_habit_update():
+    """habit_update payload に他人の habit_id を仕込むと 403 で reject される。"""
+    from app.api.routes import coach as coach_module
+    from fastapi import HTTPException
+
+    with patch.object(coach_module, "get_supabase") as mock_get_sb:
+        mock_sb = MagicMock()
+        mock_get_sb.return_value = mock_sb
+        # owner lookup: habits テーブルで該当行が無い (=他人のもの)
+        _wire_owner_lookup(mock_sb, table_name="habits", owned=False)
+
+        with pytest.raises(HTTPException) as exc:
+            await coach_module.create_pending_action(
+                body=coach_module.PendingActionCreate(
+                    kind="habit_update",
+                    payload={"habit_id": "victim-uuid", "label": "乗っ取り"},
+                    confidence=0.9,
+                ),
+                user_id=TEST_USER_ID,
+            )
+        assert exc.value.status_code == 403

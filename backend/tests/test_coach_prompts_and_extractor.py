@@ -277,3 +277,67 @@ def test_to_pending_action_rows_pt_update():
     rows = to_pending_action_rows(filtered)
     assert len(rows) == 1
     assert rows[0]["kind"] == "pt_update"
+
+
+# ─── Slice B: habit_update / task_update ────────────────────────
+
+
+def test_filter_by_confidence_keeps_habit_and_task_updates():
+    """Slice B で追加した habit_updates / task_updates も confidence で
+    フィルタリングされ、threshold 以上は残ることを確認。"""
+    payload = {
+        "habit_updates": [
+            {"habit_id": "h1", "label": "新", "confidence": 0.7},
+            {"habit_id": "h2", "label": "低", "confidence": 0.3},  # drop
+        ],
+        "task_updates": [
+            {"task_id": "t1", "due": "2026-05-15", "confidence": 0.6},
+        ],
+    }
+    out = filter_by_confidence(payload)
+    assert "habit_updates" in out
+    assert len(out["habit_updates"]) == 1
+    assert out["habit_updates"][0]["habit_id"] == "h1"
+    assert "task_updates" in out
+    assert len(out["task_updates"]) == 1
+
+
+def test_to_pending_action_rows_habit_update_emits_kind():
+    """habit_updates → kind=habit_update に変換される。habit_id 必須。"""
+    filtered = {
+        "habit_updates": [
+            {"habit_id": "h1", "target_time": "05:00", "confidence": 0.85, "reason": "r"},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "habit_update"
+    assert rows[0]["payload"]["habit_id"] == "h1"
+    assert rows[0]["payload"]["target_time"] == "05:00"
+    assert isinstance(rows[0]["confidence"], float)
+
+
+def test_to_pending_action_rows_task_update_emits_kind():
+    filtered = {
+        "task_updates": [
+            {"task_id": "t1", "due": "2026-05-20", "confidence": 0.7, "reason": "r"},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "task_update"
+    assert rows[0]["payload"]["task_id"] == "t1"
+
+
+def test_to_pending_action_rows_drops_update_without_target_id():
+    """habit_id / task_id 欠落の update は drop される（apply 不能で危険なため）。"""
+    filtered = {
+        "habit_updates": [
+            {"label": "新", "confidence": 0.9},  # habit_id 無し → drop
+        ],
+        "task_updates": [
+            {"label": "新", "confidence": 0.9},  # task_id 無し → drop
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert rows == []
