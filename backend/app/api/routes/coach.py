@@ -9,6 +9,7 @@ Frontend の `MockCoachClient` を Real に切り替えても shape が一致す
 Mock 期に確定した型 (`frontend-v3/src/lib/coach/types.ts`) が backend 側のソース・オブ・トゥルース。
 """
 import asyncio
+import difflib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -753,28 +754,121 @@ def _ensure_owned_goal_parent(supabase, payload: object, user_id: str) -> None:
 
 
 def _filter_completed_habit_actions(filtered: dict, ctx: dict) -> dict:
+    """ctx ベースの「すでに完了している」action を弾く。
+    - habit_today_complete: 今日 done な habit に対する完了提案を drop
+    - primary_target.action="close": PT が既に completed=true な状態での close 提案を drop
+    """
+    next_filtered = {**filtered}
+
+    # habit_today_complete の重複弾き
     done_habit_ids = {
         h.get("id")
         for h in (ctx.get("habits") or [])
         if h.get("id") and h.get("today_completed")
     }
-    if not done_habit_ids or not filtered.get("habit_today_completes"):
-        return filtered
-    kept = [
-        c for c in (filtered.get("habit_today_completes") or [])
-        if c.get("habit_id") not in done_habit_ids
-    ]
-    next_filtered = {**filtered}
-    if kept:
-        next_filtered["habit_today_completes"] = kept
-    else:
-        next_filtered.pop("habit_today_completes", None)
+    if done_habit_ids and next_filtered.get("habit_today_completes"):
+        kept = [
+            c for c in (next_filtered.get("habit_today_completes") or [])
+            if c.get("habit_id") not in done_habit_ids
+        ]
+        if kept:
+            next_filtered["habit_today_completes"] = kept
+        else:
+            next_filtered.pop("habit_today_completes", None)
+
+    # PT close の重複弾き (Bug 1 fix)
+    # 「<primary_target completed=true>」な状態で AI が close を再 emit するケースを弾く。
+    # ユーザーが PT を採用→完了済みにした直後の同セッション内 emit、context 取得が
+    # 古いタイミングでの emit、両方をここで防ぐ。
+    pt_action = next_filtered.get("primary_target")
+    ctx_pt = ctx.get("primary_target") or {}
+    if (
+        isinstance(pt_action, dict)
+        and pt_action.get("action") == "close"
+        and ctx_pt.get("completed") is True
+    ):
+        logger.info(
+            "filter pt_close: PT already completed (set_date=%s), dropping action",
+            ctx_pt.get("set_date"),
+        )
+        next_filtered.pop("primary_target", None)
+
     return next_filtered
+
+
+# Bug 2 fix: AI が同じ意図で微妙に違う文言を emit してきた時の重複防止。
+# 日本語は空白区切りが効かないので character-level 類似度 (difflib) を使う。
+# 「明日（5/10母の日）実家に帰る予定」と「明日5/10（母の日）実家へ行く予定」のような
+# 微妙な表記揺れを ratio≥0.6 で同一趣旨と判定する。
+def _normalize_label(text: str) -> str:
+    """fuzzy 比較用の正規化。全角括弧・記号を揃えて表記揺れを吸収する。"""
+    if not text:
+        return ""
+    return (
+        text.lower()
+        .replace("（", "(")
+        .replace("）", ")")
+        .replace("、", "")
+        .replace("。", "")
+        .replace("・", "")
+        .replace("/", "")
+        .replace(" ", "")
+        .replace("　", "")
+    )
+
+
+def _is_similar(a: str, b: str, threshold: float = 0.6) -> bool:
+    na = _normalize_label(a)
+    nb = _normalize_label(b)
+    if not na or not nb:
+        return False
+    return difflib.SequenceMatcher(None, na, nb).ratio() >= threshold
+
+
+# kind ごとに「重複判定の対象キー」を定義する。
+# 同 kind の既存 pending と payload の対応キーを比較して類似していれば skip。
+_DEDUP_KEYS: dict[str, str] = {
+    "task": "label",
+    "habit": "label",
+    "goal": "title",
+    "task_update": "label",
+    "habit_update": "label",
+    "goal_update": "title",
+}
+
+
+def _is_duplicate_of_pending(
+    supabase, user_id: str, kind: str, payload: dict
+) -> bool:
+    """同 kind の既存 pending 行と payload を比較して類似しているか判定。"""
+    key = _DEDUP_KEYS.get(kind)
+    if not key:
+        return False
+    new_text = (payload or {}).get(key)
+    if not isinstance(new_text, str) or not new_text.strip():
+        return False
+    try:
+        res = (
+            supabase.table("coach_pending_actions")
+            .select("payload")
+            .eq("user_id", user_id)
+            .eq("kind", kind)
+            .eq("status", "pending")
+            .execute()
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("dedup query failed kind=%s: %s", kind, e)
+        return False
+    for row in res.data or []:
+        existing = (row.get("payload") or {}).get(key)
+        if isinstance(existing, str) and _is_similar(new_text, existing):
+            return True
+    return False
 
 
 def _persist_pending_actions(user_id: str, filtered: dict, ctx: dict) -> None:
     """filter_by_confidence 済 payload から pending actions を DB に書き込む。
-    重複は気にせず追加のみ（FE 側 dedupe ロジックは markPendingActionResolved で）。"""
+    重複検知は (1) AI 任せ + (2) 同 kind の既存 pending との fuzzy 一致で 2 段防御。"""
     rows = to_pending_action_rows(_filter_completed_habit_actions(filtered, ctx))
     if not rows:
         return
@@ -785,6 +879,14 @@ def _persist_pending_actions(user_id: str, filtered: dict, ctx: dict) -> None:
         if not _payload_owner_ok(supabase, r["kind"], r["payload"], user_id):
             logger.warning(
                 "coach_pending_actions skip kind=%s: payload references non-owned entity",
+                r["kind"],
+            )
+            continue
+        # Bug 2 fix: 既存 pending と類似する label/title なら server-side で skip。
+        # AI 側でも prompt で重複禁止を指示しているが、文言ゆらぎで漏れる分の安全網。
+        if _is_duplicate_of_pending(supabase, user_id, r["kind"], r["payload"]):
+            logger.info(
+                "coach_pending_actions skip kind=%s: duplicate of existing pending",
                 r["kind"],
             )
             continue

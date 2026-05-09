@@ -454,6 +454,46 @@ async def test_create_pending_action_rejects_foreign_goal_update():
         assert exc.value.status_code == 403
 
 
+def test_filter_completed_habit_actions_drops_pt_close_when_already_completed():
+    """Bug 1: <primary_target completed=true> な状態の close 提案を弾く。"""
+    from app.api.routes import coach as coach_module
+
+    filtered = {
+        "primary_target": {"action": "close", "value": "X", "confidence": 0.9},
+    }
+    ctx_done = {"primary_target": {"completed": True, "set_date": "2026-05-09"}}
+    out = coach_module._filter_completed_habit_actions(filtered, ctx_done)
+    assert "primary_target" not in out, "完了済 PT の close 提案は drop されるべき"
+
+    # update 提案は弾かない（=close だけが対象）
+    filtered_update = {
+        "primary_target": {"action": "update", "value": "Y", "confidence": 0.9},
+    }
+    out2 = coach_module._filter_completed_habit_actions(filtered_update, ctx_done)
+    assert out2.get("primary_target", {}).get("action") == "update"
+
+    # PT が completed=false なら close も通す
+    ctx_open = {"primary_target": {"completed": False, "set_date": "2026-05-09"}}
+    out3 = coach_module._filter_completed_habit_actions(filtered, ctx_open)
+    assert out3.get("primary_target", {}).get("action") == "close"
+
+
+def test_is_similar_jaccard_dedup():
+    """Bug 2: fuzzy 類似度判定。微妙に違う文言を同じ趣旨と検出できる。"""
+    from app.api.routes import coach as coach_module
+
+    a = "明日（5/10母の日）実家に帰る予定のため、前日中に確認"
+    b = "明日5/10（母の日）実家へ行く予定のため、前日確認"
+    assert coach_module._is_similar(a, b), "母の日実家 task は同一趣旨と判定されるべき"
+
+    # 全く違う label なら False
+    assert not coach_module._is_similar("プロテインを飲む", "夜の散歩")
+
+    # 空文字ガード
+    assert not coach_module._is_similar("", "X")
+    assert not coach_module._is_similar("X", "")
+
+
 @pytest.mark.asyncio
 async def test_create_pending_action_rejects_foreign_parent_goal_id():
     """新規 goal の payload に他人の parent_goal_id を仕込むと 403。
