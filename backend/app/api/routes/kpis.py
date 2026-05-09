@@ -797,7 +797,13 @@ JSON 配列のみ。説明文は付けない。コードフェンスは使わな
 ```
 
 # 守ること
-- existing_habits に既にあるものは提案しない（重複禁止）
+- other_habits（=無関係な既存習慣）に既にあるものは提案しない（重複禁止）
+- linked_habits（=この Goal に既に効いている習慣）と重なる方向の提案をするときは、
+  **新規追加しない**。reason に「既存の『◯◯』が効いているので、回数や頻度を
+  X→Y に調整するのが現実的」のように書き、提案件数自体を 1〜2 件に絞ること。
+- ユーザー指定（user_message 内に "# ユーザー指定" として入る）が制約的（特定領域のみ言及）
+  なら、その範囲外の領域は提案しない。「リールについて」しか書かれていない場合、
+  ストーリーや別 SNS の習慣を入れない。
 - frequency は基本 "daily"。週末だけ等の特殊例だけ "weekdays"/"weekends"/"custom"
 - metric_type は次の 4 つから選ぶ:
   - "binary": やる/やらない だけ判定する習慣（target_value=null, unit=null）
@@ -856,16 +862,38 @@ async def suggest_habits(
         raise HTTPException(status_code=404, detail="Goal not found")
     goal = goal_result.data
 
-    # 既存 habits（重複防止のため AI に渡す）
+    # 既存 habits（重複防止 + Goal 紐付き判定のため AI に渡す）。
+    # id と legacy goal_id も合わせて取り、後段で habit_goals junction と OR して
+    # 「この Goal に既に紐付いている habit」を分類する。
     habits_result = (
         supabase.table("habits")
-        .select("title, frequency, metric_type, scheduled_time, target_value, unit")
+        .select("id, goal_id, title, frequency, metric_type, scheduled_time, target_value, unit")
         .eq("user_id", user_id)
         .eq("is_active", True)
         .order("display_order")
         .execute()
     )
     existing_habits = habits_result.data or []
+
+    # 紐付き判定: habit_goals junction と legacy primary goal_id の OR。
+    # 「この Goal に紐付いている habit_id 集合」を作る。
+    linked_habit_ids: set[str] = set()
+    if existing_habits:
+        habit_ids = [h["id"] for h in existing_habits]
+        hg_result = (
+            supabase.table("habit_goals")
+            .select("habit_id")
+            .eq("user_id", user_id)
+            .eq("goal_id", request.goal_id)
+            .in_("habit_id", habit_ids)
+            .execute()
+        )
+        for row in hg_result.data or []:
+            linked_habit_ids.add(row["habit_id"])
+        # legacy: habits.goal_id == this goal も紐付き扱い
+        for h in existing_habits:
+            if h.get("goal_id") == request.goal_id:
+                linked_habit_ids.add(h["id"])
 
     # 既存 KPI（参考情報）
     existing_kpis_result = (
@@ -902,12 +930,33 @@ async def suggest_habits(
     if goal.get("metric_type"):
         parts.append(f"- metric_type: {goal['metric_type']}")
 
-    parts.append("\n# existing_habits（重複禁止）")
-    if existing_habits:
-        for h in existing_habits:
-            parts.append(
-                f"- 「{h['title']}」 ({h.get('frequency')}, {h.get('metric_type')}, time={h.get('scheduled_time') or '-'}, target={h.get('target_value')}{h.get('unit') or ''})"
-            )
+    # 紐付き状況を 2 セクションに分けて渡す:
+    #   linked_habits = この Goal に既に効いている → 重なる場合は新規追加せず調整方向の reason を返させる
+    #   other_habits  = 別 Goal / 未紐付 → 重複禁止の対象。提案を埋めない。
+    def _fmt_habit(h: dict) -> str:
+        return (
+            f"- 「{h['title']}」 ({h.get('frequency')}, {h.get('metric_type')}, "
+            f"time={h.get('scheduled_time') or '-'}, target={h.get('target_value')}{h.get('unit') or ''})"
+        )
+
+    linked_list = [h for h in existing_habits if h["id"] in linked_habit_ids]
+    other_list = [h for h in existing_habits if h["id"] not in linked_habit_ids]
+
+    parts.append(
+        "\n# linked_habits（**この目標に既に効いている習慣**。"
+        "ユーザー指定や Goal の足りない部分と重なる場合、新規追加せず "
+        "「既存の◯◯を週X回にする」など調整方向の提案を reason に書く）"
+    )
+    if linked_list:
+        for h in linked_list:
+            parts.append(_fmt_habit(h))
+    else:
+        parts.append("- (なし)")
+
+    parts.append("\n# other_habits（無関係。重複禁止の対象。これと同じ習慣は提案しない）")
+    if other_list:
+        for h in other_list:
+            parts.append(_fmt_habit(h))
     else:
         parts.append("- (なし)")
 
