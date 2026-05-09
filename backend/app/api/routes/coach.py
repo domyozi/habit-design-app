@@ -550,13 +550,32 @@ async def update_pending_action(
         raise HTTPException(status_code=422, detail="status or source_journal_id is required")
     if patch.status is not None and patch.status not in PENDING_STATUSES_RESOLVABLE:
         raise HTTPException(status_code=422, detail=f"Invalid status: {patch.status}")
+    supabase = get_supabase()
+    # Slice A: source_journal_id を patch する場合は当該 journal の owner 確認。
+    if patch.source_journal_id is not None:
+        _ensure_owned_journal(supabase, patch.source_journal_id, user_id)
+    # Slice A: accepted へ遷移する時は payload 内 entity ID の owner も確認する。
+    # 受理 = 下流 apply への "GO" サインなので、ここで弾けば壊れた payload を持つ
+    # 行が accepted で残らない。
+    if patch.status == "accepted":
+        target = (
+            supabase.table("coach_pending_actions")
+            .select("kind, payload")
+            .eq("id", action_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not target.data:
+            raise HTTPException(status_code=404, detail="not found")
+        row = target.data[0]
+        _ensure_payload_owner(supabase, row.get("kind") or "", row.get("payload") or {}, user_id)
     update_data = {}
     if patch.status is not None:
         update_data["status"] = patch.status
         update_data["resolved_at"] = datetime.now(timezone.utc).isoformat()
     if patch.source_journal_id is not None:
         update_data["source_journal_id"] = patch.source_journal_id
-    supabase = get_supabase()
     # 自分の行のみ更新（RLS で防御されているが念のため eq でも絞る）
     res = (
         supabase.table("coach_pending_actions")
@@ -589,6 +608,10 @@ async def create_pending_action(
     if not 0.0 <= body.confidence <= 1.0:
         raise HTTPException(status_code=422, detail="confidence must be 0.0-1.0")
     supabase = get_supabase()
+    # Slice A: source_journal_id と payload 内 entity ID の owner 検証
+    if body.source_journal_id:
+        _ensure_owned_journal(supabase, body.source_journal_id, user_id)
+    _ensure_payload_owner(supabase, body.kind, body.payload, user_id)
     res = (
         supabase.table("coach_pending_actions")
         .insert({
@@ -605,6 +628,81 @@ async def create_pending_action(
 
 
 # ─── POST /coach-stream (SSE) ──────────────────────────────
+
+
+# ─── Owner-check helpers (Slice A defense-in-depth) ───────────
+#
+# pending_action 周辺の write 経路で、
+#  - source_journal_id が当該 user の journal を指しているか
+#  - payload 内の habit_id / task_id 等が当該 user のものか
+# を validate するための薄いヘルパ。
+#
+# 既存の RLS と各 apply endpoint の owner check で実害は抑えられているが、
+# 将来 backend 側で payload を直接 apply するハンドラを足したときに trust
+# boundary が崩れないよう "validate-before-write" を pending_action 入口で
+# も効かせる。新しい kind を Slice B 以降で増やすときも、_PAYLOAD_OWNER_CHECKS
+# に 1 行追記すれば自動で防御が効く設計。
+
+
+def _ensure_owned_journal(supabase, journal_id: str, user_id: str) -> None:
+    """source_journal_id が当該 user のものか確認する。違えば 404。"""
+    res = (
+        supabase.table("journal_entries")
+        .select("id")
+        .eq("id", journal_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="journal not found")
+
+
+# kind → (payload key, table name, owner column) の dispatch。
+# memory_patch / pt_* / 新規 (task / habit) は対象 entity が「これから作るもの」
+# なので owner check 不要。既存 entity を指す kind だけ列挙する。
+_PAYLOAD_OWNER_CHECKS: dict[str, tuple[str, str, str]] = {
+    "habit_today_complete": ("habit_id", "habits", "id"),
+    # Slice B 以降: "habit_update": ("habit_id", "habits", "id"),
+    #              "task_update":  ("task_id",  "tasks",  "id"),
+    #              "habit_delete": ("habit_id", "habits", "id"),
+    #              "goal_edit":    ("goal_id",  "goals",  "id"), ...
+}
+
+
+def _payload_owner_ok(supabase, kind: str, payload: dict, user_id: str) -> bool:
+    """raise しない版。_persist_pending_actions の batch loop 用。"""
+    spec = _PAYLOAD_OWNER_CHECKS.get(kind)
+    if spec is None:
+        return True
+    payload_key, table, col = spec
+    if not isinstance(payload, dict):
+        return False
+    target_id = payload.get(payload_key)
+    if not target_id:
+        # ID 未指定の場合は下流の apply endpoint で弾かれる。ここでは通す。
+        return True
+    try:
+        res = (
+            supabase.table(table)
+            .select(col)
+            .eq(col, target_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("payload owner check failed kind=%s id=%s: %s", kind, target_id, e)
+        return False
+    return bool(res.data)
+
+
+def _ensure_payload_owner(supabase, kind: str, payload: dict, user_id: str) -> None:
+    """raise する版。create / update endpoint 用。違反すれば 403。"""
+    if not _payload_owner_ok(supabase, kind, payload, user_id):
+        spec = _PAYLOAD_OWNER_CHECKS.get(kind)
+        table = spec[1] if spec else "entity"
+        raise HTTPException(status_code=403, detail=f"{table} not owned")
 
 
 def _filter_completed_habit_actions(filtered: dict, ctx: dict) -> dict:
@@ -635,6 +733,14 @@ def _persist_pending_actions(user_id: str, filtered: dict, ctx: dict) -> None:
         return
     supabase = get_supabase()
     for r in rows:
+        # Slice A: AI 出力の payload に他人の entity id が紛れていたら skip する。
+        # 通常は ctx に基づく ID なので発生しないが、prompt 注入対策として念のため。
+        if not _payload_owner_ok(supabase, r["kind"], r["payload"], user_id):
+            logger.warning(
+                "coach_pending_actions skip kind=%s: payload references non-owned entity",
+                r["kind"],
+            )
+            continue
         try:
             supabase.table("coach_pending_actions").insert({
                 "user_id": user_id,
