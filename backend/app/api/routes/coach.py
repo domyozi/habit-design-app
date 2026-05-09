@@ -33,7 +33,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai")
 
 PENDING_TTL_SEC = 24 * 3600
-PENDING_KINDS = {"pt_update", "pt_close", "habit_today_complete", "memory_patch", "task", "habit"}
+PENDING_KINDS = {
+    "pt_update",
+    "pt_close",
+    "habit_today_complete",
+    "memory_patch",
+    "task",
+    "habit",
+    # Slice B: 既存 entity の編集提案
+    "habit_update",
+    "task_update",
+}
 PENDING_STATUSES_RESOLVABLE = {"accepted", "rejected", "expired"}
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
@@ -663,9 +673,10 @@ def _ensure_owned_journal(supabase, journal_id: str, user_id: str) -> None:
 # なので owner check 不要。既存 entity を指す kind だけ列挙する。
 _PAYLOAD_OWNER_CHECKS: dict[str, tuple[str, str, str]] = {
     "habit_today_complete": ("habit_id", "habits", "id"),
-    # Slice B 以降: "habit_update": ("habit_id", "habits", "id"),
-    #              "task_update":  ("task_id",  "tasks",  "id"),
-    #              "habit_delete": ("habit_id", "habits", "id"),
+    # Slice B: 既存 entity の編集提案。AI が指す ID が当該 user のものか確認する。
+    "habit_update": ("habit_id", "habits", "id"),
+    "task_update": ("task_id", "tasks", "id"),
+    # Slice C 以降: "habit_delete": ("habit_id", "habits", "id"),
     #              "goal_edit":    ("goal_id",  "goals",  "id"), ...
 }
 
