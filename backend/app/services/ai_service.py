@@ -222,7 +222,9 @@ async def stream_message(
 
 
 async def stream_message_events(
-    messages: list[dict[str, str]],
+    # Sprint flow-image: content は str だけでなく list[ContentBlock] も受け付ける
+    # （Anthropic SDK が両方サポートしているため）。型注釈を緩和。
+    messages: list[dict],
     *,
     user_id: str,
     feature: str,

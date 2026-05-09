@@ -651,6 +651,33 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
+# Sprint flow-image: Flow composer から流れてくる画像 payload を validate して
+# Anthropic vision に渡せる shape に整える。MVP 仕様で永続化はしない。
+_ALLOWED_IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_MAX_IMAGES = 4
+_MAX_IMAGE_BASE64_LEN = 8 * 1024 * 1024  # base64 文字列長上限。decode 後で約 6MB 相当。
+
+
+def _sanitize_coach_images(raw: object) -> list[dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in raw[:_MAX_IMAGES]:
+        if not isinstance(item, dict):
+            continue
+        media_type = item.get("media_type")
+        data = item.get("data")
+        if not isinstance(media_type, str) or media_type not in _ALLOWED_IMAGE_MIMES:
+            continue
+        if not isinstance(data, str) or not data:
+            continue
+        if len(data) > _MAX_IMAGE_BASE64_LEN:
+            logger.warning("coach-stream: image dropped (too large len=%d)", len(data))
+            continue
+        out.append({"media_type": media_type, "data": data})
+    return out
+
+
 @router.post("/coach-stream")
 async def coach_stream(
     request: Request,
@@ -671,6 +698,10 @@ async def coach_stream(
     user_input = body.get("user_input") or ""
     history = body.get("history") or []
     tz = body.get("tz") or "UTC"
+    # Sprint flow-image: Flow から添付された画像（base64）。最大 4 枚まで取り込み、
+    # 末尾 user message に inline image block として添える。
+    raw_images = body.get("images") or []
+    images = _sanitize_coach_images(raw_images)
 
     # context 取得（同関数を内部利用）
     try:
@@ -696,8 +727,8 @@ async def coach_stream(
         logger.debug("coach-stream user_memory:\n%s", mem_match.group(0))
     # メタ情報のみは production でも残す（PII 無し、運用に必要）
     logger.info(
-        "coach-stream mode=%s user_input_len=%d system_prompt_len=%d",
-        mode, len(user_input), len(system_prompt),
+        "coach-stream mode=%s user_input_len=%d system_prompt_len=%d images_count=%d",
+        mode, len(user_input), len(system_prompt), len(images),
     )
 
     # message history（FE 側で history を渡してきた場合）
@@ -706,7 +737,24 @@ async def coach_stream(
         for h in history:
             if isinstance(h, dict) and h.get("role") in ("user", "assistant"):
                 messages.append({"role": h["role"], "content": str(h.get("content") or "")})
-    messages.append({"role": "user", "content": user_prompt})
+
+    # 末尾 user message: 画像があれば content を block list 化して vision に流す。
+    # Sprint flow-image: history は text-only のまま、画像は今回 turn にだけ inline で添付。
+    if images:
+        content_blocks: list[dict] = []
+        for img in images:
+            content_blocks.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img["media_type"],
+                    "data": img["data"],
+                },
+            })
+        content_blocks.append({"type": "text", "text": user_prompt})
+        messages.append({"role": "user", "content": content_blocks})
+    else:
+        messages.append({"role": "user", "content": user_prompt})
 
     started_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
