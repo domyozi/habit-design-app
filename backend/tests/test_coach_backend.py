@@ -478,6 +478,112 @@ def test_filter_completed_habit_actions_drops_pt_close_when_already_completed():
     assert out3.get("primary_target", {}).get("action") == "close"
 
 
+def test_is_meaningless_action_empty_memory_patch():
+    """Empty-card fix: 空 memory_patch / current と等価な memory_patch を no-op 判定。"""
+    from app.api.routes import coach as coach_module
+
+    # 空 dict → no-op
+    assert coach_module._is_meaningless_action(
+        "memory_patch", {}, {"user_context": {}}
+    ) is True
+
+    # 全フィールド null → no-op
+    assert coach_module._is_meaningless_action(
+        "memory_patch",
+        {"identity": None, "patterns": "", "values_keywords": [], "insights": {}},
+        {"user_context": {}},
+    ) is True
+
+    # current と完全一致 → no-op
+    ctx = {"user_context": {"identity": "PM", "patterns": "朝が生産的"}}
+    assert coach_module._is_meaningless_action(
+        "memory_patch",
+        {"identity": "PM", "patterns": "朝が生産的"},
+        ctx,
+    ) is True
+
+    # 1 つでも diff があれば valid
+    assert coach_module._is_meaningless_action(
+        "memory_patch",
+        {"identity": "PM", "patterns": "夜のほうが生産的"},  # patterns が違う
+        ctx,
+    ) is False
+
+    # profile sub-key の diff も検出
+    ctx2 = {"user_context": {"profile": {"age": 32}}}
+    assert coach_module._is_meaningless_action(
+        "memory_patch", {"profile": {"age": 32}}, ctx2
+    ) is True
+    assert coach_module._is_meaningless_action(
+        "memory_patch", {"profile": {"age": 33}}, ctx2
+    ) is False
+
+
+def test_is_meaningless_action_empty_updates():
+    """Empty-card fix: *_update で変更フィールドが無いものは no-op 判定。"""
+    from app.api.routes import coach as coach_module
+
+    # habit_update with no fields
+    assert coach_module._is_meaningless_action(
+        "habit_update", {"habit_id": "h1"}, {}
+    ) is True
+    # habit_update with one field
+    assert coach_module._is_meaningless_action(
+        "habit_update", {"habit_id": "h1", "label": "新タイトル"}, {}
+    ) is False
+
+    # task_update with no fields
+    assert coach_module._is_meaningless_action(
+        "task_update", {"task_id": "t1"}, {}
+    ) is True
+    # task_update with due
+    assert coach_module._is_meaningless_action(
+        "task_update", {"task_id": "t1", "due": "2026-05-15"}, {}
+    ) is False
+
+    # goal_update with description
+    assert coach_module._is_meaningless_action(
+        "goal_update", {"goal_id": "g1", "description": "新しい説明"}, {}
+    ) is False
+
+
+def test_is_meaningless_action_pt_and_task_delete():
+    """pt_update / pt_close / task_delete の必須フィールド欠落時 no-op。"""
+    from app.api.routes import coach as coach_module
+
+    # pt_update no value
+    assert coach_module._is_meaningless_action(
+        "pt_update", {"value": ""}, {}
+    ) is True
+    assert coach_module._is_meaningless_action(
+        "pt_update", {"value": "新ターゲット"}, {}
+    ) is False
+
+    # task_delete no task_id
+    assert coach_module._is_meaningless_action("task_delete", {}, {}) is True
+    assert coach_module._is_meaningless_action(
+        "task_delete", {"task_id": "t1"}, {}
+    ) is False
+
+
+def test_is_meaningless_action_does_not_filter_normal_kinds():
+    """task / habit / goal (新規) や habit_today_complete は対象外で False。"""
+    from app.api.routes import coach as coach_module
+
+    assert coach_module._is_meaningless_action(
+        "task", {"label": "X"}, {}
+    ) is False
+    assert coach_module._is_meaningless_action(
+        "habit", {"label": "Y"}, {}
+    ) is False
+    assert coach_module._is_meaningless_action(
+        "goal", {"title": "Z"}, {}
+    ) is False
+    assert coach_module._is_meaningless_action(
+        "habit_today_complete", {"habit_id": "h1"}, {}
+    ) is False
+
+
 def test_is_similar_jaccard_dedup():
     """Bug 2: fuzzy 類似度判定。微妙に違う文言を同じ趣旨と検出できる。"""
     from app.api.routes import coach as coach_module

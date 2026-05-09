@@ -866,6 +866,93 @@ def _is_duplicate_of_pending(
     return False
 
 
+# Bug "メモリーに追記" empty card fix:
+#   AI が user_context と等価な memory_patch を出したり、変更フィールドが
+#   1 つも入っていない *_update を出すと、UI 上は title だけが残って中身が
+#   空白のカードになる。ユーザーは「何が起きるのか分からないカード」を採用
+#   できないので体験が悪い。insert 前に「採用しても何も変わらない」action を
+#   skip する。
+
+_UPDATE_DIFF_KEYS: dict[str, list[str]] = {
+    "habit_update": [
+        "label", "frequency", "scheduled_time", "target_value",
+        "target_time", "unit",
+    ],
+    "task_update": ["label", "due", "status"],
+    "goal_update": ["title", "description", "parent_goal_id"],
+}
+
+
+def _values_equal_for_memory(a: object, b: object) -> bool:
+    """memory_patch と current を比較する時の等価判定。
+    list は順序問わず set として比較、その他は == で十分。"""
+    try:
+        if isinstance(a, list) and isinstance(b, list):
+            return sorted(map(str, a)) == sorted(map(str, b))
+        return a == b
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _is_meaningless_memory_patch(payload: object, ctx: dict) -> bool:
+    """memory_patch payload が現状 user_context と等価で、適用しても何も
+    変わらないなら True。空 dict / 全フィールド null も True 扱い。"""
+    if not isinstance(payload, dict):
+        return True
+    current = (ctx.get("user_context") or {}) if isinstance(ctx, dict) else {}
+    has_real_diff = False
+    for key, value in payload.items():
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        if key == "profile" and isinstance(value, dict):
+            current_profile = (
+                current.get("profile") if isinstance(current.get("profile"), dict) else {}
+            )
+            for k, v in value.items():
+                if v is None or v == "" or v == [] or v == {}:
+                    continue
+                if not _values_equal_for_memory(current_profile.get(k), v):
+                    has_real_diff = True
+                    break
+            if has_real_diff:
+                break
+            continue
+        if not _values_equal_for_memory(current.get(key), value):
+            has_real_diff = True
+            break
+    return not has_real_diff
+
+
+def _is_meaningless_update(kind: str, payload: object) -> bool:
+    """*_update kind の payload に、 一つでも変更しようとしているフィールドが
+    あれば False。何も無いなら True (= 採用しても変化ゼロ)。"""
+    keys = _UPDATE_DIFF_KEYS.get(kind, [])
+    if not keys or not isinstance(payload, dict):
+        return False  # 対象 kind でないなら判定しない
+    for k in keys:
+        if k in payload and payload[k] not in (None, ""):
+            return False
+    return True
+
+
+def _is_meaningless_action(kind: str, payload: object, ctx: dict) -> bool:
+    """カードを出しても採用時に何も起きない action を判定する。"""
+    if kind == "memory_patch":
+        return _is_meaningless_memory_patch(payload, ctx)
+    if kind in _UPDATE_DIFF_KEYS:
+        return _is_meaningless_update(kind, payload)
+    if kind in ("pt_update", "pt_close"):
+        if not isinstance(payload, dict):
+            return True
+        v = payload.get("value")
+        return not (isinstance(v, str) and v.strip())
+    if kind == "task_delete":
+        if not isinstance(payload, dict):
+            return True
+        return not payload.get("task_id")
+    return False
+
+
 def _persist_pending_actions(user_id: str, filtered: dict, ctx: dict) -> None:
     """filter_by_confidence 済 payload から pending actions を DB に書き込む。
     重複検知は (1) AI 任せ + (2) 同 kind の既存 pending との fuzzy 一致で 2 段防御。"""
@@ -879,6 +966,14 @@ def _persist_pending_actions(user_id: str, filtered: dict, ctx: dict) -> None:
         if not _payload_owner_ok(supabase, r["kind"], r["payload"], user_id):
             logger.warning(
                 "coach_pending_actions skip kind=%s: payload references non-owned entity",
+                r["kind"],
+            )
+            continue
+        # Empty-card fix: 採用しても何も変わらない no-op action は insert しない。
+        # ユーザーが「中身の見えないカード」を見て困惑する事故を防ぐ。
+        if _is_meaningless_action(r["kind"], r["payload"], ctx):
+            logger.info(
+                "coach_pending_actions skip kind=%s: action is a no-op (nothing would change)",
                 r["kind"],
             )
             continue
