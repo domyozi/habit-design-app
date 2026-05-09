@@ -188,7 +188,8 @@ class Habit(BaseModel):
     aggregation_kind: Literal["count", "sum"] = "count"
     aggregation_period: Literal["daily", "weekly", "monthly"] = "daily"
     period_target: Optional[float] = None
-    display_window: Literal["morning", "noon", "evening", "anytime"] = "anytime"
+    # Sprint v6: ユーザー定義の time_window.key (cw_*) も保持しうるため str 型に緩和
+    display_window: str = "anytime"
     # Sprint habit-target-mode: 判定モード。
     #   daily       = 毎日達成型 (streak / 達成日数を見る)
     #   trajectory  = 推移型 (LineChart で軌跡を見る、達成判定はしない)
@@ -446,7 +447,8 @@ class CreateHabitRequest(BaseModel):
     aggregation_kind: Optional[Literal["count", "sum"]] = None
     aggregation_period: Optional[Literal["daily", "weekly", "monthly"]] = None
     period_target: Optional[float] = None
-    display_window: Optional[Literal["morning", "noon", "evening", "anytime"]] = None
+    # Sprint v6: display_window はユーザー定義の time_window.key を受ける (Literal 廃止)
+    display_window: Optional[str] = None
     # Sprint habit-target-mode: daily / trajectory / None(auto)
     target_mode: Optional[Literal["daily", "trajectory"]] = None
 
@@ -482,7 +484,8 @@ class UpdateHabitRequest(BaseModel):
     aggregation_kind: Optional[Literal["count", "sum"]] = None
     aggregation_period: Optional[Literal["daily", "weekly", "monthly"]] = None
     period_target: Optional[float] = None
-    display_window: Optional[Literal["morning", "noon", "evening", "anytime"]] = None
+    # Sprint v6: display_window はユーザー定義の time_window.key を受ける (Literal 廃止)
+    display_window: Optional[str] = None
     # Sprint habit-target-mode: daily / trajectory / None(auto)
     target_mode: Optional[Literal["daily", "trajectory"]] = None
 
@@ -895,3 +898,41 @@ class HealthMetricItem(BaseModel):
 class HealthBatchRequest(BaseModel):
     """iOS Shortcuts からの一括送信リクエスト。"""
     metrics: list[HealthMetricItem] = Field(..., min_length=1, max_length=100)
+
+
+# =============================================
+# Sprint v6: User Time Windows (表示タイミングのカスタマイズ)
+# =============================================
+
+# 予約 key (削除不可、is_anytime/key は変更不可)
+RESERVED_TIME_WINDOW_KEYS = ("morning", "noon", "evening", "anytime")
+
+
+class UserTimeWindowResponse(BaseModel):
+    """ユーザーの表示タイミング枠 (1 行) のレスポンス。"""
+
+    id: str
+    key: str
+    label: str
+    start_hour: int
+    end_hour: int
+    is_anytime: bool
+    sort_order: int
+
+
+class CreateTimeWindowRequest(BaseModel):
+    """カスタム表示タイミング枠の作成リクエスト。"""
+
+    label: str = Field(..., min_length=1, max_length=20)
+    start_hour: int = Field(..., ge=0, le=23)
+    end_hour: int = Field(..., ge=0, le=23)
+    sort_order: Optional[int] = None
+
+
+class UpdateTimeWindowRequest(BaseModel):
+    """表示タイミング枠の更新リクエスト。is_anytime 行は label / sort_order のみ変更可。"""
+
+    label: Optional[str] = Field(None, min_length=1, max_length=20)
+    start_hour: Optional[int] = Field(None, ge=0, le=23)
+    end_hour: Optional[int] = Field(None, ge=0, le=23)
+    sort_order: Optional[int] = None

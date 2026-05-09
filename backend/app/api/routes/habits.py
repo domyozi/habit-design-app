@@ -95,6 +95,24 @@ def _ensure_owned_goal(supabase, goal_id: str, user_id: str) -> None:
         raise HTTPException(status_code=422, detail="goal_id is unknown or unauthorized")
 
 
+def _ensure_valid_display_window(supabase, display_window: str, user_id: str) -> None:
+    """display_window が user_time_windows.key に存在することを確認する。
+    Sprint v6: 旧 Literal バリデーションの代替。"""
+    result = (
+        supabase.table("user_time_windows")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("key", display_window)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(
+            status_code=422,
+            detail=f"display_window '{display_window}' is unknown or unauthorized",
+        )
+
+
 @router.get("/habits")
 async def get_habits(
     include_today_log: bool = Query(default=True),
@@ -244,6 +262,7 @@ async def create_habit(
     if request.period_target is not None:
         new_habit["period_target"] = request.period_target
     if request.display_window is not None:
+        _ensure_valid_display_window(supabase, request.display_window, user_id)
         new_habit["display_window"] = request.display_window
     # Sprint habit-target-mode: daily / trajectory / None(auto)
     if request.target_mode is not None:
@@ -335,6 +354,10 @@ async def update_habit(
 
     # 【更新データ構築】: action フィールドを除いた None 以外のフィールドのみ更新
     update_data = request.model_dump(exclude_none=True, exclude={"action"})
+
+    # Sprint v6: display_window が指定されている場合、user_time_windows.key に存在することを確認
+    if "display_window" in update_data:
+        _ensure_valid_display_window(supabase, update_data["display_window"], user_id)
 
     result = (
         supabase.table("habits")
