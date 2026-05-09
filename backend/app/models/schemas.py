@@ -696,9 +696,13 @@ class AiKpiSuggestion(BaseModel):
 class SuggestHabitsRequest(BaseModel):
     """
     【AI 習慣提案リクエスト】指定 Goal の達成に貢献する習慣候補を AI に提案させる。
+    user_prompt: ユーザーが「こういう習慣が欲しい」と任意で渡す自由テキスト。
+                 length 上限を強めにかけて prompt injection / 過長を防ぐ。
+                 None / 空文字 のときは従来通り Goal 情報だけで提案する。
     """
 
     goal_id: str
+    user_prompt: Optional[str] = Field(default=None, max_length=400)
 
 
 class AiHabitSuggestion(BaseModel):

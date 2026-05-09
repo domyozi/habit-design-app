@@ -932,6 +932,13 @@ async def suggest_habits(
     if isinstance(pat, list) and pat:
         parts.append(f"- patterns: {', '.join(pat[:5])}")
 
+    # ユーザー指定（任意）。dry run 中の「こういう習慣が欲しい」を最優先で考慮させる。
+    # system_prompt は変更しないので metric_type 4 種制限・重複防止は依然有効。
+    extra = (request.user_prompt or "").strip()
+    if extra:
+        parts.append("\n# ユーザー指定（最優先で考慮）")
+        parts.append(extra)
+
     user_prompt = "\n".join(parts)
 
     # LLM 呼び出し（分析系なので Sonnet を指定）
