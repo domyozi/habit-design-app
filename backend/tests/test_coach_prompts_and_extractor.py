@@ -382,3 +382,61 @@ def test_to_pending_action_rows_drops_task_delete_without_id():
     }
     rows = to_pending_action_rows(filtered)
     assert rows == []
+
+
+# ─── Slice D: goals / goal_updates ──────────────────────────────
+
+
+def test_filter_by_confidence_keeps_goals_and_goal_updates():
+    """Slice D で追加した goals / goal_updates も confidence でフィルタリング。"""
+    payload = {
+        "goals": [
+            {"title": "新規目標A", "confidence": 0.7},
+            {"title": "低", "confidence": 0.3},  # drop
+        ],
+        "goal_updates": [
+            {"goal_id": "g1", "description": "新", "confidence": 0.8},
+        ],
+    }
+    out = filter_by_confidence(payload)
+    assert "goals" in out
+    assert len(out["goals"]) == 1
+    assert out["goals"][0]["title"] == "新規目標A"
+    assert "goal_updates" in out
+    assert len(out["goal_updates"]) == 1
+
+
+def test_to_pending_action_rows_goal_emits_kind():
+    filtered = {
+        "goals": [
+            {"title": "3ヶ月で5kg減量", "description": "...", "confidence": 0.85, "reason": "r"},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "goal"
+    # description は HTML escape されるが title は plain なまま入る
+    assert "3ヶ月で5kg減量" in rows[0]["payload"]["title"]
+    assert isinstance(rows[0]["confidence"], float)
+
+
+def test_to_pending_action_rows_goal_update_emits_kind():
+    filtered = {
+        "goal_updates": [
+            {"goal_id": "g1", "description": "もう少し詳しく", "confidence": 0.8},
+        ],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "goal_update"
+    assert rows[0]["payload"]["goal_id"] == "g1"
+
+
+def test_to_pending_action_rows_drops_goal_without_required_fields():
+    """title 無しの goal、goal_id 無しの goal_update は drop。"""
+    filtered = {
+        "goals": [{"description": "x", "confidence": 0.9}],
+        "goal_updates": [{"description": "x", "confidence": 0.9}],
+    }
+    rows = to_pending_action_rows(filtered)
+    assert rows == []

@@ -409,3 +409,72 @@ async def test_create_pending_action_rejects_foreign_task_delete():
                 user_id=TEST_USER_ID,
             )
         assert exc.value.status_code == 403
+
+
+# ─── Slice D: goal / goal_update owner check ───────────────────
+
+
+def test_payload_owner_ok_handles_goal_update():
+    """Slice D: goal_update も _PAYLOAD_OWNER_CHECKS で goals テーブルを引く。"""
+    from app.api.routes import coach as coach_module
+
+    mock_sb = MagicMock()
+    _wire_owner_lookup(mock_sb, table_name="goals", owned=True)
+    assert coach_module._payload_owner_ok(
+        mock_sb, "goal_update", {"goal_id": "g1"}, TEST_USER_ID
+    ) is True
+
+    mock_sb2 = MagicMock()
+    _wire_owner_lookup(mock_sb2, table_name="goals", owned=False)
+    assert coach_module._payload_owner_ok(
+        mock_sb2, "goal_update", {"goal_id": "victim"}, TEST_USER_ID
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_create_pending_action_rejects_foreign_goal_update():
+    """goal_update payload に他人の goal_id を仕込むと 403 で reject される。"""
+    from app.api.routes import coach as coach_module
+    from fastapi import HTTPException
+
+    with patch.object(coach_module, "get_supabase") as mock_get_sb:
+        mock_sb = MagicMock()
+        mock_get_sb.return_value = mock_sb
+        _wire_owner_lookup(mock_sb, table_name="goals", owned=False)
+
+        with pytest.raises(HTTPException) as exc:
+            await coach_module.create_pending_action(
+                body=coach_module.PendingActionCreate(
+                    kind="goal_update",
+                    payload={"goal_id": "victim-uuid", "title": "乗っ取り"},
+                    confidence=0.9,
+                ),
+                user_id=TEST_USER_ID,
+            )
+        assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_pending_action_rejects_foreign_parent_goal_id():
+    """新規 goal の payload に他人の parent_goal_id を仕込むと 403。
+    主 entity (新規 goal) は自分のものだが、親リンク先が他人 = 親検証で弾く。"""
+    from app.api.routes import coach as coach_module
+    from fastapi import HTTPException
+
+    with patch.object(coach_module, "get_supabase") as mock_get_sb:
+        mock_sb = MagicMock()
+        mock_get_sb.return_value = mock_sb
+        # 新規 goal は kind の owner check は対象外（_PAYLOAD_OWNER_CHECKS に
+        # "goal" が無い）。parent 検証だけが効く。goals テーブル lookup を not-owned に。
+        _wire_owner_lookup(mock_sb, table_name="goals", owned=False)
+
+        with pytest.raises(HTTPException) as exc:
+            await coach_module.create_pending_action(
+                body=coach_module.PendingActionCreate(
+                    kind="goal",
+                    payload={"title": "new", "parent_goal_id": "victim-uuid"},
+                    confidence=0.9,
+                ),
+                user_id=TEST_USER_ID,
+            )
+        assert exc.value.status_code == 403

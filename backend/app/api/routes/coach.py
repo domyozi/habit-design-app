@@ -45,6 +45,9 @@ PENDING_KINDS = {
     "task_update",
     # Slice C: 削除提案（task のみ）
     "task_delete",
+    # Slice D: 中長期 Goal の新規 / 編集
+    "goal",
+    "goal_update",
 }
 PENDING_STATUSES_RESOLVABLE = {"accepted", "rejected", "expired"}
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
@@ -624,6 +627,9 @@ async def create_pending_action(
     if body.source_journal_id:
         _ensure_owned_journal(supabase, body.source_journal_id, user_id)
     _ensure_payload_owner(supabase, body.kind, body.payload, user_id)
+    # Slice D: Goal 新規 / 編集で親 Goal を指定するなら親も owner であること
+    if body.kind in ("goal", "goal_update"):
+        _ensure_owned_goal_parent(supabase, body.payload, user_id)
     res = (
         supabase.table("coach_pending_actions")
         .insert({
@@ -680,7 +686,10 @@ _PAYLOAD_OWNER_CHECKS: dict[str, tuple[str, str, str]] = {
     "task_update": ("task_id", "tasks", "id"),
     # Slice C: 削除提案
     "task_delete": ("task_id", "tasks", "id"),
-    # Slice D 以降: "goal_edit":    ("goal_id",  "goals",  "id"), ...
+    # Slice D: 既存 Goal 編集提案。AI が指す goal_id が当該 user のものか確認する。
+    # 新規 Goal (kind="goal") は対象 entity が「これから作る」なので owner check 対象外
+    # （ただし parent_goal_id が含まれる場合は別途 _ensure_owned_goal_parent で確認）。
+    "goal_update": ("goal_id", "goals", "id"),
 }
 
 
@@ -717,6 +726,28 @@ def _ensure_payload_owner(supabase, kind: str, payload: dict, user_id: str) -> N
         spec = _PAYLOAD_OWNER_CHECKS.get(kind)
         table = spec[1] if spec else "entity"
         raise HTTPException(status_code=403, detail=f"{table} not owned")
+
+
+def _ensure_owned_goal_parent(supabase, payload: object, user_id: str) -> None:
+    """Slice D: goal / goal_update の payload に parent_goal_id が含まれている場合、
+    その親 Goal が当該 user のものか確認する。違反すれば 403。
+    (kind 主 entity の owner check は _PAYLOAD_OWNER_CHECKS が担うので、ここは
+    あくまで親側の追加チェック。)"""
+    if not isinstance(payload, dict):
+        return
+    parent_id = payload.get("parent_goal_id")
+    if not parent_id or not isinstance(parent_id, str):
+        return
+    res = (
+        supabase.table("goals")
+        .select("id")
+        .eq("id", parent_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=403, detail="parent goal not owned")
 
 
 def _filter_completed_habit_actions(filtered: dict, ctx: dict) -> dict:

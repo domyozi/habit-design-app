@@ -47,8 +47,8 @@ def filter_by_confidence(payload: dict) -> dict:
     if isinstance(pt, dict) and float(pt.get("confidence") or 0) >= CONFIDENCE_THRESHOLD:
         out["primary_target"] = pt
 
-    # Slice B/C: 編集系 (habit_updates / task_updates) と削除系 (task_deletes) も
-    # 同等に confidence フィルタを通す。
+    # Slice B/C/D: 編集系 (habit_updates / task_updates / goal_updates) と
+    # 削除系 (task_deletes) と新規 Goal (goals) も同等に confidence フィルタを通す。
     for key in (
         "tasks",
         "habits",
@@ -56,6 +56,8 @@ def filter_by_confidence(payload: dict) -> dict:
         "habit_updates",
         "task_updates",
         "task_deletes",
+        "goals",
+        "goal_updates",
         "confirmation_prompts",
     ):
         rows = payload.get(key)
@@ -90,6 +92,9 @@ _PENDING_KINDS = {
     "task_update",
     # Slice C: 削除提案カード（task のみ。habit / goal は policy 上 ✕）
     "task_delete",
+    # Slice D: 中長期 Goal の新規 / 編集（削除は policy 上 ✕）
+    "goal",
+    "goal_update",
 }
 
 # AI 出力 string 値の最大長。これを超える値は切り詰める（DoS / DB 圧迫対策）。
@@ -225,6 +230,31 @@ def to_pending_action_rows(filtered: dict) -> list[dict]:
             "kind": "task_delete",
             "payload": _sanitize_payload({**t}),
             "confidence": float(t.get("confidence") or 0),
+        })
+
+    # Slice D: 中長期 Goal の新規提案。title 必須。
+    # KGI / target_value 等は AI に推測させず、accept 後ユーザーが Goals 画面で詰める設計。
+    for g in filtered.get("goals") or []:
+        if not isinstance(g, dict):
+            continue
+        if not g.get("title"):
+            continue
+        rows.append({
+            "kind": "goal",
+            "payload": _sanitize_payload({**g}),
+            "confidence": float(g.get("confidence") or 0),
+        })
+
+    # Slice D: 中長期 Goal の編集提案。goal_id 必須。
+    for g in filtered.get("goal_updates") or []:
+        if not isinstance(g, dict):
+            continue
+        if not g.get("goal_id"):
+            continue
+        rows.append({
+            "kind": "goal_update",
+            "payload": _sanitize_payload({**g}),
+            "confidence": float(g.get("confidence") or 0),
         })
 
     # 安全弁: kind が想定外のものは drop
