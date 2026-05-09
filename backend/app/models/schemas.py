@@ -728,6 +728,12 @@ class AiHabitSuggestion(BaseModel):
     scheduled_time: Optional[str] = Field(None, max_length=8)  # "HH:MM" or "HH:MM:SS"
     # Sprint habit-target-mode: daily=毎日達成型 / trajectory=推移型。AI が判定して返す。
     target_mode: Optional[Literal["daily", "trajectory"]] = None
+    # Sprint suggest-aggregation: 「週X回・月Y回・1日Z回」のような頻度ベースの習慣を
+    # binary + period_target で表現するために AI に返させる。フロント側はこの 3 つを
+    # createHabit に転送して、編集モーダルで「期間目標」が空欄にならないようにする。
+    aggregation_kind: Optional[Literal["count", "sum"]] = None
+    aggregation_period: Optional[Literal["daily", "weekly", "monthly"]] = None
+    period_target: Optional[float] = None
     reason: str = Field(..., max_length=400)
 
 

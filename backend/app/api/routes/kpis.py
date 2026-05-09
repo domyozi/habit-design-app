@@ -16,7 +16,7 @@ TASK-0032: KPIグラフデータ集計API実装
 """
 from datetime import date, timedelta
 from statistics import mean
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -791,6 +791,9 @@ JSON 配列のみ。説明文は付けない。コードフェンスは使わな
     "target_value": number | null,
     "unit": "回" | "分" | "km" | "kg" | "ページ" | "問" など | null,
     "scheduled_time": "HH:MM" | null,
+    "aggregation_kind": "count" | "sum" | null,
+    "aggregation_period": "daily" | "weekly" | "monthly" | null,
+    "period_target": number | null,
     "reason": "なぜこの習慣が Goal 達成に効くかの 1〜2 文"
   }
 ]
@@ -811,6 +814,19 @@ JSON 配列のみ。説明文は付けない。コードフェンスは使わな
   - "numeric_max": 「○○ 以下に抑える」（例: スマホ 2 時間以下 → target_value=2, unit="時間"）
   - "duration": 所要時間で測る習慣（例: 30 分の瞑想 → target_value=30, unit="分"）
 - range / time_before / time_after は今回は使わない
+- 「週 X 回」「月 Y 回」「1 日 Z 回」のような **頻度ベース** の習慣は、
+  metric_type="binary" + aggregation_kind="count" + aggregation_period="weekly"|"monthly"|"daily"
+  + period_target=N で表現する。
+  例:
+    - 「副業のアクションを 1 つ実行する（毎日）」
+        → metric_type="binary", aggregation_kind="count", aggregation_period="daily", period_target=1
+    - 「週 3 回ジムに行く」
+        → metric_type="binary", aggregation_kind="count", aggregation_period="weekly", period_target=3
+    - 「月 100km 走る」
+        → metric_type="numeric_min", unit="km", aggregation_kind="sum", aggregation_period="monthly", period_target=100
+  numeric_min を「target_value=1, unit=回」のように回数表現として使うのは禁止。
+- 単発で頻度概念のない習慣（例: 「毎日 30 分の瞑想」「毎日 5km 以上走る」）では
+  aggregation_kind / aggregation_period / period_target は null で構わない。
 - scheduled_time は「朝 7:00 にやる」など時刻が明確なときだけ。曖昧なら null
 - 提案件数は最低 2、最多 4
 - ユーザーの user_context（identity / values / patterns）を踏まえてパーソナライズ
@@ -1008,6 +1024,17 @@ async def suggest_habits(
     suggestions: list[AiHabitSuggestion] = []
     for s in raw:
         try:
+            ak = s.get("aggregation_kind")
+            ak_norm = ak if ak in ("count", "sum") else None
+            ap = s.get("aggregation_period")
+            ap_norm = ap if ap in ("daily", "weekly", "monthly") else None
+            pt = s.get("period_target")
+            pt_norm: Optional[float] = None
+            if pt is not None and pt != "":
+                try:
+                    pt_norm = float(pt)
+                except (TypeError, ValueError):
+                    pt_norm = None
             sug = AiHabitSuggestion(
                 title=str(s.get("title", ""))[:200] or "提案習慣",
                 frequency=s.get("frequency") or "daily",
@@ -1019,6 +1046,9 @@ async def suggest_habits(
                 ),
                 unit=(str(s["unit"]) if s.get("unit") else None),
                 scheduled_time=(str(s["scheduled_time"]) if s.get("scheduled_time") else None),
+                aggregation_kind=ak_norm,
+                aggregation_period=ap_norm,
+                period_target=pt_norm,
                 reason=str(s.get("reason", ""))[:400],
             )
             suggestions.append(sug)
