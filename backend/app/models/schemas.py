@@ -660,6 +660,10 @@ class GoalWithKgiResponse(BaseModel):
     days_remaining: Optional[int] = None  # REQ-KGI-007
     is_expired: bool = False  # EDGE-KPI-005
     is_kgi: bool = False  # target_date IS NOT NULL の場合 true
+    # P1: 階層対応。include_kgi=true の GET /goals でもフロントが親子関係を復元できるよう
+    # 含める。これが無いと Pydantic が extra=ignore で parent_goal_id を黙って落とすため、
+    # DB に永続化されていても再取得時に top-level 扱いになってしまう。
+    parent_goal_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
