@@ -477,26 +477,34 @@ async def update_habit_log(
 
     log_date_str = request.date
 
+    # Sprint habit-skip: status='skipped' のときは「意図的な休み」として保存。
+    # completed は false 強制、値系も保存しない (Skip 時に numeric/time の意図はない)。
+    is_skip = request.status == "skipped"
+
     # 【ログ payload 構築】: 同日同習慣は upsert で上書き（EDGE-102）
     log_data: dict = {
         "habit_id": habit_id,
         "user_id": user_id,
         "log_date": log_date_str,
-        "completed": request.completed,
+        "completed": False if is_skip else request.completed,
+        "status": "skipped" if is_skip else "done",
     }
     if request.input_method:
         log_data["input_method"] = request.input_method
-    if request.numeric_value is not None:
+    if not is_skip and request.numeric_value is not None:
         log_data["numeric_value"] = request.numeric_value
-    if request.time_value is not None:
+    if not is_skip and request.time_value is not None:
         log_data["time_value"] = request.time_value
 
-    # 【達成判定】: metric_type に応じて、binary は completed、量・時刻系は値ベースで判定
-    achieved = streak_service.is_achieved(habit, log_data)
+    # 【達成判定】: skip は常に未達成扱い。それ以外は metric_type に応じて判定。
+    achieved = False if is_skip else streak_service.is_achieved(habit, log_data)
 
     # 【completed_at】: 達成時のみ刻む。binary 以外でも「閾値を満たした瞬間」の意味で記録する
     if achieved:
         log_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+    elif is_skip:
+        # skip 時は completed_at を明示的に null に戻す (前回 done だった日を skip に変える場合)
+        log_data["completed_at"] = None
 
     result = (
         supabase.table("habit_logs")
@@ -508,9 +516,10 @@ async def update_habit_log(
     current_streak = 0
     badge_earned = None
 
+    log_date = date.fromisoformat(log_date_str)
+
     if achieved:
         # 【ストリーク計算・更新】: 達成日として連続日数を計算して更新
-        log_date = date.fromisoformat(log_date_str)
         current_streak = streak_service.calculate_streak(
             supabase, habit_id, user_id, log_date, habit_meta=habit
         )
@@ -520,6 +529,12 @@ async def update_habit_log(
         badge_earned = badge_service.check_and_award_badges(
             supabase, user_id, habit_id, current_streak
         )
+    elif is_skip:
+        # Sprint habit-skip: skip は streak を切らない。skip-aware に再計算して維持。
+        current_streak = streak_service.calculate_streak(
+            supabase, habit_id, user_id, log_date, habit_meta=habit
+        )
+        streak_service.update_streak(supabase, habit_id, current_streak, user_id)
     else:
         # 【ストリークリセット】: 未達成の場合、current_streak を0にリセット（REQ-503）
         supabase.table("habits").update({"current_streak": 0}).eq("id", habit_id).eq("user_id", user_id).execute()

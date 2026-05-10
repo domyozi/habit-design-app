@@ -116,38 +116,65 @@ def calculate_streak(
     """
     metric_type = (habit_meta or {}).get("metric_type") or "binary"
 
+    # Sprint habit-skip: status='skipped' の日は「予定されていない日」と同じ扱い。
+    # streak を切らないが、達成日にもカウントしない。両方の集合を作って walk-back する。
     if metric_type == "binary":
-        # 【既存パス】: completed=true フィルタで効率的に取得
+        # 【binary パス】: skip 列を見るため status / completed を両方読む
         result = (
             supabase.table("habit_logs")
-            .select("log_date")
+            .select("log_date,status,completed")
             .eq("habit_id", habit_id)
             .eq("user_id", user_id)
-            .eq("completed", True)
             .execute()
         )
         rows = result.data or []
-        completed_dates = {row["log_date"] for row in rows}
+        completed_dates = {
+            row["log_date"]
+            for row in rows
+            if row.get("completed") and (row.get("status") or "done") != "skipped"
+        }
+        skipped_dates = {
+            row["log_date"]
+            for row in rows
+            if (row.get("status") or "done") == "skipped"
+        }
     else:
         # 【述語パス】: 全ログを取って is_achieved で判定
         result = (
             supabase.table("habit_logs")
-            .select("log_date,completed,numeric_value,time_value")
+            .select("log_date,status,completed,numeric_value,time_value")
             .eq("habit_id", habit_id)
             .eq("user_id", user_id)
             .execute()
         )
         rows = result.data or []
-        completed_dates = {row["log_date"] for row in rows if is_achieved(habit_meta, row)}
+        completed_dates = {
+            row["log_date"]
+            for row in rows
+            if (row.get("status") or "done") != "skipped" and is_achieved(habit_meta, row)
+        }
+        skipped_dates = {
+            row["log_date"]
+            for row in rows
+            if (row.get("status") or "done") == "skipped"
+        }
 
     if not completed_dates:
         return 0
 
+    # walk-back: completed → streak += 1、skipped → 非対象として読み飛ばす、それ以外 → break
     streak = 0
     current = log_date
-    while str(current) in completed_dates:
-        streak += 1
-        current -= timedelta(days=1)
+    while True:
+        key = str(current)
+        if key in completed_dates:
+            streak += 1
+            current -= timedelta(days=1)
+            continue
+        if key in skipped_dates:
+            current -= timedelta(days=1)
+            continue
+        break
 
     return streak
 

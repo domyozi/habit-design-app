@@ -218,6 +218,9 @@ class HabitLog(BaseModel):
     # 🔵 信頼性レベル: migrations/add_habit_proof_xp.sql より
     proof_url: Optional[str] = None
     xp_earned: int = 0
+    # Sprint habit-skip: 意図的な休みを「未達」と区別する。
+    # 'done' は既存挙動 (completed=true で達成)、'skipped' は streak を切らない/週次/月次集計から除外。
+    status: Literal["done", "skipped"] = "done"
     created_at: Optional[datetime] = None
 
 
@@ -515,6 +518,9 @@ class UpdateHabitLogRequest(BaseModel):
     time_value: Optional[str] = None  # HH:MM or HH:MM:SS
     # AI-native（任意）: 写真証明 URL（Supabase Storage の habit-proofs バケット内 path）
     proof_url: Optional[str] = None
+    # Sprint habit-skip: 'skipped' を渡すと意図的な休みとして記録。
+    # status='skipped' の場合 completed は強制的に false で保存され、streak も切らない。
+    status: Optional[Literal["done", "skipped"]] = None
 
 
 class VoiceInputRequest(BaseModel):

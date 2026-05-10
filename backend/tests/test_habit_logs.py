@@ -388,12 +388,13 @@ class TestCalculateStreak:
         mock_sb = MagicMock()
 
         # 5日分の completed=true ログ
+        # Sprint habit-skip: skip-aware に変えたため status / completed も含めて返す。
         logs = [
-            {"log_date": str(today - timedelta(days=i))}
+            {"log_date": str(today - timedelta(days=i)), "completed": True, "status": "done"}
             for i in range(5)
         ]
         mock_sb.table.return_value.select.return_value \
-            .eq.return_value.eq.return_value.eq.return_value \
+            .eq.return_value.eq.return_value \
             .execute.return_value.data = logs
 
         streak = calculate_streak(mock_sb, TEST_HABIT_ID, TEST_USER_ID, today)
@@ -416,12 +417,19 @@ class TestCalculateStreak:
 
         # completed=true のログ: 3日前〜今日（4日分）+ 5日前〜7日前（3日分）
         # 4日前は欠けている（途切れ）
+        # Sprint habit-skip: skip-aware fetch のため completed/status を含めて返す。
         logs = (
-            [{"log_date": str(today - timedelta(days=i))} for i in range(4)]  # 今日〜3日前
-            + [{"log_date": str(today - timedelta(days=i))} for i in range(5, 8)]  # 5日前〜7日前
+            [
+                {"log_date": str(today - timedelta(days=i)), "completed": True, "status": "done"}
+                for i in range(4)
+            ]  # 今日〜3日前
+            + [
+                {"log_date": str(today - timedelta(days=i)), "completed": True, "status": "done"}
+                for i in range(5, 8)
+            ]  # 5日前〜7日前
         )
         mock_sb.table.return_value.select.return_value \
-            .eq.return_value.eq.return_value.eq.return_value \
+            .eq.return_value.eq.return_value \
             .execute.return_value.data = logs
 
         streak = calculate_streak(mock_sb, TEST_HABIT_ID, TEST_USER_ID, today)
@@ -439,7 +447,7 @@ class TestCalculateStreak:
 
         mock_sb = MagicMock()
         mock_sb.table.return_value.select.return_value \
-            .eq.return_value.eq.return_value.eq.return_value \
+            .eq.return_value.eq.return_value \
             .execute.return_value.data = []
 
         streak = calculate_streak(mock_sb, TEST_HABIT_ID, TEST_USER_ID, date.today())
@@ -461,17 +469,45 @@ class TestCalculateStreak:
         mock_sb = MagicMock()
 
         # JST基準の過去2日分のログ
+        # Sprint habit-skip: skip-aware fetch のため completed/status を含めて返す。
         logs = [
-            {"log_date": "2026-04-14"},  # 今日（JST）
-            {"log_date": "2026-04-13"},  # 昨日（JST）
+            {"log_date": "2026-04-14", "completed": True, "status": "done"},  # 今日（JST）
+            {"log_date": "2026-04-13", "completed": True, "status": "done"},  # 昨日（JST）
         ]
         mock_sb.table.return_value.select.return_value \
-            .eq.return_value.eq.return_value.eq.return_value \
+            .eq.return_value.eq.return_value \
             .execute.return_value.data = logs
 
         streak = calculate_streak(mock_sb, TEST_HABIT_ID, TEST_USER_ID, jst_today)
 
         assert streak == 2  # 【確認内容】: JST基準で正しく計算 🔵
+
+    def test_skip_does_not_break_streak(self):
+        """
+        Sprint habit-skip: status='skipped' の日は streak を切らないが、
+        streak のカウントにも入らない（その日を「予定されていない日」として扱う）。
+
+        【シナリオ】: 今日 done, 昨日 skip, 一昨日 done → streak=2
+        【期待される動作】: skip 日は walk-back では読み飛ばされる
+        """
+        from app.services.streak_service import calculate_streak
+
+        today = date.today()
+        mock_sb = MagicMock()
+
+        logs = [
+            {"log_date": str(today), "completed": True, "status": "done"},
+            {"log_date": str(today - timedelta(days=1)), "completed": False, "status": "skipped"},
+            {"log_date": str(today - timedelta(days=2)), "completed": True, "status": "done"},
+        ]
+        mock_sb.table.return_value.select.return_value \
+            .eq.return_value.eq.return_value \
+            .execute.return_value.data = logs
+
+        streak = calculate_streak(mock_sb, TEST_HABIT_ID, TEST_USER_ID, today)
+
+        # 今日 + 一昨日 を done としてカウント、昨日 skip は読み飛ばす → streak=2
+        assert streak == 2
 
 
 # ==================================================

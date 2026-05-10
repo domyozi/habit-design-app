@@ -93,6 +93,8 @@ def _adapt_habit(
     Sprint v4-prep: habit_goals (N:N) を反映した goal_ids 配列も同梱。
     coach prompt が「この habit はどの Goal に貢献しているか」を把握できるようにする。
     """
+    # Sprint habit-skip: today_log の status を FE に渡し、Skip 状態を可視化する。
+    today_status = (today_log.get("status") if today_log else None) or "done"
     return {
         "id": h.get("id"),
         "title": h.get("title", ""),
@@ -102,6 +104,8 @@ def _adapt_habit(
         "today_completed": bool(today_log and today_log.get("completed")),
         "today_numeric_value": today_log.get("numeric_value") if today_log else None,
         "today_time_value": today_log.get("time_value") if today_log else None,
+        # 'done' (デフォルト/通常) or 'skipped' (意図的な休み)。log が無ければ 'done' フォールバック。
+        "today_status": today_status,
         "target_value": h.get("target_value"),
         "unit": h.get("unit"),
         "metric_type": h.get("metric_type", "binary"),
@@ -310,9 +314,10 @@ async def get_coach_context(
     today_local_str = _now_local_fields(tz)["today_date"]
 
     def _fetch_today_logs():
+        # Sprint habit-skip: status (done|skipped) も併せて取得し、_adapt_habit で FE に伝える。
         row = (
             supabase.table("habit_logs")
-            .select("habit_id, completed, numeric_value, time_value")
+            .select("habit_id, completed, numeric_value, time_value, status")
             .eq("user_id", user_id)
             .eq("log_date", today_local_str)
             .execute()
