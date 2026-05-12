@@ -5,17 +5,18 @@
   GET   /api/user-context          → UserContext | null
   PATCH /api/user-context          → body: Partial<UserContext> → upsert
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
+from app.core.user_tz import is_valid_iana_tz
 
 router = APIRouter(prefix="/user-context")
 
 
 _SELECT_COLS = (
     "identity, values_keywords, goal_summary, patterns, insights, "
-    "lang, granularity, display_name, avatar_url, profile"
+    "lang, granularity, display_name, avatar_url, profile, timezone"
 )
 _ALLOWED_FIELDS = {
     "identity",
@@ -29,6 +30,8 @@ _ALLOWED_FIELDS = {
     "avatar_url",
     # Phase 6.5.3: profile (JSONB) — age / location / occupation / family ...
     "profile",
+    # 2026-05-13: timezone (IANA name) — ユーザーの「今日」判定の基準
+    "timezone",
 }
 
 
@@ -63,6 +66,13 @@ async def patch_user_context(
     for field in _ALLOWED_FIELDS:
         if field in payload:
             data[field] = payload[field]
+
+    # timezone は IANA name 検証を入れる (不正値は DB に書き込ませない)
+    if "timezone" in data and not is_valid_iana_tz(data["timezone"]):
+        raise HTTPException(
+            status_code=400,
+            detail="timezone must be a valid IANA name (e.g., Asia/Tokyo)",
+        )
 
     # profile は merge 動作にする
     if "profile" in data:

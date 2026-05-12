@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core.security import get_current_user, get_current_user_from_header_or_query
 from app.core.supabase import get_supabase
+from app.core.user_tz import get_user_today
 from app.models.schemas import APIResponse, ErrorDetail, ErrorResponse
 from app.services.ai_service import AIUnavailableError, create_message, generate_weekly_review, stream_message
 
@@ -157,11 +158,11 @@ async def stream_weekly_review(
     """
     supabase = get_supabase()
 
-    # 【週開始日決定】: 省略時は今週の月曜日
+    # 【週開始日決定】: 省略時は今週の月曜日 (ユーザー TZ 基準)
     if week_start:
         week_start_date = date.fromisoformat(week_start)
     else:
-        week_start_date = _get_week_start(date.today())
+        week_start_date = _get_week_start(get_user_today(user_id))
 
     week_end_date = week_start_date + timedelta(days=6)
     week_start_str = str(week_start_date)

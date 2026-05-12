@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
+from app.core.user_tz import get_user_today
 from app.models.schemas import (
     AiHabitSuggestion,
     AiKpiSuggestion,
@@ -143,7 +144,7 @@ async def get_today_kpis(
     🔵 信頼性レベル: REQ-DASH-002 より
     """
     supabase = get_supabase()
-    today = str(date.today())
+    today = str(get_user_today(user_id))
 
     # アクティブな KPI 取得 (P4-followup: migrated 済は milestone Goal に移行済なので除外)
     kpis_result = (
@@ -528,7 +529,7 @@ async def get_kpi_logs_chart(
     if not kpi_result.data:
         raise HTTPException(status_code=404, detail="KPI not found")
 
-    today = date.today()
+    today = get_user_today(user_id)
     start_date = _parse_range_to_start_date(range, today)
 
     # ログ取得

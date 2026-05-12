@@ -27,6 +27,7 @@ from fastapi.responses import JSONResponse, Response
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
+from app.core.user_tz import get_user_today
 from app.models.schemas import (
     APIResponse,
     CreateFailureReasonRequest,
@@ -143,9 +144,11 @@ async def get_habits(
     habits = result.data or []
 
     # 【今日のログ取得】: include_today_log=true の場合、今日分の habit_logs を取得
+    # 「今日」はユーザーの TZ で判定する (UTC サーバーでも JST ユーザーが朝に
+    # 操作したときに前日扱いされないよう、user_context.timezone を使う)。
     today_logs_map: dict = {}
     if include_today_log and habits:
-        today_str = str(date.today())
+        today_str = str(get_user_today(user_id))
         habit_ids = [h["id"] for h in habits]
 
         logs_result = (

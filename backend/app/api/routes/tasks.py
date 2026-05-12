@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.security import get_current_user
 from app.core.supabase import get_supabase
+from app.core.user_tz import get_user_today
 
 router = APIRouter(prefix="/tasks")
 
@@ -143,7 +144,7 @@ async def weekly_stats(
         except ValueError:
             raise HTTPException(status_code=400, detail="week_start must be YYYY-MM-DD")
     else:
-        start = _monday_of(date.today())
+        start = _monday_of(get_user_today(user_id))
     end = start + timedelta(days=7)
     start_iso = start.isoformat()
     end_iso = end.isoformat()
