@@ -95,95 +95,245 @@ class TestSendReminderEmail:
 # ==================================================
 
 class TestSendWeeklyReminders:
-    """scheduler.weekly_review.send_weekly_reminders() のテスト"""
+    """scheduler.weekly_review.send_weekly_reminders() のテスト
+
+    Phase 3 (per-user TZ) 以降の挙動:
+      - DB は notification_enabled=True で粗フィルタ
+      - 各ユーザーの user_context.timezone で「今が 8 時台 + weekly_review_day」を判定
+      - now_utc 引数で時刻を制御してテスト
+    """
+
+    def _wire_supabase(self, mock_sb, profiles, tz_rows=None):
+        """user_profiles と user_context の 2 つの table モックを wire する。"""
+        def _table(name):
+            tbl = MagicMock()
+            if name == "user_profiles":
+                tbl.select.return_value.eq.return_value.execute.return_value.data = profiles
+            elif name == "user_context":
+                tbl.select.return_value.in_.return_value.execute.return_value.data = tz_rows or []
+            return tbl
+
+        mock_sb.table.side_effect = _table
 
     def test_sends_email_to_enabled_users_on_review_day(self):
-        """
-        TC-002: 通知enabled・本日が週次レビュー曜日のユーザーにメールが送信されること
-
-        【テスト目的】: 対象ユーザーにメール送信が呼ばれること
-        【期待される動作】: send_reminder_email が1回呼ばれる
-        🔵 信頼性レベル: REQ-701 より
-        """
-        from datetime import date
+        """JST 月曜 08:00 の起動で、weekly_review_day=月 (1) かつ JST TZ のユーザーに送信される。"""
+        from datetime import datetime, timezone, timedelta
         from scheduler.weekly_review import send_weekly_reminders
 
-        today_weekday = date.today().isoweekday()
+        # JST 月曜 08:00 (= UTC 月曜 -1日 23:00 だが、ZoneInfo("Asia/Tokyo") で月曜 08:00 になる UTC 時刻を選ぶ)
+        # JST = UTC+9 なので、UTC 月曜 23:00 = JST 火曜 08:00。
+        # → JST 月曜 08:00 は UTC 月曜 -1d 23:00 (= 日曜 23:00 UTC) になる。
+        # シンプルに: 2026-05-11 (JST 月曜) 08:00 JST = 2026-05-10 23:00 UTC (日曜)
+        # ただ計算より、ZoneInfo に変換してから組み立てる。
+        from zoneinfo import ZoneInfo
+        jst_monday_8 = datetime(2026, 5, 11, 8, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        now_utc = jst_monday_8.astimezone(timezone.utc)
+        assert now_utc.astimezone(ZoneInfo("Asia/Tokyo")).isoweekday() == 1  # 月曜
+        assert now_utc.astimezone(ZoneInfo("Asia/Tokyo")).hour == 8
 
-        # 対象ユーザー
         target_user = {
             "id": TEST_USER_ID,
             "display_name": "テストユーザー",
             "notification_email": "user@example.com",
-            "weekly_review_day": today_weekday,
+            "weekly_review_day": 1,  # 月曜
             "notification_enabled": True,
         }
 
         mock_sb = MagicMock()
-        mock_sb.table.return_value.select.return_value \
-            .eq.return_value.eq.return_value.execute.return_value.data = [target_user]
+        self._wire_supabase(
+            mock_sb,
+            profiles=[target_user],
+            tz_rows=[{"user_id": TEST_USER_ID, "timezone": "Asia/Tokyo"}],
+        )
 
         with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
             mock_send.return_value = True
-            result = asyncio.run(send_weekly_reminders(supabase=mock_sb))
+            result = asyncio.run(send_weekly_reminders(supabase=mock_sb, now_utc=now_utc))
 
-        assert result == 1  # 【確認内容】: 1件送信成功 🔵
+        assert result == 1
         mock_send.assert_called_once_with(
             to_email="user@example.com",
             user_name="テストユーザー",
-        )  # 【確認内容】: 正しいパラメータで呼ばれた 🔵
+        )
 
-    def test_does_not_send_to_notification_disabled_user(self):
-        """
-        TC-003（変形）: notification_enabled=false のユーザーはDBクエリ時点で除外されること
-
-        【テスト目的】: notification_enabled=false のユーザーはSQLフィルタで除外される
-        【期待される動作】: send_reminder_email は呼ばれない
-        🔵 信頼性レベル: REQ-802 より
-        """
+    def test_does_not_send_when_local_hour_does_not_match(self):
+        """JST 月曜 12:00 (8 時台でない) では送信されない。"""
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
         from scheduler.weekly_review import send_weekly_reminders
 
-        # 通知無効ユーザーはDBクエリで除外されるため、空リストを返す
-        mock_sb = MagicMock()
-        mock_sb.table.return_value.select.return_value \
-            .eq.return_value.eq.return_value.execute.return_value.data = []  # 空（除外済み）
+        jst_monday_noon = datetime(2026, 5, 11, 12, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        now_utc = jst_monday_noon.astimezone(timezone.utc)
 
-        with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
-            result = asyncio.run(send_weekly_reminders(supabase=mock_sb))
-
-        assert result == 0  # 【確認内容】: 送信件数0 🔵
-        mock_send.assert_not_called()  # 【確認内容】: メール送信なし 🔵
-
-    def test_skips_user_without_email(self):
-        """
-        TC-006: メールアドレス未設定のユーザーはスキップされること
-
-        【期待される動作】: send_reminder_email は呼ばれない
-        🔵 信頼性レベル: REQ-801 より
-        """
-        from datetime import date
-        from scheduler.weekly_review import send_weekly_reminders
-
-        today_weekday = date.today().isoweekday()
-
-        # メールアドレス未設定のユーザー
-        user_no_email = {
+        target_user = {
             "id": TEST_USER_ID,
             "display_name": "テストユーザー",
-            "notification_email": None,  # 未設定
-            "weekly_review_day": today_weekday,
+            "notification_email": "user@example.com",
+            "weekly_review_day": 1,
             "notification_enabled": True,
         }
 
         mock_sb = MagicMock()
-        mock_sb.table.return_value.select.return_value \
-            .eq.return_value.eq.return_value.execute.return_value.data = [user_no_email]
+        self._wire_supabase(
+            mock_sb,
+            profiles=[target_user],
+            tz_rows=[{"user_id": TEST_USER_ID, "timezone": "Asia/Tokyo"}],
+        )
 
         with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
-            result = asyncio.run(send_weekly_reminders(supabase=mock_sb))
+            result = asyncio.run(send_weekly_reminders(supabase=mock_sb, now_utc=now_utc))
 
-        assert result == 0  # 【確認内容】: 送信件数0 🔵
-        mock_send.assert_not_called()  # 【確認内容】: メール送信なし 🔵
+        assert result == 0
+        mock_send.assert_not_called()
+
+    def test_does_not_send_when_weekday_does_not_match(self):
+        """JST 火曜 08:00 で weekly_review_day=月 (1) のユーザーは対象外。"""
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from scheduler.weekly_review import send_weekly_reminders
+
+        jst_tuesday_8 = datetime(2026, 5, 12, 8, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        now_utc = jst_tuesday_8.astimezone(timezone.utc)
+
+        target_user = {
+            "id": TEST_USER_ID,
+            "display_name": "テストユーザー",
+            "notification_email": "user@example.com",
+            "weekly_review_day": 1,  # 月曜
+            "notification_enabled": True,
+        }
+
+        mock_sb = MagicMock()
+        self._wire_supabase(
+            mock_sb,
+            profiles=[target_user],
+            tz_rows=[{"user_id": TEST_USER_ID, "timezone": "Asia/Tokyo"}],
+        )
+
+        with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
+            result = asyncio.run(send_weekly_reminders(supabase=mock_sb, now_utc=now_utc))
+
+        assert result == 0
+        mock_send.assert_not_called()
+
+    def test_per_user_tz_independence(self):
+        """同じ now_utc でも user_context.timezone が違えば判定が変わる。
+
+        UTC 月曜 23:00 のとき:
+          - JST ユーザー (TZ=Asia/Tokyo) → 火曜 08:00 → weekly_review_day=2 (火) なら hit
+          - LA ユーザー (TZ=America/Los_Angeles) → 月曜 16:00 → 8 時台ではない
+        """
+        from datetime import datetime, timezone
+        from scheduler.weekly_review import send_weekly_reminders
+
+        now_utc = datetime(2026, 5, 11, 23, 0, tzinfo=timezone.utc)
+
+        jst_user = {
+            "id": "user-jst",
+            "display_name": "JST User",
+            "notification_email": "jst@example.com",
+            "weekly_review_day": 2,  # 火曜 (JST では 5/12 火曜)
+            "notification_enabled": True,
+        }
+        la_user = {
+            "id": "user-la",
+            "display_name": "LA User",
+            "notification_email": "la@example.com",
+            "weekly_review_day": 1,  # 月曜 (LA では 5/11 月曜)
+            "notification_enabled": True,
+        }
+
+        mock_sb = MagicMock()
+        self._wire_supabase(
+            mock_sb,
+            profiles=[jst_user, la_user],
+            tz_rows=[
+                {"user_id": "user-jst", "timezone": "Asia/Tokyo"},
+                {"user_id": "user-la", "timezone": "America/Los_Angeles"},
+            ],
+        )
+
+        with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
+            mock_send.return_value = True
+            result = asyncio.run(send_weekly_reminders(supabase=mock_sb, now_utc=now_utc))
+
+        # JST ユーザーだけ送信される (LA は同じ瞬間に local hour=16 で除外)
+        assert result == 1
+        mock_send.assert_called_once_with(to_email="jst@example.com", user_name="JST User")
+
+    def test_does_not_send_to_notification_disabled_user(self):
+        """DB クエリで notification_enabled=True に絞っているので、無効ユーザーは空リストで届く。"""
+        from datetime import datetime, timezone
+        from scheduler.weekly_review import send_weekly_reminders
+
+        now_utc = datetime(2026, 5, 11, 0, 0, tzinfo=timezone.utc)
+        mock_sb = MagicMock()
+        self._wire_supabase(mock_sb, profiles=[], tz_rows=[])
+
+        with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
+            result = asyncio.run(send_weekly_reminders(supabase=mock_sb, now_utc=now_utc))
+
+        assert result == 0
+        mock_send.assert_not_called()
+
+    def test_skips_user_without_email(self):
+        """JST 月曜 08:00 で時刻/曜日マッチでもメールアドレスが無ければ送信スキップ。"""
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from scheduler.weekly_review import send_weekly_reminders
+
+        jst_monday_8 = datetime(2026, 5, 11, 8, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        now_utc = jst_monday_8.astimezone(timezone.utc)
+
+        user_no_email = {
+            "id": TEST_USER_ID,
+            "display_name": "テストユーザー",
+            "notification_email": None,
+            "weekly_review_day": 1,
+            "notification_enabled": True,
+        }
+
+        mock_sb = MagicMock()
+        self._wire_supabase(
+            mock_sb,
+            profiles=[user_no_email],
+            tz_rows=[{"user_id": TEST_USER_ID, "timezone": "Asia/Tokyo"}],
+        )
+
+        with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
+            result = asyncio.run(send_weekly_reminders(supabase=mock_sb, now_utc=now_utc))
+
+        assert result == 0
+        mock_send.assert_not_called()
+
+    def test_falls_back_to_default_tz_when_user_context_missing(self):
+        """user_context にエントリがないユーザーは DEFAULT_TZ (Asia/Tokyo) で判定される。"""
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from scheduler.weekly_review import send_weekly_reminders
+
+        # JST 月曜 08:00
+        jst_monday_8 = datetime(2026, 5, 11, 8, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        now_utc = jst_monday_8.astimezone(timezone.utc)
+
+        target_user = {
+            "id": TEST_USER_ID,
+            "display_name": "Default User",
+            "notification_email": "default@example.com",
+            "weekly_review_day": 1,
+            "notification_enabled": True,
+        }
+
+        mock_sb = MagicMock()
+        # user_context は空 → DEFAULT_TZ (Asia/Tokyo) フォールバック
+        self._wire_supabase(mock_sb, profiles=[target_user], tz_rows=[])
+
+        with patch("scheduler.weekly_review.send_reminder_email", new_callable=AsyncMock) as mock_send:
+            mock_send.return_value = True
+            result = asyncio.run(send_weekly_reminders(supabase=mock_sb, now_utc=now_utc))
+
+        assert result == 1
+        mock_send.assert_called_once_with(to_email="default@example.com", user_name="Default User")
 
 
 # ==================================================
