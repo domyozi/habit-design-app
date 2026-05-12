@@ -57,7 +57,20 @@ async def upsert_primary_target(
     supabase = get_supabase()
     completed = bool(payload.get("completed", False))
     now = datetime.now(timezone.utc).isoformat()
-    today = date_type.today()
+
+    # gate ロジックの「今日」基準。Railway 等 UTC サーバーでは
+    # date_type.today() が JST の日付とずれて「翌日への先回り設定」と
+    # 誤判定するため、クライアントの client_today (YYYY-MM-DD) があれば
+    # それを優先する。
+    server_today = date_type.today()
+    client_today_raw = payload.get("client_today")
+    today = server_today
+    if client_today_raw:
+        try:
+            today = date_type.fromisoformat(str(client_today_raw))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="client_today must be YYYY-MM-DD")
+
     set_date_raw = payload.get("set_date") or str(today)
 
     # PT close gate: 未来日 (today+1 以降) の Primary Target を upsert しようと

@@ -139,6 +139,77 @@ async def test_upsert_allows_future_pt_when_today_completed():
 
 
 @pytest.mark.asyncio
+async def test_upsert_uses_client_today_to_avoid_timezone_mismatch():
+    """サーバー (UTC) 今日 = 5/12 で client_today = 5/13 のとき、
+    既存 row が set_date=5/12, completed=false でも 5/13 への upsert は通る。
+
+    UTC サーバー上で JST クライアントが朝に PT を更新すると、サーバーの
+    date.today() (5/12) と クライアントの今日 (5/13) がずれて gate が
+    暴発する問題を防ぐ。
+    """
+    from unittest.mock import patch as patch_dt
+
+    fake_server_today = date_type(2026, 5, 12)
+    client_today = "2026-05-13"
+
+    current_table = MagicMock()
+    # SELECT 用: サーバー視点で 5/12 (server today) の未完了 PT
+    current_table.select.return_value.eq.return_value.execute.return_value.data = [
+        {"value": "前日の未完了", "set_date": "2026-05-12", "completed": False}
+    ]
+    current_table.upsert.return_value.execute.return_value.data = [
+        {
+            "user_id": TEST_USER_ID,
+            "value": "今日の新 PT",
+            "set_date": client_today,
+            "completed": False,
+            "completed_at": None,
+        }
+    ]
+    history_table = MagicMock()
+    tables = {
+        "primary_targets": current_table,
+        "primary_target_days": history_table,
+    }
+    mock_sb = MagicMock()
+    mock_sb.table.side_effect = lambda name: tables[name]
+
+    class _FakeDate(date_type):
+        @classmethod
+        def today(cls):
+            return fake_server_today
+
+    with patch("app.api.routes.primary_target.get_supabase", return_value=mock_sb):
+        with patch_dt("app.api.routes.primary_target.date_type", _FakeDate):
+            result = await upsert_primary_target(
+                {
+                    "value": "今日の新 PT",
+                    "set_date": client_today,
+                    "client_today": client_today,
+                },
+                user_id=TEST_USER_ID,
+            )
+
+    assert result["set_date"] == client_today
+    current_table.upsert.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_upsert_rejects_invalid_client_today():
+    """client_today が ISO 8601 でない場合 400 を返す。"""
+    mock_sb = MagicMock()
+    with patch("app.api.routes.primary_target.get_supabase", return_value=mock_sb):
+        with pytest.raises(HTTPException) as exc_info:
+            await upsert_primary_target(
+                {"value": "x", "set_date": "2026-05-13", "client_today": "not-a-date"},
+                user_id=TEST_USER_ID,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "client_today" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
 async def test_upsert_allows_past_pt_for_history_correction():
     """過去日 (例: 異常値訂正用) の PT は今日が未完了でも書き込める。"""
     today = date_type.today()
