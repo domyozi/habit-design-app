@@ -582,7 +582,12 @@ def fetch_runs(supabase_client: Any, *, limit: int = 50) -> list[dict[str, Any]]
 
 
 def fetch_run_scores(supabase_client: Any, run_id: str) -> list[dict[str, Any]]:
-    """特定 run 内のすべての score 行 (worst 抽出 / dimension 別チャート用)。"""
+    """特定 run 内のすべての score 行 (worst 抽出 / dimension 別チャート用)。
+
+    並び替えは Python 側で行う: postgrest 2.x では .order() に nulls_first を
+    渡せないため。ok=true を total 昇順 (= 悪い順) で先に並べ、ok=false (=total None)
+    は末尾に押し込む。
+    """
     result = (
         supabase_client.table("coach_eval_scores")
         .select(
@@ -590,10 +595,17 @@ def fetch_run_scores(supabase_client: Any, run_id: str) -> list[dict[str, Any]]:
             "observation, scores_json, total, created_at"
         )
         .eq("run_id", run_id)
-        .order("total", desc=False, nulls_first=False)
         .execute()
     )
-    return result.data or []
+    rows = result.data or []
+    rows.sort(
+        # ok=true で total が小さいほど worst として先に。ok=false (total None) は最後に。
+        key=lambda r: (
+            0 if r.get("ok") and r.get("total") is not None else 1,
+            r.get("total") if r.get("total") is not None else 999,
+        )
+    )
+    return rows
 
 
 # ───────────────────────── helpers ─────────────────────────
