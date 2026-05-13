@@ -3,6 +3,14 @@
 .env.*
 !.env.example
 
+# MCP / Supabase local linkage (may contain access tokens / project refs)
+.mcp.json
+supabase/.temp/
+
+# Root-level scratch screenshots
+/*.png
+/*.jpg
+
 # note.com セッション（ログイン Cookie）
 .note-session.json
 *.pem
@@ -20,6 +28,7 @@ temp/
 node_modules/
 dist/
 .vite/
+dist-ssr/
 
 # バックエンド（実装時）
 __pycache__/
@@ -37,5 +46,16 @@ venv/
 .idea/
 *.swp
 *.swo
+
+# AI / Playwright / design tool generated artifacts
+.playwright-mcp/
+**/.playwright-mcp/
+test-results/
+**/test-results/
+playwright-report/
+playwright-report-e2e/
+**/playwright-report*/
 .aidesigner/*
 !.aidesigner/.gitkeep
+**/.aidesigner/runs/
+**/.aidesigner/*-latest.html
