@@ -1,0 +1,61 @@
+[
+  {
+    "id": "declare-focus",
+    "user_input": "今日は午前中、絶対に集中して提案書を仕上げる。終わったら15時にジムに行く。",
+    "context": {
+      "user_context": {
+        "identity": "PMとして組織で動く人",
+        "patterns": "朝が最も生産的、午後の集中は落ちがち",
+        "values_keywords": ["実行", "誠実"],
+        "profile": {"age": 33, "occupation": "PM"}
+      },
+      "habits": [
+        {"id": "h1", "title": "朝の散歩", "current_streak": 12, "scheduled_time": "06:30", "today_completed": true, "metric_type": "binary", "target_value": null, "unit": null},
+        {"id": "h2", "title": "ジム", "current_streak": 4, "scheduled_time": "15:00", "today_completed": false, "metric_type": "binary", "target_value": null, "unit": null}
+      ]
+    }
+  },
+  {
+    "id": "declare-vague",
+    "user_input": "今日も頑張る。",
+    "context": {
+      "user_context": {"identity": "学生", "profile": {"age": 21}}
+    }
+  },
+  {
+    "id": "reflect-stuck",
+    "user_input": "結局またコードを1コミットもできなかった。集中力が続かない。",
+    "context": {
+      "habits": [
+        {"id": "h3", "title": "コードを1コミット", "current_streak": 0, "scheduled_time": null, "today_completed": false, "metric_type": "binary", "target_value": null, "unit": null}
+      ],
+      "recent_journals": [
+        {"entry_type": "morning_journal", "content_excerpt": "今日はコード書く", "entry_date": "2026-05-13", "created_at": "2026-05-13T08:00:00+00:00"}
+      ]
+    }
+  },
+  {
+    "id": "brainstorm-career",
+    "user_input": "転職するかどうか悩んでいる。今の会社で 5 年いて、技術力は伸びている気がするけど、視野が狭くなっている気もする。",
+    "context": {
+      "user_context": {"identity": "エンジニア", "profile": {"age": 30, "occupation": "ソフトウェアエンジニア"}}
+    }
+  },
+  {
+    "id": "plan-week",
+    "user_input": "今週は引っ越し作業がメイン。5/16 までに荷物まとめないと。並行して、AI 関連のキャッチアップも進めたい。",
+    "context": {
+      "user_context": {"profile": {"family": "妻と息子(5歳)"}}
+    }
+  },
+  {
+    "id": "minimal-ok",
+    "user_input": "OK!",
+    "context": {}
+  },
+  {
+    "id": "minimal-test",
+    "user_input": "test",
+    "context": {}
+  }
+]

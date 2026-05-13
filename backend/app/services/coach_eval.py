@@ -328,23 +328,64 @@ def _build_judge_user_message(pair: JudgePair) -> str:
 
 
 _OBSERVATION_RE = re.compile(r"<observation>(.*?)</observation>", re.S)
-_SCORES_RE = re.compile(r"<scores>\s*(\{.*?\})\s*</scores>", re.S)
+_SCORES_TAG_RE = re.compile(r"<scores>\s*([\s\S]*?)\s*</scores>", re.S)
+
+
+def _extract_first_json_object(text: str) -> str | None:
+    """text 内の最初の整合 JSON object 文字列を返す (brace 深さで判定)。
+    nested object / 配列も含めて正しくバランスを取る。"""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+    return None
 
 
 def _parse_judge_output(text: str) -> tuple[str, dict[str, dict[str, Any]]]:
-    """LLM 出力から observation と scores JSON を抽出。"""
+    """LLM 出力から observation と scores JSON を抽出。
+
+    順序:
+      1. <scores>...</scores> タグ内の JSON object をブレース深さで抜き出す
+      2. タグが無ければ text 全体から最初の JSON object を抜き出す
+    json.loads の代わりに JSONDecoder.raw_decode を使って trailing content を許容。
+    """
     obs_match = _OBSERVATION_RE.search(text)
-    scores_match = _SCORES_RE.search(text)
     observation = (obs_match.group(1).strip() if obs_match else "").strip()
-    if not scores_match:
-        # フォールバック: 最初の { ... } を抜き出す
-        brace_match = re.search(r"\{[\s\S]+\}", text)
-        if not brace_match:
-            raise ValueError("scores JSON が見つかりません")
-        scores_json = brace_match.group(0)
+
+    # 1) <scores> タグ優先
+    tag_match = _SCORES_TAG_RE.search(text)
+    if tag_match:
+        scores_json = _extract_first_json_object(tag_match.group(1))
+        if not scores_json:
+            scores_json = tag_match.group(1).strip()
     else:
-        scores_json = scores_match.group(1)
-    parsed = json.loads(scores_json)
+        # 2) text 全体からフォールバック
+        scores_json = _extract_first_json_object(text)
+        if not scores_json:
+            raise ValueError("scores JSON が見つかりません")
+
+    decoder = json.JSONDecoder()
+    parsed, _ = decoder.raw_decode(scores_json.strip())
     if not isinstance(parsed, dict):
         raise ValueError("scores JSON が dict ではありません")
     return observation, parsed
