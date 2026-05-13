@@ -6,3 +6,6 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+
+# Sprint coach-eval: 評価レポートは実ユーザの journal を含むため git 管理しない
+reports/
