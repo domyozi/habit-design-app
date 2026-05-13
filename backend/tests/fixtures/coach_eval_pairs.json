@@ -43,9 +43,9 @@
   },
   {
     "id": "plan-week",
-    "user_input": "今週は引っ越し作業がメイン。5/16 までに荷物まとめないと。並行して、AI 関連のキャッチアップも進めたい。",
+    "user_input": "今週は来月のイベント準備がメイン。資料を週末までに固めたい。並行して、AI 関連のキャッチアップも進めたい。",
     "context": {
-      "user_context": {"profile": {"family": "妻と息子(5歳)"}}
+      "user_context": {"profile": {"age": 28}}
     }
   },
   {
