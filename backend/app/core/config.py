@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     JOURNAL_BACKGROUND_MEMORY_EXTRACTION_ENABLED: bool = False
     JOURNAL_BACKGROUND_SUGGESTION_EXTRACTION_ENABLED: bool = False
 
+    # 【Sprint coach-eval Phase B】: /api/admin/eval/* にアクセスできる user_id の allowlist。
+    # comma-separated UUID。空のまま起動した場合は admin API が全 deny になる
+    # (= dev でも明示的に自分の UUID を入れない限り使えない)。
+    ADMIN_USER_IDS: str = ""
+
     model_config = {
         # 【環境変数ファイル】: .env ファイルから設定を読み込む
         "env_file": ".env",

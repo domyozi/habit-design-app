@@ -178,6 +178,32 @@ async def get_current_user(
     return user_id
 
 
+def _admin_user_id_set() -> set[str]:
+    """settings.ADMIN_USER_IDS (comma-separated) を set に展開。空文字は除外。"""
+    raw = (settings.ADMIN_USER_IDS or "").strip()
+    if not raw:
+        return set()
+    return {x.strip() for x in raw.split(",") if x.strip()}
+
+
+async def require_admin(
+    user_id: str = Depends(get_current_user),
+) -> str:
+    """
+    FastAPI 依存関数: ADMIN_USER_IDS に含まれる UUID のみ通す。
+    含まれていなければ 403 を返す。空 allowlist は全 deny (= dev でも明示登録が必要)。
+
+    使用方法:
+        @router.get("/admin/something")
+        async def admin_only(user_id: str = Depends(require_admin)):
+            ...
+    """
+    admins = _admin_user_id_set()
+    if not admins or user_id not in admins:
+        raise HTTPException(status_code=403, detail="Admin only")
+    return user_id
+
+
 async def get_current_user_from_header_or_query(
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer_optional),
 ) -> str:

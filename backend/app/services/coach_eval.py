@@ -510,6 +510,95 @@ def format_markdown_report(summary: EvalRunSummary, *, worst_n: int = 3) -> str:
 # ───────────────────────── helpers ─────────────────────────
 
 
+# ───────────────────────── Persistence (Phase B) ─────────────────────────
+
+
+def persist_run(supabase_client: Any, summary: EvalRunSummary) -> str:
+    """summarize() の結果を coach_eval_runs / coach_eval_scores に永続化し、run_id を返す。
+
+    Phase B: 過去 run の比較を frontend dashboard で見られる様にするため。
+    Phase A (CLI のみ) からは `--save-to-db` オプションで明示的に呼び出す。
+    """
+    summary_json = {
+        **summary.avg_by_dimension,
+        "_total": summary.avg_total,
+    }
+    run_row = (
+        supabase_client.table("coach_eval_runs")
+        .insert(
+            {
+                "label": summary.label,
+                "model": summary.model,
+                "pair_count": summary.pair_count,
+                "success_count": sum(1 for r in summary.results if r.ok),
+                "error_count": summary.error_count,
+                "summary_json": summary_json,
+                "started_at": summary.started_at.isoformat(),
+                "finished_at": summary.finished_at.isoformat(),
+            }
+        )
+        .execute()
+    )
+    run_id = run_row.data[0]["id"]
+
+    # scores を bulk insert
+    score_rows: list[dict[str, Any]] = []
+    for r in summary.results:
+        scores_dict = {
+            s.key: {"score": s.score, "rationale": s.rationale}
+            for s in r.scores
+        } if r.ok else None
+        score_rows.append(
+            {
+                "run_id": run_id,
+                "user_entry_id": r.pair.user_entry_id,
+                "ai_entry_id": r.pair.ai_entry_id,
+                "ok": r.ok,
+                "error_kind": r.error,
+                "observation": r.observation or None,
+                "scores_json": scores_dict,
+                "total": round(r.total, 2) if r.ok else None,
+            }
+        )
+    if score_rows:
+        supabase_client.table("coach_eval_scores").insert(score_rows).execute()
+
+    return run_id
+
+
+def fetch_runs(supabase_client: Any, *, limit: int = 50) -> list[dict[str, Any]]:
+    """最近の eval run の一覧 (label / model / 平均スコア等) を返す。dashboard 用。"""
+    result = (
+        supabase_client.table("coach_eval_runs")
+        .select(
+            "id, label, model, pair_count, success_count, error_count, "
+            "summary_json, started_at, finished_at"
+        )
+        .order("started_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
+
+
+def fetch_run_scores(supabase_client: Any, run_id: str) -> list[dict[str, Any]]:
+    """特定 run 内のすべての score 行 (worst 抽出 / dimension 別チャート用)。"""
+    result = (
+        supabase_client.table("coach_eval_scores")
+        .select(
+            "id, user_entry_id, ai_entry_id, ok, error_kind, "
+            "observation, scores_json, total, created_at"
+        )
+        .eq("run_id", run_id)
+        .order("total", desc=False, nulls_first=False)
+        .execute()
+    )
+    return result.data or []
+
+
+# ───────────────────────── helpers ─────────────────────────
+
+
 def _parse_iso(s: str) -> Optional[datetime]:
     if not s:
         return None

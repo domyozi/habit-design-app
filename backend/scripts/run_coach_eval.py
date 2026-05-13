@@ -49,6 +49,7 @@ from app.services.coach_eval import (  # noqa: E402
     DEFAULT_JUDGE_MODEL,
     format_markdown_report,
     judge_pairs,
+    persist_run,
     sample_pairs,
     summarize,
 )
@@ -94,6 +95,11 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="生スコア JSON の出力先 (省略可)",
+    )
+    p.add_argument(
+        "--save-to-db",
+        action="store_true",
+        help="coach_eval_runs / coach_eval_scores テーブルに結果を永続化 (Phase B)",
     )
     return p.parse_args()
 
@@ -148,6 +154,14 @@ async def _amain(args: argparse.Namespace) -> int:
         f"[3/3] done. avg_total={summary.avg_total} / 5, errors={summary.error_count}",
         file=sys.stderr,
     )
+
+    # ── 4b. DB 永続化 (option) ──
+    if args.save_to_db:
+        try:
+            run_id = persist_run(supabase, summary)
+            print(f"[db]     run_id={run_id} (coach_eval_runs)", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"WARN: DB 永続化に失敗: {e}", file=sys.stderr)
 
     # ── 5. レポート出力 ──
     md = format_markdown_report(summary)
