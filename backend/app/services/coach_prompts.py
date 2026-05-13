@@ -339,6 +339,23 @@ def _pending_coach_actions_section(c: dict) -> str:
 
 # Frontend と完全一致の OUTPUT_CONTRACT。文字列は変えない。
 OUTPUT_CONTRACT = """<output_contract>
+0-PRE. **CIRCUIT BREAKER — 必ず最初に判定し、該当したら ANY action を出さない**:
+以下のいずれかに当てはまる <user_input> は、応答テキストだけ短く返し、
+末尾 JSON は **完全に省略する** (または `{}` だけ)。例外なし。
+  - 30 字未満の短い入力
+  - 「OK」「OK!」「うん」「了解」「はい」「ありがとう」「sure」「yes」等の単純な相槌・確認のみ
+  - 「test」「あ」「あー」「a」等の意味のない / テスト入力
+  - 前のターンで提案された internal の確認・同意のみで、**新規の情報や意思表明が無い**
+
+このゲートが効くべき具体例:
+  ❌ NG: user='OK!' → tasks に 3 件、memory_patch に家族情報を勝手に書く
+  ✅ OK: user='OK!' → 「了解です、引き続き応援します」だけ返してテキスト終了。JSON 省略。
+
+memory_patch / habit_today_completes / tasks / habits / habit_updates / task_updates /
+task_deletes / goals / goal_updates / memory_clears / primary_target / confirmation_prompts
+**すべて空 / 省略**。理由: 短い相槌から context を勝手に蒸し返して memory を書き換えるのは
+ユーザーが意図的に消した情報を復活させる事故を起こす (= 重大な UX 障害)。
+
 0. **日付・曜日は <today> セクションに従う。自分で曜日を計算しない。** 「明後日」と書かれたら必ず <today> の day=2 の日付/曜日を使う。GW月曜日のような表現も <today> 内のカレンダーで確認する。
 1. ユーザーの独白に短く（200-400字）応答。markdown 可。箇条書きや太字で読みやすく。
 1-A. **ユーザー向けテキストでは内部用語を使わない（厳守）**。以下の語は **絶対に** 応答テキストに書かない:

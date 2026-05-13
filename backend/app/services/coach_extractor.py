@@ -13,7 +13,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-CONFIDENCE_THRESHOLD = 0.5
+# Sprint coach-eval-guard: 0.5 → 0.65 に引き上げ。低確信度の提案で UI が
+# ノイジーになる問題への対処。memory_patch は元から閾値外なので別ルートでガード。
+CONFIDENCE_THRESHOLD = 0.65
 
 
 def extract_json_block(text: str) -> Optional[dict]:
@@ -37,6 +39,61 @@ def strip_json_block(text: str) -> str:
     if idx >= 0:
         return text[:idx].rstrip()
     return text
+
+
+# Sprint coach-eval-guard: 「OK!」のような minimal input で AI が大量提案を出す事故対策。
+# 短い相槌・確認のみのインプットでは action 系を一律で剥がす。memory_patch も含む。
+# circuit breaker 的に prompt 側 (output_contract.0-PRE) と二重防御。
+_MINIMAL_INPUT_THRESHOLD_CHARS = 20
+_MINIMAL_INPUT_TOKENS = frozenset(
+    {
+        "ok", "okk", "おk",
+        "yes", "y", "うん", "うんうん", "そう", "そうそう",
+        "はい", "了解", "りょ", "りょうかい", "了承",
+        "ありがとう", "thanks", "thx", "ty",
+        "test", "テスト", "ping",
+        "a", "あ", "あー", "あぁ", "ah",
+        "ね", "ね！", "おお",
+    }
+)
+
+
+def _is_minimal_input(user_input: str | None) -> bool:
+    """単純な相槌 / 確認 / 短いテスト入力か?
+    True なら action 系を一律 drop すべき。
+    """
+    if not user_input:
+        return True
+    # 句読点 / 絵文字 / 記号類を削った素の文字列で判定
+    stripped = (user_input or "").strip()
+    if not stripped:
+        return True
+    if len(stripped) < _MINIMAL_INPUT_THRESHOLD_CHARS:
+        # 短い時は ASCII 句読点・記号を取り払って lowercase 比較
+        normalized = "".join(c for c in stripped.lower() if c.isalnum() or c in "ぁ-んァ-ン一-龯")
+        if normalized in _MINIMAL_INPUT_TOKENS:
+            return True
+        # 5 字未満は内容に関係なく minimal 扱い (token list 漏れ対策)
+        if len(stripped) < 5:
+            return True
+    return False
+
+
+def filter_by_user_input(payload: dict, user_input: str | None) -> dict:
+    """minimal input なら **すべての action を剥がす** circuit breaker。
+    通常入力は素通し。filter_by_confidence の前に呼ぶ前提。
+
+    Sprint coach-eval-guard: prompt 側 (output_contract.0-PRE) のガード句が
+    破れた場合の二重防御。「OK!」で memory_patch.profile が勝手に書き換わる
+    事故 (= UX 重大事故) を確実に止める。
+    """
+    if not _is_minimal_input(user_input):
+        return payload
+    # minimal input: followup_question のテキスト返しだけ残す
+    out: dict[str, Any] = {}
+    if payload.get("followup_question"):
+        out["followup_question"] = payload["followup_question"]
+    return out
 
 
 def filter_by_confidence(payload: dict) -> dict:

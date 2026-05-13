@@ -8,6 +8,7 @@ from app.services.coach_prompts import build_coach_prompt
 from app.services.coach_extractor import (
     extract_json_block,
     filter_by_confidence,
+    filter_by_user_input,
     strip_json_block,
     to_pending_action_rows,
 )
@@ -224,22 +225,25 @@ def test_strip_json_block():
 
 
 def test_filter_by_confidence_drops_low():
+    # Sprint coach-eval-guard: threshold は 0.5 → 0.65 に引き上げた。
+    # 境界を確実にカバーするように 0.65 未満 / 以上の 2 値で確認する。
     payload = {
         "primary_target": {"action": "close", "value": "X", "confidence": 0.4},  # 落とす
         "tasks": [
             {"label": "高", "due": None, "confidence": 0.7, "reason": "r"},
             {"label": "低", "due": None, "confidence": 0.3, "reason": "r"},
+            {"label": "ボーダー直下", "due": None, "confidence": 0.6, "reason": "r"},
         ],
-        "habits": [{"label": "朝散歩", "frequency": "daily", "confidence": 0.6}],
+        "habits": [{"label": "朝散歩", "frequency": "daily", "confidence": 0.75}],
         "habit_today_completes": [],  # 空配列は省く
         "memory_patch": {"identity": "X"},
         "followup_question": "?",
     }
     out = filter_by_confidence(payload)
-    assert "primary_target" not in out  # 0.4 < 0.5 で drop
-    assert len(out["tasks"]) == 1
+    assert "primary_target" not in out  # 0.4 < 0.65 で drop
+    assert len(out["tasks"]) == 1  # 0.3 と 0.6 が drop、0.7 だけ残る
     assert out["tasks"][0]["label"] == "高"
-    assert "habits" in out
+    assert "habits" in out  # 0.75 で通る
     assert "habit_today_completes" not in out
     assert out["memory_patch"] == {"identity": "X"}
     assert out["followup_question"] == "?"
@@ -291,7 +295,7 @@ def test_filter_by_confidence_keeps_habit_and_task_updates():
             {"habit_id": "h2", "label": "低", "confidence": 0.3},  # drop
         ],
         "task_updates": [
-            {"task_id": "t1", "due": "2026-05-15", "confidence": 0.6},
+            {"task_id": "t1", "due": "2026-05-15", "confidence": 0.7},  # threshold up: 0.6 → 0.7
         ],
     }
     out = filter_by_confidence(payload)
@@ -495,3 +499,59 @@ def test_to_pending_action_rows_drops_memory_clear_without_fields():
     }
     rows = to_pending_action_rows(filtered)
     assert rows == []
+
+
+# ───────────────── Sprint coach-eval-guard: minimal input gate ─────────────────
+
+
+@pytest.mark.parametrize(
+    "user_input",
+    [
+        "",
+        "   ",
+        "OK",
+        "OK!",
+        "ok",
+        "うん",
+        "はい",
+        "了解",
+        "ありがとう",
+        "test",
+        "あ",
+        "あー",
+        "ね！",  # 短い感嘆
+    ],
+)
+def test_filter_by_user_input_minimal_drops_everything(user_input: str):
+    """短い相槌・テスト入力では action 系を全部剥がす。followup_question だけ残る。"""
+    payload = {
+        "tasks": [{"label": "x", "due": None, "confidence": 0.9, "reason": "r"}],
+        "memory_patch": {"profile": {"family": "妻"}},
+        "primary_target": {"action": "update", "value": "x", "reason": "r", "confidence": 0.9},
+        "followup_question": "本当に？",
+    }
+    out = filter_by_user_input(payload, user_input)
+    assert "tasks" not in out
+    assert "memory_patch" not in out
+    assert "primary_target" not in out
+    assert out.get("followup_question") == "本当に？"
+
+
+def test_filter_by_user_input_substantial_passes_through():
+    """20 字以上 / 意味のあるテキストは全部素通し。filter_by_confidence に委ねる。"""
+    payload = {
+        "tasks": [{"label": "x", "due": None, "confidence": 0.9, "reason": "r"}],
+        "memory_patch": {"profile": {"family": "妻"}},
+    }
+    user_input = "明日の朝、ジムに行ってからジャーナル書くつもり"
+    out = filter_by_user_input(payload, user_input)
+    assert out == payload  # そのまま返る
+
+
+def test_filter_by_user_input_short_japanese_5chars_kept_minimal():
+    """5 字未満の入力は token list に無くても minimal 扱い。"""
+    out = filter_by_user_input(
+        {"tasks": [{"label": "x", "confidence": 0.9}]},
+        "やった",
+    )
+    assert "tasks" not in out

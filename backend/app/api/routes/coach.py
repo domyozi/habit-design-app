@@ -26,6 +26,7 @@ from app.services import ai_service
 from app.services.coach_extractor import (
     extract_json_block,
     filter_by_confidence,
+    filter_by_user_input,
     to_pending_action_rows,
 )
 from app.services.coach_prompts import build_coach_prompt
@@ -1187,7 +1188,15 @@ async def coach_stream(
                 len(accumulated), tail,
             )
         if parsed:
-            filtered = filter_by_confidence(parsed)
+            # Sprint coach-eval-guard: 短い相槌では action 系を一律で剥がす
+            # circuit breaker。prompt 側 0-PRE が破れた場合の二重防御。
+            parsed_after_input_guard = filter_by_user_input(parsed, user_input)
+            if parsed_after_input_guard != parsed:
+                logger.info(
+                    "coach-stream minimal_input gate: actions dropped (input_len=%d)",
+                    len(user_input or ""),
+                )
+            filtered = filter_by_confidence(parsed_after_input_guard)
             if filtered:
                 filtered = _filter_completed_habit_actions(filtered, ctx)
                 if filtered:
