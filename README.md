@@ -100,6 +100,49 @@ flowchart LR
   EX --> P
 ```
 
+### Tool boundary — what the AI can read vs write
+
+The boundary between "AI can observe" and "AI can change" runs through the approval
+UI. The AI has wide read access but **no direct write path** to user state.
+
+```mermaid
+flowchart LR
+  subgraph READ["🔍 AI read scope (no gate)"]
+    direction TB
+    R1[journal_entries]
+    R2[CoachUserContext<br/>identity / patterns / profile]
+    R2b[active_habits]
+    R3[today_calendar via GCal]
+    R4[pending_coach_actions]
+  end
+  subgraph PROPOSE["📝 AI propose scope (JSON only)"]
+    direction TB
+    P1[tasks / habits / goals]
+    P2[memory_patch + confirmation]
+    P3[task_deletes + confirmation]
+    P4[primary_target]
+  end
+  subgraph GATE["🛡️ Human gate"]
+    direction TB
+    G1[approval card UI]
+    G2[confirmation_prompts<br/>for destructive]
+    G3[circuit breaker<br/>for minimal input]
+  end
+  subgraph EXEC["✅ Write scope (post-approval only)"]
+    direction TB
+    E1[Supabase row insert / update / delete]
+    E2[coach_pending_actions audit log]
+  end
+  READ --> PROPOSE
+  PROPOSE --> GATE
+  GATE -->|approve| EXEC
+  GATE -->|reject| DISCARD[discarded, audit logged]
+```
+
+The audit trail (`coach_pending_actions`) means **every proposed action is recorded
+whether the user accepted or rejected it** — useful both for eval (accept-rate metrics)
+and for post-hoc investigation if a write event ever needs to be reconstructed.
+
 ### Scope of autonomy
 
 ゲートの判断軸は **hybrid** で運用:
@@ -151,6 +194,44 @@ LLM アプリは「動く」だけでなく「**ルールに従わなかった�
 > requirement, not a polish.
 >
 > *(原文: 「AI の出力を信用しないレイヤーをコードに持つ。LLM は確率的なので "ルールに従う期待値" ではなく "ルールが破れても安全" を作る。… B2B AI 実装で繰り返し見てきた事実から来る。次の部署 / 対外・対顧客にまで影響が波及する production では、defense in depth は必須」)*
+
+---
+
+## 🐛 Failure cases observed
+
+Each entry is a real failure that occurred during this project and shipped a fix
+(or an explicit caveat). Keeping them visible is part of the engineering posture —
+hiding the rough edges hides the reason the safeguards exist.
+
+- **AI rewriting user-deleted memory.** A user had intentionally removed pregnancy info
+  from `profile.family`. On the next short turn (`OK!`), the AI proposed a `memory_patch`
+  that put the info back. → Fixed via `memory_patch` confidence gating (≥0.7 direct,
+  0.5–0.7 confirmation, <0.5 no-op) **plus** an explicit-mention requirement (no update
+  if the field is not mentioned in this turn).
+- **Speculative action storm on minimal input.** Saying `OK!` produced 4 unrelated
+  proposal cards. → Fixed by a circuit breaker promoted to the very top of the
+  `output_contract` (prompt layer) + a backend `filter_by_user_input` that strips all
+  actions when input is minimal (defense in depth, two layers).
+- **Rule buried in a 700-line prompt.** "Don't reply long to short inputs" existed on
+  line 359 of the prompt but the model ignored it. → Highlighted by eval as a worst-case
+  pattern, leading to the circuit-breaker promotion above. The lesson: prompt length is
+  a quality risk in itself.
+- **Confidence threshold drift (0.6 → 0.7).** The original `≥0.6` auto-apply threshold
+  was too aggressive — users felt the AI was "changing things without asking." Lowered
+  to 0.7, still considered unsettled and to be re-tuned with eval / accept-rate data.
+- **Tone regression as a side effect.** Adding "concreteness" rules improved specificity
+  (+1.28) and actionability (+1.43) but tone_fit dropped (−0.14). Below the fail
+  threshold, but the regression was made visible by CI — the kind of trade-off that
+  would silently slip past code review otherwise.
+- **`coach_pending_actions` FK constraint on judge logging.** The eval used a synthetic
+  user_id for `claude_api_logs`, which failed the FK on `auth.users` and crashed the
+  log write. → Switched to passing the real per-pair user_id, log writes preserved,
+  cost attribution remained per-real-user.
+- **`postgrest` 2.x lacking `nulls_first` broke the admin eval detail endpoint.** The
+  initial implementation used `.order(total, nulls_first=False)`; postgrest-py 2.x
+  raised `TypeError` and the endpoint returned a 500 without CORS headers (the front
+  saw "Failed to fetch"). → Moved sort to Python after fetch. The bigger lesson: an
+  unhandled exception bypasses the CORS middleware and disguises the actual error.
 
 ---
 
