@@ -203,15 +203,35 @@ Each entry is a real failure that occurred during this project and shipped a fix
 (or an explicit caveat). Keeping them visible is part of the engineering posture —
 hiding the rough edges hides the reason the safeguards exist.
 
-- **AI rewriting user-deleted memory.** A user had intentionally removed pregnancy info
-  from `profile.family`. On the next short turn (`OK!`), the AI proposed a `memory_patch`
-  that put the info back. → Fixed via `memory_patch` confidence gating (≥0.7 direct,
-  0.5–0.7 confirmation, <0.5 no-op) **plus** an explicit-mention requirement (no update
-  if the field is not mentioned in this turn).
-- **Speculative action storm on minimal input.** Saying `OK!` produced 4 unrelated
-  proposal cards. → Fixed by a circuit breaker promoted to the very top of the
-  `output_contract` (prompt layer) + a backend `filter_by_user_input` that strips all
-  actions when input is minimal (defense in depth, two layers).
+- **AI rewriting user-deleted memory.** I had reviewed several AI-suggested memory
+  updates and accepted them, then noticed a few entries I didn't want kept in my profile
+  and manually deleted them. Later, during eval testing, I sent a few short turns like
+  `OK` or `いいね` — and the AI suggested **putting that exact deleted information
+  back, in its pre-edit form.** The first feeling wasn't "UX bug"; it was **"is the
+  AI trying to force this on me? Can I actually trust this?"** Then the second-order
+  thought: this is fine when it's just me, but I'm starting MVP testing with my wife
+  and close friends — the moment one of them thinks "this is creepy," that AI is done.
+  Convenience comes after trust; an AI that surfaces things the user wanted kept
+  private or removed crosses a line that, in my view, must be defended absolutely.
+  → Fixed via `memory_patch` confidence gating (≥0.7 direct, 0.5–0.7 confirmation,
+  <0.5 no-op) **plus** an explicit-mention requirement (no update unless the field
+  is mentioned in this turn). Root cause: a rule that *was* in the 700-line prompt
+  asking the model to stay short on short inputs had been buried somewhere in the
+  middle, and the model couldn't keep it in focus.
+
+  > *(原文の要約: 「今回指示やコメントをした内容とは無関係なことについて、AIが急にサジェストを投げかけてきた際、不安や恐怖感を抱いた … 自分自身でメモリを許可し更新した際、その情報の中に『プロフィールとしては載せたくない』と思うものがあり、後から手動で修正・削除した。しかし、その後にLLM as Judgeのタイミングで『OK』『いいね』と反応したところ、先ほど手動で削除したはずの情報を、わざわざ改修前の状態で推奨してきた。『AIが自分にこれを強要しようとしているのではないか』『本当に信頼していいのか』という強い疑念に繋がった。… 他のユーザーに使ってもらうとなると話は別で、現在 MVP として妻や旧友たちに使ってもらい始めているが、『気味が悪い』と思われた瞬間にそのAIは絶対に使われなくなる。便利さ以前に、信頼性・セキュリティの欠如は絶対に守られなければならないライン」)*
+
+- **Speculative action storm on minimal input.** During morning journaling — just
+  writing thoughts and reflections — the AI returned about **ten proposal cards at
+  once**. That volume is hard for anyone to process, and there's no way to actually
+  review all of them during a busy morning. It becomes ritual without meaning:
+  users will start tapping "approve" or "ignore" by reflex, defeating the purpose of
+  the human gate entirely. Saying `OK!` produced 4 unrelated proposal cards in the
+  same class of failure. → Fixed by a circuit breaker promoted to **the very top
+  of `output_contract`** (prompt layer) + a backend `filter_by_user_input` that
+  strips all actions when input is minimal (defense in depth, two layers).
+
+  > *(原文の要約: 「朝のジャーナリングとして自分が考えていることや振り返りを書いている最中に、一気に10件ほどの推奨カードが出てきたこともあった。そもそも人間的に受け入れがたい量で、忙しい朝にすべてに目を通すのは形骸化を招く」)*
 - **Rule buried in a 700-line prompt.** "Don't reply long to short inputs" existed on
   line 359 of the prompt but the model ignored it. → Highlighted by eval as a worst-case
   pattern, leading to the circuit-breaker promotion above. The lesson: prompt length is
