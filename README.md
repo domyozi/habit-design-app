@@ -282,7 +282,7 @@ habit-design-app/
 
 ---
 
-## 主な設計判断 (面接で語れるポイント)
+## 主な設計判断 (Key engineering decisions)
 
 ### 1. LangChain を採用しない
 
