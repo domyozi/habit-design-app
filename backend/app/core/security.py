@@ -186,6 +186,14 @@ def _admin_user_id_set() -> set[str]:
     return {x.strip() for x in raw.split(",") if x.strip()}
 
 
+def is_admin_user(user_id: str) -> bool:
+    """ADMIN_USER_IDS allowlist に user_id が含まれるか。soft check 用 (raise しない)。
+
+    "admin は無制限、それ以外は cap" のようなレート制限分岐で使う。
+    """
+    return user_id in _admin_user_id_set()
+
+
 async def require_admin(
     user_id: str = Depends(get_current_user),
 ) -> str:
