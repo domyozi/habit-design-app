@@ -116,6 +116,8 @@ def _adapt_habit(
         "aggregation_period": h.get("aggregation_period", "daily"),
         "period_target": h.get("period_target"),
         "display_window": h.get("display_window", "anytime"),
+        # Sprint body-v1: BODY タブ連携。'strength' / 'running' / null。
+        "workout_kind": h.get("workout_kind"),
     }
 
 

@@ -195,6 +195,10 @@ class Habit(BaseModel):
     #   trajectory  = 推移型 (LineChart で軌跡を見る、達成判定はしない)
     #   None        = auto-infer (metric_type+unit から推論)
     target_mode: Optional[Literal["daily", "trajectory"]] = None
+    # BODY タブ連携: 'strength' / 'running' は workout_sessions と紐付けされ、
+    # Today では特別行として描画される。NULL は通常 habit。
+    # 🔵 信頼性レベル: migrations/add_workout_sessions.sql より
+    workout_kind: Optional[Literal["strength", "running"]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -942,3 +946,140 @@ class UpdateTimeWindowRequest(BaseModel):
     start_hour: Optional[int] = Field(None, ge=0, le=23)
     end_hour: Optional[int] = Field(None, ge=0, le=23)
     sort_order: Optional[int] = None
+
+
+# =============================================
+# BODY タブ (筋トレ / ランニング セッション)
+# 🔵 信頼性レベル: migrations/add_workout_sessions.sql より
+# =============================================
+
+WorkoutSessionType = Literal["strength", "running"]
+WorkoutSetType = Literal["warmup", "normal", "drop", "fail"]
+RunningKind = Literal["jog", "interval", "long", "lsd"]
+
+
+class WorkoutSetEntry(BaseModel):
+    """
+    【筋トレ 1 セットの記録】: workout_exercises.sets JSONB の要素
+    """
+
+    set_num: int = Field(..., ge=1, le=50)
+    weight: Optional[float] = Field(None, ge=0)
+    reps: Optional[int] = Field(None, ge=0, le=999)
+    completed: bool = False
+    rest_s: Optional[int] = Field(None, ge=0, le=86400)
+    set_type: WorkoutSetType = "normal"
+
+
+class WorkoutExerciseInput(BaseModel):
+    """【セッション開始/更新時の種目入力】"""
+
+    exercise_name: str = Field(..., min_length=1, max_length=120)
+    order_index: int = Field(..., ge=0)
+    sets: list[WorkoutSetEntry] = Field(default_factory=list)
+
+
+class WorkoutExercise(BaseModel):
+    """【種目レコード】"""
+
+    id: str
+    session_id: str
+    exercise_name: str
+    order_index: int
+    sets: list[WorkoutSetEntry] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class GpsRoutePoint(BaseModel):
+    """【GPS ポリラインの 1 点】: t は started_at からの経過秒"""
+
+    lat: float
+    lng: float
+    t: float
+
+
+class WorkoutSessionStartRequest(BaseModel):
+    """【POST /api/workouts/sessions】 セッション開始"""
+
+    session_type: WorkoutSessionType
+    habit_id: Optional[str] = None
+    routine_id: Optional[str] = None
+    started_at: Optional[datetime] = None  # 省略時は now()
+    exercises: list[WorkoutExerciseInput] = Field(default_factory=list)
+
+
+class WorkoutSessionUpdateRequest(BaseModel):
+    """【PATCH /api/workouts/sessions/{id}】 進行中セッションの編集"""
+
+    exercises: Optional[list[WorkoutExerciseInput]] = None
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
+class WorkoutSessionFinishRequest(BaseModel):
+    """【POST /api/workouts/sessions/{id}/finish】 セッション完了"""
+
+    ended_at: Optional[datetime] = None  # 省略時は now()
+    exercises: Optional[list[WorkoutExerciseInput]] = None  # 最終 snapshot
+    distance_m: Optional[float] = Field(None, ge=0)
+    avg_pace_s_per_km: Optional[float] = Field(None, ge=0)
+    gps_route: Optional[list[GpsRoutePoint]] = None  # 圧縮済み (<50KB)
+    running_kind: Optional[RunningKind] = None
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
+class WorkoutSession(BaseModel):
+    """【セッションレコード】"""
+
+    id: str
+    user_id: str
+    habit_id: Optional[str] = None
+    habit_log_id: Optional[str] = None
+    routine_id: Optional[str] = None
+    session_type: WorkoutSessionType
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    duration_s: Optional[int] = None
+    total_volume_kg: Optional[float] = None
+    distance_m: Optional[float] = None
+    avg_pace_s_per_km: Optional[float] = None
+    gps_route: Optional[list[GpsRoutePoint]] = None
+    notes: Optional[str] = None
+    exercises: list[WorkoutExercise] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class WorkoutRoutineCreateRequest(BaseModel):
+    """【POST /api/workouts/routines】 ルーティン作成"""
+
+    name: str = Field(..., min_length=1, max_length=80)
+    routine_type: WorkoutSessionType
+    template: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkoutRoutineUpdateRequest(BaseModel):
+    """【PATCH /api/workouts/routines/{id}】"""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=80)
+    template: Optional[dict[str, Any]] = None
+
+
+class WorkoutRoutine(BaseModel):
+    """【ルーティンテンプレ】"""
+
+    id: str
+    user_id: str
+    name: str
+    routine_type: WorkoutSessionType
+    template: dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class WorkoutBootstrapResponse(BaseModel):
+    """【POST /api/workouts/bootstrap】 BODY 初回起動時の pre-seed 結果"""
+
+    strength_habit: Optional[Habit] = None
+    running_habit: Optional[Habit] = None
+    created: bool  # True なら新規作成、False なら既存検出のみ
